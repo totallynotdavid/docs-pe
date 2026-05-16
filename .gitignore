@@ -1,6 +1,7 @@
 # python artifacts
 __pycache__/
 .pytest_cache/
+downloaded_files/
 
 # build artifacts
 build/
@@ -11,4 +12,4 @@ dist/
 *.csv
 .env
 
-.debug
+*.log

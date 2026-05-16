@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 a = Analysis(
-    ['robot/app/cli.py'],
+    ['robot/__main__.py'],
     pathex=[],
     binaries=[],
     datas=[],
@@ -10,7 +10,7 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludedimports=[],
-    noarchive=True,
+    noarchive=False,
 )
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=None)
@@ -31,7 +31,7 @@ exe = EXE(
     runtime_tmpdir=None,
     console=True,
     disable_windowed_traceback=False,
-    argv_emulation=False,
+    argv_emulation=True,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,

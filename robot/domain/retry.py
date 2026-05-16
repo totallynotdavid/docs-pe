@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from robot.domain.errors import (
     BanSignalError,
     CaptchaError,
+    CaptchaTimeoutError,
     ParseError,
     PermanentInputError,
     RobotError,
@@ -25,6 +26,12 @@ def decide_retry(exc: RobotError, *, default_cooldown_s: float) -> RetryDecision
             error_code="permanent_input_error",
             rotate_session=False,
             cooldown_proxy_s=0.0,
+        )
+    if isinstance(exc, CaptchaTimeoutError):
+        return RetryDecision(
+            error_code="captcha_timeout",
+            rotate_session=True,
+            cooldown_proxy_s=min(default_cooldown_s, 30.0),
         )
     if isinstance(exc, CaptchaError):
         return RetryDecision(

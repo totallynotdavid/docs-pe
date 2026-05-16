@@ -17,6 +17,10 @@ class CaptchaError(RobotError):
     """Captcha token generation or validation failures."""
 
 
+class CaptchaTimeoutError(CaptchaError):
+    """Captcha token generation exceeded deadline."""
+
+
 class ParseError(TransientTransportError):
     """Response format is not parseable or empty."""
 

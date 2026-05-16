@@ -42,6 +42,9 @@ uv run robot \
   --session-budget 4 \
   --wait-min-s 6 \
   --wait-max-s 10 \
-  --same-session-retries 1 \
   --ban-cooldown-s 180 \
+  --captcha-timeout-s 20 \
+  --captcha-timeout-first-s 40 \
+  --captcha-same-session-retries 1 \
+  --captcha-first-token-jitter-max-s 5 \
   --env-file .env

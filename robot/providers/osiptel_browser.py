@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import random
 import time
 
 from dataclasses import dataclass
@@ -9,7 +10,12 @@ from typing import TYPE_CHECKING, Any
 from selenium.common.exceptions import WebDriverException
 from seleniumbase import SB  # type: ignore[import-untyped]
 
-from robot.domain.errors import BanSignalError, CaptchaError, TransientTransportError
+from robot.domain.errors import (
+    BanSignalError,
+    CaptchaError,
+    CaptchaTimeoutError,
+    TransientTransportError,
+)
 from robot.obs.events import SESSION_OPEN
 from robot.obs.logging import kv, new_session_id
 
@@ -52,6 +58,10 @@ _TOKEN_START_EXPR = """(() => {
 class BrowserSessionSettings:
     chrome_binary: str = ""
     script_timeout_s: float = 45.0
+    token_timeout_s: float = 20.0
+    first_token_timeout_s: float = 40.0
+    same_session_retries: int = 1
+    first_token_jitter_max_s: float = 5.0
 
 
 class BrowserSession:
@@ -63,6 +73,7 @@ class BrowserSession:
         self._sb_cm: SB | None = None
         self._sb: SB | None = None
         self.session_id = new_session_id()
+        self._tokens_generated = 0
 
     @property
     def proxy_id(self) -> str:
@@ -144,7 +155,32 @@ class BrowserSession:
                 chunks.append(f"{name}={value}")
         return "; ".join(chunks)
 
-    def generate_token(self, *, timeout_s: float = 20.0, poll_s: float = 0.25) -> str:
+    def generate_token(self, *, poll_s: float = 0.25) -> str:
+        is_first_token = self._tokens_generated == 0
+        timeout_s = (
+            self._settings.first_token_timeout_s
+            if is_first_token
+            else self._settings.token_timeout_s
+        )
+        if is_first_token and self._settings.first_token_jitter_max_s > 0:
+            time.sleep(random.uniform(0.0, self._settings.first_token_jitter_max_s))
+
+        attempts = self._settings.same_session_retries + 1
+        last_exc: CaptchaError | None = None
+        for _ in range(attempts):
+            try:
+                token = self._generate_token_once(timeout_s=timeout_s, poll_s=poll_s)
+                self._tokens_generated += 1
+                return token
+            except CaptchaTimeoutError as exc:
+                last_exc = exc
+                continue
+        if last_exc is not None:
+            raise last_exc
+        msg = "captcha token generation failed unexpectedly"
+        raise CaptchaError(msg)
+
+    def _generate_token_once(self, *, timeout_s: float, poll_s: float) -> str:
         sb = self._require_sb()
         try:
             started = bool(sb.execute_script(_TOKEN_START_EXPR))
@@ -171,7 +207,7 @@ class BrowserSession:
             time.sleep(poll_s)
 
         msg = "captcha token not generated in time"
-        raise CaptchaError(msg)
+        raise CaptchaTimeoutError(msg)
 
     def wait_ready(self, *, timeout_s: float = 25.0, poll_s: float = 0.25) -> None:
         sb = self._require_sb()

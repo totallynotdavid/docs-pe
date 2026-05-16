@@ -47,6 +47,10 @@ class SessionRuntime:
         session_budget: int,
         wait_min_s: float,
         wait_max_s: float,
+        captcha_timeout_s: float,
+        captcha_timeout_first_s: float,
+        captcha_same_session_retries: int,
+        captcha_first_token_jitter_max_s: float,
     ) -> None:
         self._run_id = run_id
         self._worker_id = worker_id
@@ -56,6 +60,10 @@ class SessionRuntime:
         self._session_budget = session_budget
         self._wait_min_s = wait_min_s
         self._wait_max_s = wait_max_s
+        self._captcha_timeout_s = captcha_timeout_s
+        self._captcha_timeout_first_s = captcha_timeout_first_s
+        self._captcha_same_session_retries = captcha_same_session_retries
+        self._captcha_first_token_jitter_max_s = captcha_first_token_jitter_max_s
         self._active: ActiveSession | None = None
         self._last_proxy_id = ""
         self._cooldown_until = 0.0
@@ -82,7 +90,13 @@ class SessionRuntime:
         )
         browser = BrowserSession(
             proxy=session,
-            settings=BrowserSessionSettings(chrome_binary=self._chrome_binary),
+            settings=BrowserSessionSettings(
+                chrome_binary=self._chrome_binary,
+                token_timeout_s=self._captcha_timeout_s,
+                first_token_timeout_s=self._captcha_timeout_first_s,
+                same_session_retries=self._captcha_same_session_retries,
+                first_token_jitter_max_s=self._captcha_first_token_jitter_max_s,
+            ),
         )
         try:
             browser.open()

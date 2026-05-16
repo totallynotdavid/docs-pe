@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import multiprocessing as mp
 
 from robot.app.config import load_config
 from robot.app.run import run
@@ -19,4 +20,5 @@ def main(argv: list[str] | None = None) -> None:
 
 
 if __name__ == "__main__":
+    mp.freeze_support()
     main()
