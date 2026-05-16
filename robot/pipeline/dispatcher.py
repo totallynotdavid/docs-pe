@@ -81,6 +81,10 @@ def _build_settings(cfg: RunConfig) -> WorkerSettings:
         wait_min_s=cfg.wait_min_s,
         wait_max_s=cfg.wait_max_s,
         ban_cooldown_s=cfg.ban_cooldown_s,
+        captcha_timeout_s=cfg.captcha_timeout_s,
+        captcha_timeout_first_s=cfg.captcha_timeout_first_s,
+        captcha_same_session_retries=cfg.captcha_same_session_retries,
+        captcha_first_token_jitter_max_s=cfg.captcha_first_token_jitter_max_s,
         chrome_binary=os.getenv("CHROME_BINARY", ""),
         debug=cfg.debug,
     )

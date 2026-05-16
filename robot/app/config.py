@@ -18,6 +18,10 @@ class RunConfig:
     wait_min_s: float
     wait_max_s: float
     ban_cooldown_s: float
+    captcha_timeout_s: float
+    captcha_timeout_first_s: float
+    captcha_same_session_retries: int
+    captcha_first_token_jitter_max_s: float
     env_file: str
 
 
@@ -33,6 +37,10 @@ def load_config(argv: list[str] | None = None) -> RunConfig:
     parser.add_argument("--wait-min-s", type=float, default=10.0)
     parser.add_argument("--wait-max-s", type=float, default=15.0)
     parser.add_argument("--ban-cooldown-s", type=float, default=180.0)
+    parser.add_argument("--captcha-timeout-s", type=float, default=20.0)
+    parser.add_argument("--captcha-timeout-first-s", type=float, default=40.0)
+    parser.add_argument("--captcha-same-session-retries", type=int, default=1)
+    parser.add_argument("--captcha-first-token-jitter-max-s", type=float, default=5.0)
     parser.add_argument("--env-file", default=".env")
     ns = parser.parse_args(argv)
 
@@ -49,6 +57,16 @@ def load_config(argv: list[str] | None = None) -> RunConfig:
         errors.append("--wait-max-s must be >= --wait-min-s")
     if ns.ban_cooldown_s < 0:
         errors.append("--ban-cooldown-s must be >= 0")
+    if ns.captcha_timeout_s <= 0:
+        errors.append("--captcha-timeout-s must be > 0")
+    if ns.captcha_timeout_first_s <= 0:
+        errors.append("--captcha-timeout-first-s must be > 0")
+    if ns.captcha_timeout_first_s < ns.captcha_timeout_s:
+        errors.append("--captcha-timeout-first-s must be >= --captcha-timeout-s")
+    if ns.captcha_same_session_retries < 0:
+        errors.append("--captcha-same-session-retries must be >= 0")
+    if ns.captcha_first_token_jitter_max_s < 0:
+        errors.append("--captcha-first-token-jitter-max-s must be >= 0")
     if errors:
         parser.error("; ".join(errors))
 
@@ -63,5 +81,9 @@ def load_config(argv: list[str] | None = None) -> RunConfig:
         wait_min_s=ns.wait_min_s,
         wait_max_s=ns.wait_max_s,
         ban_cooldown_s=ns.ban_cooldown_s,
+        captcha_timeout_s=ns.captcha_timeout_s,
+        captcha_timeout_first_s=ns.captcha_timeout_first_s,
+        captcha_same_session_retries=ns.captcha_same_session_retries,
+        captcha_first_token_jitter_max_s=ns.captcha_first_token_jitter_max_s,
         env_file=ns.env_file,
     )
