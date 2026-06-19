@@ -5,11 +5,11 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from robot.domain.types import RUC, CarrierCount
-from robot.providers.osiptel_http import OsiptelHttpClient, OsiptelResponse, PageRequest
+from robot.providers.osiptel_client import OsiptelClient, OsiptelResponse, PageRequest
 
 
 if TYPE_CHECKING:
-    from robot.providers.osiptel_browser import BrowserSession
+    from robot.providers.osiptel_session import OsiptelSession
 
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 def count_carrier_lines(
     *,
-    session: BrowserSession,
+    session: OsiptelSession,
     ruc: RUC,
     page_size: int,
 ) -> tuple[int, tuple[CarrierCount, ...]]:
@@ -26,10 +26,10 @@ def count_carrier_lines(
 
     total: int | None = None
     start = 0
-    draw = 2
+    draw = 1
     counts: dict[str, int] = {}
 
-    with OsiptelHttpClient(
+    with OsiptelClient(
         proxy=session.proxy_config,
         user_agent=user_agent,
         cookie_header=cookie_header,

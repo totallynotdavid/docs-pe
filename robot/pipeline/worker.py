@@ -49,14 +49,9 @@ class Worker:
             worker_id=worker_id,
             slot_id=slot_id,
             geonode=geonode,
-            chrome_binary=settings.chrome_binary,
             session_budget=settings.session_budget,
             wait_min_s=settings.wait_min_s,
             wait_max_s=settings.wait_max_s,
-            captcha_timeout_s=settings.captcha_timeout_s,
-            captcha_timeout_first_s=settings.captcha_timeout_first_s,
-            captcha_same_session_retries=settings.captcha_same_session_retries,
-            captcha_first_token_jitter_max_s=settings.captcha_first_token_jitter_max_s,
         )
 
     def run(self) -> WorkerSummary:

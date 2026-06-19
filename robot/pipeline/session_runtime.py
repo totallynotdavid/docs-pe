@@ -18,9 +18,9 @@ from robot.providers.geonode import (
     ProxySessionConfig,
     new_proxy_session,
     release_proxy_session,
+    resolve_egress_ip,
 )
-from robot.providers.osiptel_browser import BrowserSession, BrowserSessionSettings
-from robot.providers.osiptel_http import resolve_egress_ip
+from robot.providers.osiptel_session import OsiptelSession, OsiptelSessionSettings
 
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ActiveSession:
     session: ProxySessionConfig
-    browser: BrowserSession
+    osiptel: OsiptelSession
     uses: int = 0
     egress_ip: str = ""
     egress_ip_warned: bool = False
@@ -43,27 +43,17 @@ class SessionRuntime:
         worker_id: int,
         slot_id: int,
         geonode: GeoNodeConfig,
-        chrome_binary: str,
         session_budget: int,
         wait_min_s: float,
         wait_max_s: float,
-        captcha_timeout_s: float,
-        captcha_timeout_first_s: float,
-        captcha_same_session_retries: int,
-        captcha_first_token_jitter_max_s: float,
     ) -> None:
         self._run_id = run_id
         self._worker_id = worker_id
         self._slot_id = slot_id
         self._geonode = geonode
-        self._chrome_binary = chrome_binary
         self._session_budget = session_budget
         self._wait_min_s = wait_min_s
         self._wait_max_s = wait_max_s
-        self._captcha_timeout_s = captcha_timeout_s
-        self._captcha_timeout_first_s = captcha_timeout_first_s
-        self._captcha_same_session_retries = captcha_same_session_retries
-        self._captcha_first_token_jitter_max_s = captcha_first_token_jitter_max_s
         self._active: ActiveSession | None = None
         self._last_proxy_id = ""
         self._cooldown_until = 0.0
@@ -88,27 +78,21 @@ class SessionRuntime:
                 slot_id=self._slot_id,
             ),
         )
-        browser = BrowserSession(
+        osiptel = OsiptelSession(
             proxy=session,
-            settings=BrowserSessionSettings(
-                chrome_binary=self._chrome_binary,
-                token_timeout_s=self._captcha_timeout_s,
-                first_token_timeout_s=self._captcha_timeout_first_s,
-                same_session_retries=self._captcha_same_session_retries,
-                first_token_jitter_max_s=self._captcha_first_token_jitter_max_s,
-            ),
+            settings=OsiptelSessionSettings(),
         )
         try:
-            browser.open()
+            osiptel.open()
             egress_ip = resolve_egress_ip(session)
         except Exception:
-            browser.close()
+            osiptel.close()
             self._release_session(session)
             raise
 
         self._active = ActiveSession(
             session=session,
-            browser=browser,
+            osiptel=osiptel,
             uses=0,
             egress_ip=egress_ip,
         )
@@ -119,8 +103,8 @@ class SessionRuntime:
             kv(
                 run_id=self._run_id,
                 worker_id=self._worker_id,
-                session_id=browser.session_id,
-                proxy_id=browser.proxy_id,
+                session_id=osiptel.session_id,
+                proxy_id=osiptel.proxy_id,
                 egress_ip=final_egress_ip,
             ),
         )
@@ -144,7 +128,7 @@ class SessionRuntime:
 
         active = self._active
         self._active = None
-        active.browser.close()
+        active.osiptel.close()
         self._release_session(active.session)
         if cooldown_s > 0:
             self._cooldown_until = max(
@@ -155,7 +139,7 @@ class SessionRuntime:
     def active_session_id(self) -> str:
         if self._active is None:
             return ""
-        return self._active.browser.session_id
+        return self._active.osiptel.session_id
 
     def active_egress_ip(self) -> str:
         if self._active is None:
@@ -180,8 +164,8 @@ class SessionRuntime:
                 kv(
                     run_id=self._run_id,
                     worker_id=self._worker_id,
-                    session_id=self._active.browser.session_id,
-                    proxy_id=self._active.browser.proxy_id,
+                    session_id=self._active.osiptel.session_id,
+                    proxy_id=self._active.osiptel.proxy_id,
                 ),
             )
             self._active.egress_ip_warned = True

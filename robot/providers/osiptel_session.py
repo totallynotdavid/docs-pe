@@ -27,27 +27,13 @@ DEFAULT_USER_AGENT = (
 
 
 @dataclass(frozen=True)
-class BrowserSessionSettings:
-    chrome_binary: str = ""
-    script_timeout_s: float = 45.0
-    token_timeout_s: float = 20.0
-    first_token_timeout_s: float = 40.0
-    same_session_retries: int = 1
-    first_token_jitter_max_s: float = 5.0
+class OsiptelSessionSettings:
+    request_timeout_s: float = 45.0
 
 
-class BrowserSession:
-    """Compatibility wrapper for an OSIPTEL sticky HTTP session.
-
-    The site no longer uses Google reCAPTCHA for the query endpoint. The current
-    backend accepts DataTables pagination requests with BoolConsulta=true, so a
-    full browser is unnecessary for batch lookups. This class keeps the old
-    session interface used by the worker runtime while bootstrapping cookies
-    through the same sticky proxy.
-    """
-
+class OsiptelSession:
     def __init__(
-        self, *, proxy: ProxySessionConfig, settings: BrowserSessionSettings
+        self, *, proxy: ProxySessionConfig, settings: OsiptelSessionSettings
     ) -> None:
         self._proxy = proxy
         self._settings = settings
@@ -67,7 +53,7 @@ class BrowserSession:
         started = time.perf_counter()
         self._client = httpx.Client(
             proxy=self._proxy.as_http_proxy_url(),
-            timeout=self._settings.script_timeout_s,
+            timeout=self._settings.request_timeout_s,
             headers={"User-Agent": DEFAULT_USER_AGENT},
             follow_redirects=True,
         )
@@ -98,10 +84,6 @@ class BrowserSession:
 
     def cookie_header(self) -> str:
         return self._cookie_header
-
-    def generate_token(self, *, poll_s: float = 0.25) -> str:
-        _ = poll_s
-        return ""
 
     def wait_ready(self, *, timeout_s: float = 25.0, poll_s: float = 0.25) -> None:
         client = self._require_client()

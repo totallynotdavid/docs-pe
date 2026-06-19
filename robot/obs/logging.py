@@ -33,14 +33,7 @@ def configure_logging(*, debug: bool, run_id: str | None = None) -> None:
         logging.getLogger("robot").setLevel(logging.DEBUG)
 
     noisy_loggers = (
-        "websockets",
-        "websockets.client",
-        "selenium",
-        "selenium.webdriver",
-        "seleniumbase",
         "httpx",
-        "urllib3",
-        "urllib3.connectionpool",
         "httpcore",
     )
     for name in noisy_loggers:

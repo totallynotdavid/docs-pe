@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import time
 import uuid
 
 from dataclasses import dataclass
+from ipaddress import ip_address
 from os import getenv
 from typing import Literal, cast
 
@@ -23,6 +25,11 @@ _GATEWAY_HOST_BY_NAME: dict[str, str] = {
 _HTTP_STICKY_PORT_MIN = 10000
 _HTTP_STICKY_PORT_MAX = 10900
 _RELEASE_URL = "https://monitor.geonode.com/sessions/release/proxies"
+_IP_PROBE_URLS = (
+    "http://ip-api.com/json",
+    "https://api.ipify.org?format=json",
+    "http://httpbin.org/ip",
+)
 
 
 @dataclass(frozen=True)
@@ -47,9 +54,6 @@ class ProxySessionConfig:
     password: str
     username: str
     session_id: str
-
-    def as_selenium_proxy(self) -> str:
-        return f"{self.username}:{self.password}@{self.host}:{self.port}"
 
     def as_http_proxy_url(self) -> str:
         return f"http://{self.username}:{self.password}@{self.host}:{self.port}"
@@ -159,8 +163,54 @@ def release_proxy_session(
     )
 
 
+def resolve_egress_ip(proxy: ProxySessionConfig) -> str:
+    with httpx.Client(proxy=proxy.as_http_proxy_url(), timeout=5.0) as client:
+        for _ in range(3):
+            for url in _IP_PROBE_URLS:
+                value = _probe_ip(client, url)
+                if value:
+                    return value
+            time.sleep(0.2)
+    return ""
+
+
 def _new_session_id(slot_id: int) -> str:
     return f"s{slot_id}_{uuid.uuid4().hex[:8]}"
+
+
+def _probe_ip(client: httpx.Client, url: str) -> str:
+    try:
+        response = client.get(url)
+    except httpx.HTTPError:
+        return ""
+    if response.status_code != 200:
+        return ""
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    return _extract_ip(payload)
+
+
+def _extract_ip(payload: object) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("query", "ip", "origin"):
+        value = payload.get(key)
+        if not isinstance(value, str):
+            continue
+        candidate = value.split(",", 1)[0].strip()
+        if _is_valid_ip(candidate):
+            return candidate
+    return ""
+
+
+def _is_valid_ip(value: str) -> bool:
+    try:
+        ip_address(value)
+    except ValueError:
+        return False
+    return True
 
 
 def _release_sticky_session(

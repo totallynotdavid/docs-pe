@@ -5,7 +5,6 @@ import logging
 import time
 
 from dataclasses import dataclass
-from ipaddress import ip_address
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 import httpx
@@ -20,17 +19,13 @@ if TYPE_CHECKING:
 
 
 API_URL = "https://checatuslineas.osiptel.gob.pe/Consultas/GetAllCabeceraConsulta/"
-_IP_PROBE_URLS = (
-    "http://ip-api.com/json",
-    "https://api.ipify.org?format=json",
-    "http://httpbin.org/ip",
-)
 logger = logging.getLogger(__name__)
 
 
 class OsiptelResponse(TypedDict, total=False):
     iTotalRecords: int
     aaData: list[list[Any]]
+    data: list[dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -39,7 +34,6 @@ class PageRequest:
     draw: int
     start: int
     length: int
-    hcaptcha_token: str = ""
     bool_consulta: bool = True
 
 
@@ -65,7 +59,7 @@ def build_payload(req: PageRequest) -> dict[str, str]:
             "search[regex]": "false",
             "IdTipoDoc": "2",
             "NumeroDocumento": req.ruc,
-            "HCaptchaTokenCon": req.hcaptcha_token,
+            "HCaptchaTokenCon": "",
             "BoolConsulta": "true" if req.bool_consulta else "false",
         }
     )
@@ -86,53 +80,7 @@ def build_headers(*, user_agent: str, cookie_header: str) -> dict[str, str]:
     return headers
 
 
-def resolve_egress_ip(proxy: ProxySessionConfig) -> str:
-    with httpx.Client(proxy=proxy.as_http_proxy_url(), timeout=5.0) as client:
-        for _ in range(3):
-            for url in _IP_PROBE_URLS:
-                value = _probe_ip(client, url)
-                if value:
-                    return value
-            time.sleep(0.2)
-    return ""
-
-
-def _probe_ip(client: httpx.Client, url: str) -> str:
-    try:
-        response = client.get(url)
-    except httpx.HTTPError:
-        return ""
-    if response.status_code != 200:
-        return ""
-    try:
-        payload = response.json()
-    except ValueError:
-        payload = None
-    return _extract_ip(payload)
-
-
-def _extract_ip(payload: object) -> str:
-    if not isinstance(payload, dict):
-        return ""
-    for key in ("query", "ip", "origin"):
-        value = payload.get(key)
-        if not isinstance(value, str):
-            continue
-        candidate = value.split(",", 1)[0].strip()
-        if _is_valid_ip(candidate):
-            return candidate
-    return ""
-
-
-def _is_valid_ip(value: str) -> bool:
-    try:
-        ip_address(value)
-    except ValueError:
-        return False
-    return True
-
-
-class OsiptelHttpClient:
+class OsiptelClient:
     def __init__(
         self,
         *,
@@ -148,7 +96,7 @@ class OsiptelHttpClient:
         self._timeout_s = timeout_s
         self._client: httpx.Client | None = None
 
-    def __enter__(self) -> OsiptelHttpClient:
+    def __enter__(self) -> OsiptelClient:
         self._client = httpx.Client(
             proxy=self._proxy.as_http_proxy_url(),
             timeout=self._timeout_s,
