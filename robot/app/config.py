@@ -29,7 +29,7 @@ def load_config(argv: list[str] | None = None) -> RunConfig:
     parser = argparse.ArgumentParser(prog="robot")
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
-    parser.add_argument("--page-size", type=int, default=100)
+    parser.add_argument("--page-size", type=int, default=5000)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--dedupe", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--debug", action="store_true", default=False)

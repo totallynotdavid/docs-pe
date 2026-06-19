@@ -1,13 +1,10 @@
 from __future__ import annotations
 
 import logging
-import time
 
 from typing import TYPE_CHECKING, Any
 
 from robot.domain.types import RUC, CarrierCount
-from robot.obs.events import TOKEN_GENERATED
-from robot.obs.logging import kv
 from robot.providers.osiptel_http import OsiptelHttpClient, OsiptelResponse, PageRequest
 
 
@@ -38,22 +35,9 @@ def count_carrier_lines(
         cookie_header=cookie_header,
     ) as client:
         while True:
-            token_started = time.perf_counter()
-            token = session.generate_token()
-            logger.info(
-                "%s %s",
-                TOKEN_GENERATED,
-                kv(
-                    session_id=session.session_id,
-                    proxy_id=session.proxy_id,
-                    elapsed_ms=int((time.perf_counter() - token_started) * 1000),
-                    token_len=len(token),
-                ),
-            )
             payload = client.fetch(
                 PageRequest(
                     ruc=str(ruc),
-                    token=token,
                     draw=draw,
                     start=start,
                     length=page_size,
@@ -63,7 +47,7 @@ def count_carrier_lines(
             if total is None:
                 total = _total_records(payload)
 
-            rows = payload.get("aaData") or []
+            rows = payload.get("data") or payload.get("aaData") or []
             if not isinstance(rows, list):
                 rows = []
             for carrier in _carrier_counts(rows):
@@ -96,9 +80,7 @@ def _total_records(payload: OsiptelResponse) -> int:
 def _carrier_counts(rows: list[Any]) -> tuple[CarrierCount, ...]:
     counts: dict[str, int] = {}
     for row in rows:
-        if not isinstance(row, list):
-            continue
-        carrier = _as_text(_pick(row, 3))
+        carrier = _carrier_from_row(row)
         if not carrier:
             continue
         counts[carrier] = counts.get(carrier, 0) + 1
@@ -107,13 +89,21 @@ def _carrier_counts(rows: list[Any]) -> tuple[CarrierCount, ...]:
     )
 
 
-def _pick(row: list[Any], idx: int) -> Any:
-    if idx < 0 or idx >= len(row):
-        return ""
-    return row[idx]
+def _carrier_from_row(row: Any) -> str:
+    if isinstance(row, dict):
+        return _as_text(row.get("operador"))
+    if isinstance(row, list):
+        return _as_text(_pick(row, 3))
+    return ""
 
 
 def _as_text(value: Any) -> str:
     if isinstance(value, str):
         return value.strip()
     return ""
+
+
+def _pick(row: list[Any], idx: int) -> Any:
+    if idx < 0 or idx >= len(row):
+        return ""
+    return row[idx]

@@ -9,7 +9,6 @@ requires-python = ">=3.11"
 dependencies = [
     "httpx>=0.28.1",
     "python-dotenv>=1.2.2",
-    "seleniumbase>=4.48.4",
 ]
 
 authors = [
