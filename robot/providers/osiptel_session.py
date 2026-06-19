@@ -4,12 +4,17 @@ import logging
 import time
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from robot.domain.errors import BanSignalError, TransientTransportError
-from robot.obs.events import SESSION_OPEN
+from robot.domain.errors import BanSignalError, ParseError, TransientTransportError
+from robot.obs.events import (
+    FETCH_PAGE_OK,
+    FETCH_PAGE_START,
+    OSIPTEL_REQUEST_FAILED,
+    SESSION_OPEN,
+)
 from robot.obs.logging import kv, new_session_id
 
 
@@ -20,6 +25,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 HOME_URL = "https://checatuslineas.osiptel.gob.pe/"
+API_URL = "https://checatuslineas.osiptel.gob.pe/Consultas/GetAllCabeceraConsulta/"
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
@@ -85,6 +91,73 @@ class OsiptelSession:
     def cookie_header(self) -> str:
         return self._cookie_header
 
+    def fetch_json(
+        self,
+        data: dict[str, str],
+        *,
+        ruc: str,
+        draw: int,
+        start: int,
+        length: int,
+    ) -> Any:
+        client = self._require_client()
+        started = time.perf_counter()
+        logger.info(
+            "%s %s",
+            FETCH_PAGE_START,
+            kv(ruc=ruc, draw=draw, start=start, length=length),
+        )
+        try:
+            response = client.post(API_URL, data=data, headers=self._api_headers())
+        except httpx.HTTPError as exc:
+            msg = f"osiptel request transport failed: {type(exc).__name__}: {exc}"
+            raise TransientTransportError(msg) from exc
+
+        status = response.status_code
+        if status >= 500:
+            response_text = response.text.replace("\n", " ").strip()[:160]
+            logger.warning(
+                "%s %s",
+                OSIPTEL_REQUEST_FAILED,
+                kv(
+                    status=status,
+                    ruc=ruc,
+                    draw=draw,
+                    start=start,
+                    length=length,
+                    body=response_text,
+                ),
+            )
+            msg = (
+                "osiptel request failed "
+                f"status={status} draw={draw} start={start} length={length} "
+                f"ruc={ruc} body={response_text}"
+            )
+            raise BanSignalError(msg)
+        if status != 200:
+            msg = f"osiptel request failed status={status}"
+            raise TransientTransportError(msg)
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            msg = "osiptel response is not valid json"
+            raise ParseError(msg) from exc
+
+        logger.info(
+            "%s %s",
+            FETCH_PAGE_OK,
+            kv(
+                ruc=ruc,
+                draw=draw,
+                start=start,
+                length=length,
+                status=status,
+                elapsed_ms=int((time.perf_counter() - started) * 1000),
+            ),
+        )
+        return payload
+
     def wait_ready(self, *, timeout_s: float = 25.0, poll_s: float = 0.25) -> None:
         client = self._require_client()
         deadline = time.monotonic() + timeout_s
@@ -124,6 +197,19 @@ class OsiptelSession:
             msg = "osiptel session not open"
             raise TransientTransportError(msg)
         return self._client
+
+    def _api_headers(self) -> dict[str, str]:
+        headers = {
+            "Accept": "*/*",
+            "X-Requested-With": "XMLHttpRequest",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Origin": "https://checatuslineas.osiptel.gob.pe",
+            "Referer": HOME_URL,
+            "User-Agent": DEFAULT_USER_AGENT,
+        }
+        if self._cookie_header:
+            headers["Cookie"] = self._cookie_header
+        return headers
 
 
 def _format_cookie_header(cookies: httpx.Cookies) -> str:

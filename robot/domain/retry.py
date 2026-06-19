@@ -6,6 +6,7 @@ from robot.domain.errors import (
     BanSignalError,
     ParseError,
     PermanentInputError,
+    ProviderSchemaError,
     RobotError,
     TransientTransportError,
 )
@@ -22,6 +23,12 @@ def decide_retry(exc: RobotError, *, default_cooldown_s: float) -> RetryDecision
     if isinstance(exc, PermanentInputError):
         return RetryDecision(
             error_code="permanent_input_error",
+            rotate_session=False,
+            cooldown_proxy_s=0.0,
+        )
+    if isinstance(exc, ProviderSchemaError):
+        return RetryDecision(
+            error_code="provider_schema_error",
             rotate_session=False,
             cooldown_proxy_s=0.0,
         )

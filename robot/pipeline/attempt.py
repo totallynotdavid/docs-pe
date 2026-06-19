@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from robot.providers.osiptel_flow import count_carrier_lines
+from robot.providers.osiptel import OsiptelProvider
 
 
 @dataclass(frozen=True)
@@ -24,10 +24,9 @@ def execute_attempt(
     active = runtime.ensure_active()
     runtime.refresh_egress_ip()
     started = time.perf_counter()
-    total, carrier_counts = count_carrier_lines(
+    total, carrier_counts = OsiptelProvider(page_size=page_size).lookup_ruc(
         session=active.osiptel,
         ruc=ruc,
-        page_size=page_size,
     )
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     return AttemptSuccess(

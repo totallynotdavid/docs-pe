@@ -17,5 +17,9 @@ class ParseError(TransientTransportError):
     """Response format is not parseable or empty."""
 
 
+class ProviderSchemaError(RobotError):
+    """Provider response shape changed or violated its expected contract."""
+
+
 class PermanentInputError(RobotError):
     """Invalid input that should not be retried."""
