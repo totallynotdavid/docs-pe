@@ -21,9 +21,10 @@ Environment
 Run
 
 Default behavior:
-- Success rows are appended to `out.csv`.
-- Failed rows are appended to `out.errors.csv` with attempt, session, proxy, and timestamp.
-- If `out.csv` already has RUCs, they are skipped automatically.
+- Jobs and results are stored in `out.state.sqlite3`.
+- `out.csv` and `out.errors.csv` are exported atomically from the state database.
+- If `out.state.sqlite3` already has successful RUCs, they are skipped automatically.
+- If the state database does not exist yet, existing `out.csv` success rows are imported once as completed jobs.
 - Sticky sessions are always used (one concurrent sticky session per worker).
 - OSIPTEL's current endpoint is queried over HTTP through the sticky proxy.
 - `--page-size 5000` usually fetches all lines for a RUC in one request; pagination remains as a fallback for larger result sets.

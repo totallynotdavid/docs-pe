@@ -15,3 +15,6 @@ dist/
 *.log
 *.pid
 *.pgid
+*.state.sqlite3
+*.state.sqlite3-shm
+*.state.sqlite3-wal

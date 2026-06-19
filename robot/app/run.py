@@ -4,6 +4,7 @@ import logging
 
 from typing import TYPE_CHECKING
 
+from robot.domain.types import RunSummary
 from robot.jobs.exporter import export_csv
 from robot.jobs.planner import plan_jobs
 from robot.jobs.store import JobStore, state_path_for_output
@@ -28,19 +29,23 @@ def run(cfg: RunConfig, *, run_id: str) -> None:
             seeded = store.seed_success_csv(cfg.output_csv)
         reset = store.reset_running()
         plan = plan_jobs(input_csv=cfg.input_csv, store=store, dedupe=cfg.dedupe)
+        planned_totals = store.summary()
 
-    summary = run_workers(
-        run_id=run_id,
-        store_path=str(store_path),
-        env_file=cfg.env_file,
-        worker_count=cfg.workers,
-        page_size=cfg.page_size,
-        session_budget=cfg.session_budget,
-        wait_min_s=cfg.wait_min_s,
-        wait_max_s=cfg.wait_max_s,
-        ban_cooldown_s=cfg.ban_cooldown_s,
-        debug=cfg.debug,
-    )
+    if planned_totals.pending > 0:
+        summary = run_workers(
+            run_id=run_id,
+            store_path=str(store_path),
+            env_file=cfg.env_file,
+            worker_count=cfg.workers,
+            page_size=cfg.page_size,
+            session_budget=cfg.session_budget,
+            wait_min_s=cfg.wait_min_s,
+            wait_max_s=cfg.wait_max_s,
+            ban_cooldown_s=cfg.ban_cooldown_s,
+            debug=cfg.debug,
+        )
+    else:
+        summary = RunSummary()
 
     with JobStore(store_path) as store:
         export_csv(store=store, output_csv=cfg.output_csv)
@@ -64,7 +69,7 @@ def run(cfg: RunConfig, *, run_id: str) -> None:
             running=totals.running,
             succeeded=totals.succeeded,
             failed=totals.failed,
-        )
+        ),
     )
 
     logger.info(
