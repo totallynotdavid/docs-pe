@@ -25,12 +25,12 @@ GEONODE_COUNTRY=pe \
 uv run robot \
 --input "$INPUT" \
 --output "$OUTPUT" \
---workers 15 \
+--workers 8 \
 --page-size 5000 \
---session-budget 2 \
---wait-min-s 10 \
---wait-max-s 15 \
---ban-cooldown-s 180 \
+--session-budget 1 \
+--wait-min-s 0 \
+--wait-max-s 0 \
+--ban-cooldown-s 30 \
 --env-file .env \
 --debug \
 > "$LOG_FILE" 2>&1 &

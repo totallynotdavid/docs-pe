@@ -32,10 +32,10 @@ Default behavior:
 uv run robot \
   --input samples.csv \
   --output out.csv \
-  --workers 3 \
+  --workers 8 \
   --page-size 5000 \
-  --session-budget 4 \
-  --wait-min-s 6 \
-  --wait-max-s 10 \
-  --ban-cooldown-s 180 \
+  --session-budget 1 \
+  --wait-min-s 0 \
+  --wait-max-s 0 \
+  --ban-cooldown-s 30 \
   --env-file .env
