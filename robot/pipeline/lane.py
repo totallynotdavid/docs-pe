@@ -17,21 +17,16 @@ from robot.obs.events import (
     LOOKUP_OK,
     SESSION_READY,
     STICKY_ACQUIRE,
-    STICKY_RELEASE_FAILED,
 )
 from robot.obs.logging import kv
-from robot.providers.geonode import (
-    new_proxy_session,
-    release_proxy_session,
-    resolve_egress_ip,
-)
+from robot.providers.egress import resolve_egress_ip
 from robot.providers.osiptel import OsiptelProvider, OsiptelSession
 from robot.providers.osiptel.session import build_client
 
 
 if TYPE_CHECKING:
     from robot.jobs.store import JobStore
-    from robot.providers.geonode import GeoNodeConfig, ProxySessionConfig
+    from robot.providers.proxy import ProxyProvider, ProxySession
 
 
 logger = logging.getLogger(__name__)
@@ -46,12 +41,11 @@ class LaneConfig:
     wait_min_s: float
     wait_max_s: float
     ban_cooldown_s: float
-    release_retries: int
 
 
 @dataclass
 class _ActiveSession:
-    proxy: ProxySessionConfig
+    proxy: ProxySession
     osiptel: OsiptelSession
     egress_ip: str
     uses: int = 0
@@ -73,14 +67,14 @@ class ProxyLane:
         run_id: str,
         lane_id: int,
         slot_id: int,
-        geonode: GeoNodeConfig,
+        provider: ProxyProvider,
         store: JobStore,
         cfg: LaneConfig,
     ) -> None:
         self._run_id = run_id
         self._lane_id = lane_id
         self._slot_id = slot_id
-        self._geonode = geonode
+        self._proxy = provider
         self._store = store
         self._cfg = cfg
         self._provider = OsiptelProvider(page_size=cfg.page_size)
@@ -123,6 +117,7 @@ class ProxyLane:
                     kv(
                         run_id=self._run_id,
                         lane_id=self._lane_id,
+                        provider=self._proxy.name,
                         session_id=active.osiptel.session_id,
                         proxy_id=active.proxy.proxy_id,
                         egress_ip=active.egress_ip,
@@ -152,6 +147,7 @@ class ProxyLane:
                     kv(
                         run_id=self._run_id,
                         lane_id=self._lane_id,
+                        provider=self._proxy.name,
                         session_id=session_id,
                         proxy_id=proxy_id,
                         ruc=ruc,
@@ -181,12 +177,13 @@ class ProxyLane:
         if remaining > 0:
             await asyncio.sleep(remaining)
 
-        proxy = new_proxy_session(self._geonode, slot_id=self._slot_id)
+        proxy = self._proxy.new_session(slot_id=self._slot_id)
         self._last_proxy_id = proxy.proxy_id
         logger.info(
             "%s %s",
             STICKY_ACQUIRE,
             kv(
+                provider=self._proxy.name,
                 proxy_id=proxy.proxy_id,
                 session_id=proxy.session_id,
                 port=proxy.port,
@@ -201,7 +198,7 @@ class ProxyLane:
             egress_ip = await resolve_egress_ip(proxy)
         except BaseException:
             await osiptel.close()
-            await self._release(proxy)
+            await self._proxy.release(proxy)
             raise
 
         if not egress_ip:
@@ -211,6 +208,7 @@ class ProxyLane:
                 kv(
                     run_id=self._run_id,
                     lane_id=self._lane_id,
+                    provider=self._proxy.name,
                     session_id=osiptel.session_id,
                     proxy_id=proxy.proxy_id,
                 ),
@@ -222,6 +220,7 @@ class ProxyLane:
             kv(
                 run_id=self._run_id,
                 lane_id=self._lane_id,
+                provider=self._proxy.name,
                 session_id=osiptel.session_id,
                 proxy_id=proxy.proxy_id,
                 egress_ip=egress_ip,
@@ -249,42 +248,12 @@ class ProxyLane:
         active = self._active
         self._active = None
         await active.osiptel.close()
-        await self._release(active.proxy)
+        await self._proxy.release(active.proxy)
         if cooldown_s > 0:
             self._cooldown_until = max(
                 self._cooldown_until,
                 time.monotonic() + cooldown_s,
             )
-
-    async def _release(self, proxy: ProxySessionConfig) -> None:
-        last_status = 0
-        last_error = ""
-        for attempt in range(1, self._cfg.release_retries + 1):
-            ok, status, error = await release_proxy_session(
-                config=self._geonode,
-                session_id=proxy.session_id,
-                port=int(proxy.port),
-                timeout_s=10.0,
-            )
-            if ok:
-                return
-            last_status = status
-            last_error = error
-            if attempt < self._cfg.release_retries:
-                await asyncio.sleep(0.5 * attempt)
-
-        logger.warning(
-            "%s %s",
-            STICKY_RELEASE_FAILED,
-            kv(
-                proxy_id=proxy.proxy_id,
-                session_id=proxy.session_id,
-                port=proxy.port,
-                status=last_status,
-                error=last_error,
-                attempts=self._cfg.release_retries,
-            ),
-        )
 
     def _active_ids(self) -> tuple[str, str]:
         if self._active is None:

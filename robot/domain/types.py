@@ -39,8 +39,8 @@ class LookupResult:
     error_code: str = ""
     error_detail: str = ""
     # http_session_id is the per-open OSIPTEL session uuid; proxy_id is the
-    # sticky GeoNode port label. They are different identifiers and the store
-    # persists both, so keep the names honest about which is which.
+    # sticky proxy label the provider assigns. They are different identifiers
+    # and the store persists both, so keep the names honest about which is which.
     http_session_id: str = ""
     proxy_id: str = ""
     attempt: int = 0

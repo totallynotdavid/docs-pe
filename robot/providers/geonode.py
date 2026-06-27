@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import uuid
 
 from dataclasses import dataclass
-from ipaddress import ip_address
 from os import getenv
 from typing import Literal, cast
 
@@ -13,6 +13,12 @@ import httpx
 
 from dotenv import load_dotenv
 
+from robot.obs.events import STICKY_RELEASE_FAILED
+from robot.obs.logging import kv
+from robot.providers.proxy import ProviderTuning, ProxySession
+
+
+logger = logging.getLogger(__name__)
 
 ProxyType = Literal["residential", "datacenter", "mix"]
 
@@ -25,11 +31,12 @@ _GATEWAY_HOST_BY_NAME: dict[str, str] = {
 _HTTP_STICKY_PORT_MIN = 10000
 _HTTP_STICKY_PORT_MAX = 10900
 _RELEASE_URL = "https://monitor.geonode.com/sessions/release/proxies"
-_IP_PROBE_URLS = (
-    "http://ip-api.com/json",
-    "https://api.ipify.org?format=json",
-    "http://httpbin.org/ip",
-)
+_RELEASE_RETRIES = 3
+
+# Measured against the live OSIPTEL endpoint through GeoNode Peru residential
+# exits: 15 workers is the balanced default (see robot/cli.py for the curve).
+# ban_cooldown_s parks a banned sticky IP before the lane acquires the next one.
+_TUNING = ProviderTuning(workers=15, ban_cooldown_s=30.0)
 
 
 @dataclass(frozen=True)
@@ -44,19 +51,6 @@ class GeoNodeConfig:
     asn: str
     strict_off: bool
     lifetime: int
-
-
-@dataclass(frozen=True)
-class ProxySessionConfig:
-    proxy_id: str
-    host: str
-    port: str
-    password: str
-    username: str
-    session_id: str
-
-    def as_http_proxy_url(self) -> str:
-        return f"http://{self.username}:{self.password}@{self.host}:{self.port}"
 
 
 def load_geonode_config(*, env_file: str) -> GeoNodeConfig:
@@ -132,87 +126,71 @@ def slot_port(*, slot_id: int) -> int:
     return _HTTP_STICKY_PORT_MIN + slot_id - 1
 
 
-def new_proxy_session(config: GeoNodeConfig, *, slot_id: int) -> ProxySessionConfig:
-    port = slot_port(slot_id=slot_id)
-    if port > _HTTP_STICKY_PORT_MAX:
-        max_slots = _HTTP_STICKY_PORT_MAX - _HTTP_STICKY_PORT_MIN + 1
-        msg = f"slot_id must be <= {max_slots}"
-        raise ValueError(msg)
-    session_id = _new_session_id(slot_id)
-    proxy_id = f"proxy-1-port-{port}"
-    username = build_username(config, session_id=session_id)
-    return ProxySessionConfig(
-        proxy_id=proxy_id,
-        host=config.host,
-        port=str(port),
-        password=config.password,
-        username=username,
-        session_id=session_id,
-    )
+class GeoNodeProvider:
+    """GeoNode sticky sessions: one dedicated port per lane, released via API.
 
+    Stickiness comes from the per-slot port; a fresh random session id in the
+    username forces a new exit IP each time a lane rotates after a ban.
+    """
 
-async def release_proxy_session(
-    *, config: GeoNodeConfig, session_id: str, port: int, timeout_s: float = 10.0
-) -> tuple[bool, int, str]:
-    return await _release_sticky_session(
-        user=config.user,
-        password=config.password,
-        session_id=session_id,
-        port=port,
-        timeout_s=timeout_s,
-    )
+    name = "geonode"
+    tuning = _TUNING
 
+    def __init__(self, config: GeoNodeConfig) -> None:
+        self._config = config
 
-async def resolve_egress_ip(proxy: ProxySessionConfig) -> str:
-    async with httpx.AsyncClient(
-        proxy=proxy.as_http_proxy_url(), timeout=5.0
-    ) as client:
-        for _ in range(3):
-            for url in _IP_PROBE_URLS:
-                value = await _probe_ip(client, url)
-                if value:
-                    return value
-            await asyncio.sleep(0.2)
-    return ""
+    def new_session(self, *, slot_id: int) -> ProxySession:
+        port = slot_port(slot_id=slot_id)
+        if port > _HTTP_STICKY_PORT_MAX:
+            max_slots = _HTTP_STICKY_PORT_MAX - _HTTP_STICKY_PORT_MIN + 1
+            msg = f"slot_id must be <= {max_slots}"
+            raise ValueError(msg)
+        session_id = _new_session_id(slot_id)
+        username = build_username(self._config, session_id=session_id)
+        return ProxySession(
+            proxy_id=f"proxy-1-port-{port}",
+            host=self._config.host,
+            port=str(port),
+            password=self._config.password,
+            username=username,
+            session_id=session_id,
+        )
+
+    async def release(self, session: ProxySession) -> None:
+        last_status = 0
+        last_error = ""
+        for attempt in range(1, _RELEASE_RETRIES + 1):
+            ok, status, error = await _release_sticky_session(
+                user=self._config.user,
+                password=self._config.password,
+                session_id=session.session_id,
+                port=int(session.port),
+                timeout_s=10.0,
+            )
+            if ok:
+                return
+            last_status = status
+            last_error = error
+            if attempt < _RELEASE_RETRIES:
+                await asyncio.sleep(0.5 * attempt)
+
+        logger.warning(
+            "%s %s",
+            STICKY_RELEASE_FAILED,
+            kv(
+                provider=self.name,
+                proxy_id=session.proxy_id,
+                session_id=session.session_id,
+                port=session.port,
+                status=last_status,
+                error=last_error,
+                attempts=_RELEASE_RETRIES,
+            ),
+        )
 
 
 def _new_session_id(slot_id: int) -> str:
     return f"s{slot_id}_{uuid.uuid4().hex[:8]}"
-
-
-async def _probe_ip(client: httpx.AsyncClient, url: str) -> str:
-    try:
-        response = await client.get(url)
-    except httpx.HTTPError:
-        return ""
-    if response.status_code != 200:
-        return ""
-    try:
-        payload = response.json()
-    except ValueError:
-        payload = None
-    return _extract_ip(payload)
-
-
-def _extract_ip(payload: object) -> str:
-    if not isinstance(payload, dict):
-        return ""
-    for key in ("query", "ip", "origin"):
-        value = payload.get(key)
-        if not isinstance(value, str):
-            continue
-        candidate = value.split(",", 1)[0].strip()
-        if _is_valid_ip(candidate):
-            return candidate
-    return ""
-
-
-def _is_valid_ip(value: str) -> bool:
-    try:
-        ip_address(value)
-    except ValueError:
-        return False
-    return True
 
 
 async def _release_sticky_session(

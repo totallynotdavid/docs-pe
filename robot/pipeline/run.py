@@ -9,16 +9,16 @@ from robot.domain.types import LaneTotals, RunReport
 from robot.jobs.exporter import export_csv
 from robot.jobs.planner import plan_jobs
 from robot.jobs.store import JobStore, state_path_for_output
-from robot.obs.events import RUN_SUMMARY
+from robot.obs.events import PROVIDER_SELECTED, RUN_SUMMARY
 from robot.obs.logging import kv
 from robot.pipeline.lane import LaneConfig, ProxyLane
-from robot.providers.geonode import load_geonode_config
+from robot.providers.proxy import load_proxy_provider
 
 
 if TYPE_CHECKING:
     from robot.cli import RunConfig
     from robot.domain.types import RUC
-    from robot.providers.geonode import GeoNodeConfig
+    from robot.providers.proxy import ProxyProvider
 
 
 logger = logging.getLogger(__name__)
@@ -36,11 +36,32 @@ async def run(cfg: RunConfig, *, run_id: str) -> RunReport:
         totals = LaneTotals()
         try:
             if pending:
-                geonode = load_geonode_config(env_file=cfg.env_file)
+                provider = load_proxy_provider(env_file=cfg.env_file)
+                workers = (
+                    cfg.workers if cfg.workers is not None else provider.tuning.workers
+                )
+                ban_cooldown_s = (
+                    cfg.ban_cooldown_s
+                    if cfg.ban_cooldown_s is not None
+                    else provider.tuning.ban_cooldown_s
+                )
+                logger.info(
+                    "%s %s",
+                    PROVIDER_SELECTED,
+                    kv(
+                        run_id=run_id,
+                        provider=provider.name,
+                        workers=workers,
+                        ban_cooldown_s=ban_cooldown_s,
+                        pending=len(pending),
+                    ),
+                )
                 totals = await _drive_lanes(
                     cfg=cfg,
                     store=store,
-                    geonode=geonode,
+                    provider=provider,
+                    workers=workers,
+                    ban_cooldown_s=ban_cooldown_s,
                     pending=pending,
                     run_id=run_id,
                 )
@@ -92,11 +113,13 @@ async def _drive_lanes(
     *,
     cfg: RunConfig,
     store: JobStore,
-    geonode: GeoNodeConfig,
+    provider: ProxyProvider,
+    workers: int,
+    ban_cooldown_s: float,
     pending: list[RUC],
     run_id: str,
 ) -> LaneTotals:
-    lane_count = min(cfg.workers, len(pending))
+    lane_count = min(workers, len(pending))
     feed: asyncio.Queue[RUC | None] = asyncio.Queue()
     for ruc in pending:
         feed.put_nowait(ruc)
@@ -108,15 +131,14 @@ async def _drive_lanes(
         session_budget=cfg.session_budget,
         wait_min_s=cfg.wait_min_s,
         wait_max_s=cfg.wait_max_s,
-        ban_cooldown_s=cfg.ban_cooldown_s,
-        release_retries=cfg.release_retries,
+        ban_cooldown_s=ban_cooldown_s,
     )
     lanes = [
         ProxyLane(
             run_id=run_id,
             lane_id=lane_id,
             slot_id=lane_id,
-            geonode=geonode,
+            provider=provider,
             store=store,
             cfg=lane_cfg,
         )
