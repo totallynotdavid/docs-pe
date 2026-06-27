@@ -16,7 +16,10 @@ run = "uv pip list --outdated"
 run = ["ruff format", "ruff check --fix"]
 
 [tasks.check]
-run = "uv run mypy ."
+run = ["uv run mypy ."]
+
+[tasks.test]
+run = "uv run pytest"
 
 [tasks.build]
 run = ["rm -rf dist build", "uv run pyinstaller robot.spec"]
