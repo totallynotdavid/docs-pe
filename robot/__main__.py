@@ -1,5 +1,3 @@
-"""Entry point for robot CLI application."""
-
 from __future__ import annotations
 
 import multiprocessing as mp
