@@ -46,8 +46,10 @@ class LookupResult:
     attempt: int = 0
 
 
+# Mutable accumulator the lanes update in place as outcomes land, so the run
+# report reflects real progress even if a lane raises mid-run.
 @dataclass
-class LaneTotals:
+class RunTotals:
     processed: int = 0
     succeeded: int = 0
     failed: int = 0
@@ -59,12 +61,12 @@ class RunReport:
     valid: int
     ignored: int
     duplicates: int
-    skipped: int
-    inserted: int
+    already_done: int
     seeded: int
+    pending: int
     processed: int
     succeeded: int
     failed: int
-    pending: int
-    in_progress: int
-    failed_jobs: int
+    remaining: int
+    total_succeeded: int
+    total_failed: int

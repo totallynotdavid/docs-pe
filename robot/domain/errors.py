@@ -6,28 +6,28 @@ class RobotError(Exception):
 
 
 class TransientTransportError(RobotError):
-    """Temporary network or upstream failures."""
+    pass
 
 
 class BanSignalError(TransientTransportError):
-    """Signal that proxy or session is temporarily blocked."""
+    pass
 
 
 class ParseError(TransientTransportError):
-    """Response format is not parseable or empty."""
+    pass
 
 
 class UpstreamNotReadyError(TransientTransportError):
-    """Upstream did not respond within the readiness window without an explicit block."""
+    pass
 
 
 class SessionStateError(RobotError):
-    """Session is not in a state that allows the requested call."""
+    pass
 
 
 class ProviderSchemaError(RobotError):
-    """Provider response shape changed or violated its expected contract."""
+    pass
 
 
 class PermanentInputError(RobotError):
-    """Invalid input that should not be retried."""
+    pass

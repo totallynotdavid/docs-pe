@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
     from pathlib import Path
 
-    from robot.jobs.store import JobStore
+    from robot.store.outcome_log import OutcomeLog
 
 
 SUCCESS_HEADERS = ["ruc", "carrier", "lines", "total_lines"]
@@ -25,11 +25,11 @@ ERROR_HEADERS = [
 ]
 
 
-def export_csv(*, store: JobStore, output_csv: Path) -> None:
+def export_csv(*, log: OutcomeLog, output_csv: Path) -> None:
     output_csv.parent.mkdir(parents=True, exist_ok=True)
-    _write_atomic(output_csv, SUCCESS_HEADERS, store.result_rows())
+    _write_atomic(output_csv, SUCCESS_HEADERS, log.result_rows())
     _write_atomic(
-        output_csv.with_suffix(".errors.csv"), ERROR_HEADERS, store.error_rows()
+        output_csv.with_suffix(".errors.csv"), ERROR_HEADERS, log.error_rows()
     )
 
 

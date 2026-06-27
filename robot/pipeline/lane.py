@@ -2,265 +2,158 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import random
 import time
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from robot.domain.errors import RobotError
-from robot.domain.policy import classify
-from robot.domain.types import RUC, LaneTotals, LookupResult, Status
-from robot.obs.events import (
-    EGRESS_IP_UNRESOLVED,
-    LOOKUP_FAILED,
-    LOOKUP_OK,
-    SESSION_READY,
-    STICKY_ACQUIRE,
-)
+from robot.domain.policy import MAX_ATTEMPTS, classify
+from robot.domain.types import LookupResult, Status
+from robot.obs.events import LOOKUP_FAILED, LOOKUP_OK
 from robot.obs.logging import kv
-from robot.providers.egress import resolve_egress_ip
-from robot.providers.osiptel import OsiptelProvider, OsiptelSession
-from robot.providers.osiptel.session import build_client
+from robot.pipeline.session import (
+    LaneConfig,
+    LaneState,
+    after_success,
+    close_session,
+    ensure_session,
+    rotate_session,
+    session_ids,
+)
+from robot.providers.osiptel import OsiptelProvider
 
 
 if TYPE_CHECKING:
-    from robot.jobs.store import JobStore
-    from robot.providers.proxy import ProxyProvider, ProxySession
+    from robot.domain.types import RUC, RunTotals
+    from robot.providers.proxy import ProxyProvider
+    from robot.store.outcome_log import OutcomeLog
 
 
 logger = logging.getLogger(__name__)
 
-MAX_ATTEMPTS_PER_RUC = 3
 
-
-@dataclass(frozen=True)
-class LaneConfig:
-    page_size: int
-    session_budget: int
-    wait_min_s: float
-    wait_max_s: float
-    lease_s: float
-
-
-@dataclass
-class _ActiveSession:
-    proxy: ProxySession
-    osiptel: OsiptelSession
-    egress_ip: str
-    uses: int = 0
-
-
-class ProxyLane:
-    """One concurrent lane: a single sticky proxy session that processes RUCs.
-
-    Single-threaded by construction. The event loop never preempts a store call
-    or a session mutation mid-statement, so the lane writes results to the shared
-    store directly and reads/mutates its own session state without locking. Do
-    not introduce an `await` inside a store transaction or between reading and
-    mutating `self._active`.
-    """
-
-    def __init__(
-        self,
-        *,
-        run_id: str,
-        lane_id: int,
-        slot_id: int,
-        provider: ProxyProvider,
-        store: JobStore,
-        cfg: LaneConfig,
-    ) -> None:
-        self._run_id = run_id
-        self._lane_id = lane_id
-        self._slot_id = slot_id
-        self._proxy = provider
-        self._store = store
-        self._cfg = cfg
-        self._owner = f"{run_id}:{provider.name}:{lane_id}"
-        self._provider = OsiptelProvider(page_size=cfg.page_size)
-        self._active: _ActiveSession | None = None
-        self._last_proxy_id = ""
-        self._cooldown_until = 0.0
-
-    async def run(self) -> LaneTotals:
-        totals = LaneTotals()
-        try:
-            while True:
-                ruc = self._store.claim_next(
-                    owner=self._owner, lease_s=self._cfg.lease_s
-                )
-                if ruc is None:
-                    break
-                result = await self.lookup(ruc)
-                if result.status is Status.OK:
-                    self._store.complete_success(ruc=ruc, result=result)
-                    totals.succeeded += 1
-                else:
-                    self._store.complete_failure(ruc=ruc, result=result)
-                    totals.failed += 1
-                totals.processed += 1
-        finally:
-            await self._close_active(cooldown_s=0.0)
-        return totals
-
-    async def lookup(self, ruc: RUC) -> LookupResult:
-        attempt = 0
+async def run_lane(
+    *,
+    queue: asyncio.Queue[RUC],
+    log: OutcomeLog,
+    provider: ProxyProvider,
+    slot_id: int,
+    lane_id: int,
+    run_id: str,
+    cfg: LaneConfig,
+    totals: RunTotals,
+) -> None:
+    api = OsiptelProvider(page_size=cfg.page_size)
+    state = LaneState()
+    try:
         while True:
-            attempt += 1
             try:
-                active = await self._ensure_active()
-                started = time.perf_counter()
-                total, carriers = await self._provider.lookup_ruc(
-                    session=active.osiptel, ruc=ruc
-                )
-                logger.info(
-                    "%s %s",
-                    LOOKUP_OK,
-                    kv(
-                        run_id=self._run_id,
-                        lane_id=self._lane_id,
-                        provider=self._proxy.name,
-                        session_id=active.osiptel.session_id,
-                        proxy_id=active.proxy.proxy_id,
-                        egress_ip=active.egress_ip,
-                        ruc=ruc,
-                        attempt=attempt,
-                        elapsed_ms=int((time.perf_counter() - started) * 1000),
-                        lines=total,
-                        carriers=len(carriers),
-                    ),
-                )
-                await self._after_success()
-                return LookupResult(
-                    ruc=ruc,
-                    status=Status.OK,
-                    total_lines=total,
-                    carrier_counts=carriers,
-                    http_session_id=active.osiptel.session_id,
-                    proxy_id=active.proxy.proxy_id,
-                    attempt=attempt,
-                )
-            except RobotError as exc:
-                decision = classify(
-                    exc, ban_cooldown_s=self._proxy.tuning.ban_cooldown_s
-                )
-                session_id, proxy_id = self._active_ids()
-                logger.warning(
-                    "%s %s",
-                    LOOKUP_FAILED,
-                    kv(
-                        run_id=self._run_id,
-                        lane_id=self._lane_id,
-                        provider=self._proxy.name,
-                        session_id=session_id,
-                        proxy_id=proxy_id,
-                        ruc=ruc,
-                        attempt=attempt,
-                        error_code=decision.error_code,
-                        error_detail=str(exc),
-                    ),
-                )
-                if decision.rotate:
-                    await self._close_active(cooldown_s=decision.cooldown_s)
-                if not decision.retry or attempt >= MAX_ATTEMPTS_PER_RUC:
-                    return LookupResult(
-                        ruc=ruc,
-                        status=Status.FAILED,
-                        error_code=decision.error_code,
-                        error_detail=str(exc),
-                        http_session_id=session_id,
-                        proxy_id=proxy_id,
-                        attempt=attempt,
-                    )
+                ruc = queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
 
-    async def _ensure_active(self) -> _ActiveSession:
-        if self._active is not None:
-            return self._active
+            result = await _lookup(
+                api=api,
+                state=state,
+                ruc=ruc,
+                provider=provider,
+                slot_id=slot_id,
+                run_id=run_id,
+                lane_id=lane_id,
+                cfg=cfg,
+            )
+            if result.status is Status.OK:
+                log.record_success(result)
+                totals.succeeded += 1
+            else:
+                log.record_failure(result)
+                totals.failed += 1
+            totals.processed += 1
+    finally:
+        await close_session(state, provider=provider)
 
-        remaining = self._cooldown_until - time.monotonic()
-        if remaining > 0:
-            await asyncio.sleep(remaining)
 
-        proxy = self._proxy.new_session(slot_id=self._slot_id)
-        self._last_proxy_id = proxy.proxy_id
-        logger.info(
-            "%s %s",
-            STICKY_ACQUIRE,
-            kv(
-                provider=self._proxy.name,
-                proxy_id=proxy.proxy_id,
-                session_id=proxy.session_id,
-                port=proxy.port,
-                slot_id=self._slot_id,
-            ),
-        )
-        osiptel = OsiptelSession(
-            client=build_client(proxy_url=proxy.as_http_proxy_url())
-        )
+async def _lookup(
+    *,
+    api: OsiptelProvider,
+    state: LaneState,
+    ruc: RUC,
+    provider: ProxyProvider,
+    slot_id: int,
+    run_id: str,
+    lane_id: int,
+    cfg: LaneConfig,
+) -> LookupResult:
+    attempt = 0
+    while True:
+        attempt += 1
         try:
-            await osiptel.wait_ready()
-            egress_ip = await resolve_egress_ip(proxy)
-        except BaseException:
-            await osiptel.close()
-            await self._proxy.release(proxy)
-            raise
-
-        if not egress_ip:
-            logger.warning(
+            session = await ensure_session(
+                state,
+                provider=provider,
+                slot_id=slot_id,
+                run_id=run_id,
+                lane_id=lane_id,
+            )
+            started = time.perf_counter()
+            total, carriers = await api.lookup_ruc(session=session.osiptel, ruc=ruc)
+            logger.info(
                 "%s %s",
-                EGRESS_IP_UNRESOLVED,
+                LOOKUP_OK,
                 kv(
-                    run_id=self._run_id,
-                    lane_id=self._lane_id,
-                    provider=self._proxy.name,
-                    session_id=osiptel.session_id,
-                    proxy_id=proxy.proxy_id,
+                    run_id=run_id,
+                    lane_id=lane_id,
+                    provider=provider.name,
+                    session_id=session.osiptel.session_id,
+                    proxy_id=session.proxy.proxy_id,
+                    egress_ip=session.egress_ip,
+                    ruc=ruc,
+                    attempt=attempt,
+                    elapsed_ms=int((time.perf_counter() - started) * 1000),
+                    lines=total,
+                    carriers=len(carriers),
                 ),
             )
-        self._active = _ActiveSession(proxy=proxy, osiptel=osiptel, egress_ip=egress_ip)
-        logger.info(
-            "%s %s",
-            SESSION_READY,
-            kv(
-                run_id=self._run_id,
-                lane_id=self._lane_id,
-                provider=self._proxy.name,
-                session_id=osiptel.session_id,
-                proxy_id=proxy.proxy_id,
-                egress_ip=egress_ip,
-            ),
-        )
-        return self._active
-
-    async def _after_success(self) -> None:
-        if self._active is None:
-            return
-
-        self._active.uses += 1
-        if self._active.uses >= self._cfg.session_budget:
-            await self._close_active(cooldown_s=0.0)
-            return
-
-        wait_s = random.uniform(self._cfg.wait_min_s, self._cfg.wait_max_s)
-        if wait_s > 0:
-            await asyncio.sleep(wait_s)
-
-    async def _close_active(self, *, cooldown_s: float) -> None:
-        if self._active is None:
-            return
-
-        active = self._active
-        self._active = None
-        await active.osiptel.close()
-        await self._proxy.release(active.proxy)
-        if cooldown_s > 0:
-            self._cooldown_until = max(
-                self._cooldown_until,
-                time.monotonic() + cooldown_s,
+            result = LookupResult(
+                ruc=ruc,
+                status=Status.OK,
+                total_lines=total,
+                carrier_counts=carriers,
+                http_session_id=session.osiptel.session_id,
+                proxy_id=session.proxy.proxy_id,
+                attempt=attempt,
             )
-
-    def _active_ids(self) -> tuple[str, str]:
-        if self._active is None:
-            return "", self._last_proxy_id
-        return self._active.osiptel.session_id, self._active.proxy.proxy_id
+            await after_success(state, provider=provider, cfg=cfg)
+            return result
+        except RobotError as exc:
+            decision = classify(exc, ban_cooldown_s=provider.tuning.ban_cooldown_s)
+            session_id, proxy_id = session_ids(state)
+            logger.warning(
+                "%s %s",
+                LOOKUP_FAILED,
+                kv(
+                    run_id=run_id,
+                    lane_id=lane_id,
+                    provider=provider.name,
+                    session_id=session_id,
+                    proxy_id=proxy_id,
+                    ruc=ruc,
+                    attempt=attempt,
+                    error_code=decision.error_code,
+                    error_detail=str(exc),
+                ),
+            )
+            if decision.rotate:
+                await rotate_session(
+                    state, provider=provider, cooldown_s=decision.cooldown_s
+                )
+            if not decision.retry or attempt >= MAX_ATTEMPTS:
+                return LookupResult(
+                    ruc=ruc,
+                    status=Status.FAILED,
+                    error_code=decision.error_code,
+                    error_detail=str(exc),
+                    http_session_id=session_id,
+                    proxy_id=proxy_id,
+                    attempt=attempt,
+                )

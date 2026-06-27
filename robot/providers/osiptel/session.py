@@ -43,8 +43,7 @@ class OsiptelSession:
     """OSIPTEL request protocol bound to a ready httpx client.
 
     The proxy lives in the client the caller passes in; this type only knows how
-    to make the upstream ready and classify its responses, so it does not need
-    to know anything about GeoNode.
+    to make the upstream ready and classify its responses.
     """
 
     def __init__(self, *, client: httpx.AsyncClient) -> None:
@@ -206,9 +205,8 @@ def _format_cookie_header(cookies: httpx.Cookies) -> str:
     return "; ".join(f"{name}={value}" for name, value in cookies.items())
 
 
-# 502/503/504 mean the upstream is degraded; the proxy is probably fine, so the
-# retry policy keeps the same session. Other 5xx and the ban-shaped 4xx codes
-# flip to BanSignalError, which rotates and cools the proxy down.
+# OSIPTEL returns 502/503/504 for degraded upstreams. Other 5xx responses and
+# ban-shaped 4xx responses are treated as session blocks.
 _TRANSIENT_UPSTREAM_STATUSES = frozenset({502, 503, 504})
 _BAN_SIGNAL_STATUSES = frozenset({403, 429})
 

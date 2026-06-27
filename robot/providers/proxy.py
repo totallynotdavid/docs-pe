@@ -9,13 +9,6 @@ from dotenv import load_dotenv
 
 @dataclass(frozen=True)
 class ProxySession:
-    """One sticky proxy session: a fully-formed upstream the lane can dial.
-
-    Provider-neutral on purpose. The lane and the OSIPTEL client only need the
-    proxy URL plus the two ids for logging, so nothing here records which
-    provider minted the session.
-    """
-
     proxy_id: str
     host: str
     port: str
@@ -29,26 +22,11 @@ class ProxySession:
 
 @dataclass(frozen=True)
 class ProviderTuning:
-    """Operational defaults a provider owns for itself.
-
-    These are gateway-tolerance knobs, not OSIPTEL knobs, so each provider owns
-    its own baseline rather than sharing one global default. There is no CLI
-    override: the provider's tuning is the single source for its lane count and
-    ban cooldown, which is what lets several providers run side by side, each at
-    its own measured width, against one shared queue.
-    """
-
     workers: int
     ban_cooldown_s: float
 
 
 class ProxyProvider(Protocol):
-    """The one seam between the pipeline and a proxy gateway.
-
-    Everything provider-specific (credentials, session shape, release semantics,
-    recommended tuning) lives behind this. The lane stays provider-blind.
-    """
-
     name: str
     tuning: ProviderTuning
 
@@ -61,13 +39,6 @@ _KNOWN_PROVIDERS = ("geonode", "dataimpulse")
 
 
 def load_proxy_providers(*, env_file: str) -> list[ProxyProvider]:
-    """Construct every provider named in PROXY_PROVIDER (comma-separated).
-
-    One name runs one provider; several run side by side, each contributing its
-    own lanes to the shared queue (no second env file, no manual sharding).
-    Fails hard rather than guessing: PROXY_PROVIDER must be set, every name must
-    be known and distinct, and each named provider's env block must validate.
-    """
     load_dotenv(env_file, override=False)
     raw = getenv("PROXY_PROVIDER", "").strip()
     if not raw:

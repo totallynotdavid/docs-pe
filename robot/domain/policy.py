@@ -14,6 +14,12 @@ from robot.domain.errors import (
 )
 
 
+# Total attempts a single RUC gets within one run before its failure is
+# persisted as terminal. Immediate ban rotation happens inside this budget, so
+# after MAX_ATTEMPTS the RUC is recorded failed and not retried on re-launch.
+MAX_ATTEMPTS = 4
+
+
 @dataclass(frozen=True)
 class RetryDecision:
     error_code: str
@@ -50,8 +56,7 @@ def classify(exc: RobotError, *, ban_cooldown_s: float) -> RetryDecision:
     if isinstance(exc, ParseError):
         return RetryDecision("parse_error", retry=True, rotate=True, cooldown_s=0.0)
     if isinstance(exc, TransientTransportError):
-        # 502/503/504 and transport hiccups mean the upstream is degraded; the
-        # proxy is probably fine, so retry on the same session without rotating.
+        # Transport errors mean the upstream is degraded; retry without rotating.
         return RetryDecision(
             "transport_error", retry=True, rotate=False, cooldown_s=0.0
         )

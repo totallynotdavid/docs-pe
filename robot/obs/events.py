@@ -4,7 +4,6 @@ from __future__ import annotations
 RUN_START = "run_start"
 RUN_SUMMARY = "run_summary"
 PROVIDER_SELECTED = "provider_selected"
-LEASE_RECLAIMED = "lease_reclaimed"
 STICKY_ACQUIRE = "sticky_acquire"
 STICKY_RELEASE_FAILED = "sticky_release_failed"
 SESSION_RELEASE_SKIPPED = "session_release_skipped"

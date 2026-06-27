@@ -1,15 +1,16 @@
 from robot.domain.errors import RobotError
-from robot.domain.policy import RetryDecision, classify
-from robot.domain.types import RUC, LaneTotals, LookupResult, RunReport, Status
+from robot.domain.policy import MAX_ATTEMPTS, RetryDecision, classify
+from robot.domain.types import RUC, LookupResult, RunReport, RunTotals, Status
 
 
 __all__ = [
+    "MAX_ATTEMPTS",
     "RUC",
-    "LaneTotals",
     "LookupResult",
     "RetryDecision",
     "RobotError",
     "RunReport",
+    "RunTotals",
     "Status",
     "classify",
 ]
