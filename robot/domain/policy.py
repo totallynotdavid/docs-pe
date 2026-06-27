@@ -56,8 +56,9 @@ def classify(exc: RobotError, *, ban_cooldown_s: float) -> RetryDecision:
     if isinstance(exc, ParseError):
         return RetryDecision("parse_error", retry=True, rotate=True, cooldown_s=0.0)
     if isinstance(exc, TransientTransportError):
-        # Transport errors mean the upstream is degraded; retry without rotating.
-        return RetryDecision(
-            "transport_error", retry=True, rotate=False, cooldown_s=0.0
-        )
+        # Transport-layer failures (SSL record-layer faults, connect resets,
+        # read timeouts) are dominated by flaky proxy exits, not OSIPTEL itself.
+        # Retrying on the same sticky session just burns all attempts against the
+        # same bad exit and terminalizes a valid RUC, so rotate to a fresh proxy.
+        return RetryDecision("transport_error", retry=True, rotate=True, cooldown_s=0.0)
     return RetryDecision("provider_error", retry=False, rotate=False, cooldown_s=0.0)
