@@ -22,9 +22,13 @@ _GATEWAY_HOST = "gw.dataimpulse.com"
 _HTTP_PORT = "823"
 _DEFAULT_SESSTTL_MIN = 3
 
-# Starting point only. These were NOT measured against DataImpulse yet; treat
-# them as a conservative seed and confirm with a probe run before trusting them.
-_TUNING = ProviderTuning(workers=10, ban_cooldown_s=30.0)
+# Measured against the live OSIPTEL endpoint through DataImpulse Peru residential
+# exits (120-RUC sweep). Throughput scaled near-linearly to 18 workers (~61
+# RUC/min at ~94% success) then kneed at 24 (only +5% throughput while success
+# fell to ~91% as connect failures climbed), so 18 sits at the top of the plateau.
+# Bans were rare at every level (~2-4 per 120), so ban_cooldown_s is off the hot
+# path; it keeps GeoNode's proven 30s for the occasional real WAF block.
+_TUNING = ProviderTuning(workers=18, ban_cooldown_s=30.0)
 
 
 @dataclass(frozen=True)
