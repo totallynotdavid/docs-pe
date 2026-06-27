@@ -38,7 +38,6 @@ class LookupResult:
     carrier_counts: tuple[CarrierCount, ...] = ()
     error_code: str = ""
     error_detail: str = ""
-    attempt: int = 0
     session_id: str = ""
     proxy_id: str = ""
 

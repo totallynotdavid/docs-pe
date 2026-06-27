@@ -66,7 +66,6 @@ def handle_lookup_error(
             status=Status.FAILED,
             error_code=decision.error_code,
             error_detail=str(error),
-            attempt=attempt_no,
             session_id=session_id,
             proxy_id=proxy_id,
         ),

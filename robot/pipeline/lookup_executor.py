@@ -54,7 +54,6 @@ def execute_lookup(
                 status=Status.OK,
                 total_lines=success.total_lines,
                 carrier_counts=success.carrier_counts,
-                attempt=attempt_no,
                 session_id=success.session_id,
                 proxy_id=success.proxy_id,
             )
@@ -80,7 +79,6 @@ def execute_lookup(
         status=Status.FAILED,
         error_code="exhausted_retries",
         error_detail="unexpected retry exhaustion",
-        attempt=MAX_ATTEMPTS_PER_RUC,
         session_id=runtime.active_session_id(),
         proxy_id=runtime.last_proxy_id,
     )
