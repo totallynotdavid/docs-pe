@@ -76,4 +76,3 @@ def _required_text(value: object, *, field: str) -> str:
         msg = f"osiptel row field {field} is empty"
         raise ProviderSchemaError(msg)
     return value.strip()
-

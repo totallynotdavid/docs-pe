@@ -18,7 +18,9 @@ if TYPE_CHECKING:
 def export_csv(*, store: JobStore, output_csv: Path) -> None:
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     _write_atomic(output_csv, SUCCESS_HEADERS, store.result_rows())
-    _write_atomic(output_csv.with_suffix(".errors.csv"), ERROR_HEADERS, store.error_rows())
+    _write_atomic(
+        output_csv.with_suffix(".errors.csv"), ERROR_HEADERS, store.error_rows()
+    )
 
 
 def _write_atomic(

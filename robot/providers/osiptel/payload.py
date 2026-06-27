@@ -38,4 +38,3 @@ def build_payload(req: PageRequest) -> dict[str, str]:
         }
     )
     return payload
-

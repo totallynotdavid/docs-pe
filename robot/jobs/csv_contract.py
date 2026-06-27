@@ -11,4 +11,3 @@ ERROR_HEADERS = [
     "proxy_id",
     "timestamp",
 ]
-
