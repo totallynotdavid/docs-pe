@@ -5,7 +5,7 @@ import sqlite3
 
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from robot.domain.types import RUC, CarrierCount, LookupResult, Status
@@ -18,14 +18,13 @@ if TYPE_CHECKING:
 
 
 JOB_PENDING = "pending"
+JOB_IN_PROGRESS = "in_progress"
 JOB_SUCCEEDED = "succeeded"
 JOB_FAILED = "failed"
 
 
-# The store is the durable source of truth, owned by one process per run. A job
-# is pending, succeeded, or failed; there is no "running" state. A crash leaves
-# in-flight jobs on pending, so a restart re-runs exactly them with no orphan
-# recovery or lease bookkeeping.
+# The store is the queue. Jobs move from pending to in_progress under a lease,
+# then to a terminal status. Expired leases are the recovery boundary.
 SCHEMA_DDL = """
 CREATE TABLE IF NOT EXISTS jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,6 +35,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     last_error_detail TEXT NOT NULL DEFAULT '',
     session_id TEXT NOT NULL DEFAULT '',
     proxy_id TEXT NOT NULL DEFAULT '',
+    lease_owner TEXT NOT NULL DEFAULT '',
+    lease_expires_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     finished_at TEXT
@@ -68,7 +69,28 @@ UPDATE jobs
  WHERE ruc = :ruc AND status = :from_status
 """
 
-SELECT_PENDING_RUCS = "SELECT ruc FROM jobs WHERE status = :pending ORDER BY id"
+CLAIM_SELECT_PENDING = (
+    "SELECT id, ruc FROM jobs WHERE status = :pending ORDER BY id LIMIT 1"
+)
+
+CLAIM_MARK_IN_PROGRESS = """
+UPDATE jobs
+   SET status = :in_progress,
+       lease_owner = :owner,
+       lease_expires_at = :lease_expires_at,
+       updated_at = :updated_at
+ WHERE id = :id AND status = :pending
+"""
+
+RESET_EXPIRED_LEASES = """
+UPDATE jobs
+   SET status = :pending,
+       lease_owner = '',
+       lease_expires_at = NULL,
+       updated_at = :updated_at
+ WHERE status = :in_progress
+   AND (lease_expires_at IS NULL OR lease_expires_at <= :now)
+"""
 
 DELETE_RESULTS_FOR_RUC = "DELETE FROM results WHERE ruc = :ruc"
 
@@ -85,6 +107,8 @@ UPDATE jobs
        last_error_detail = '',
        session_id = :session_id,
        proxy_id = :proxy_id,
+       lease_owner = '',
+       lease_expires_at = NULL,
        finished_at = :finished_at,
        updated_at = :updated_at
  WHERE ruc = :ruc
@@ -98,6 +122,8 @@ UPDATE jobs
        last_error_detail = :last_error_detail,
        session_id = :session_id,
        proxy_id = :proxy_id,
+       lease_owner = '',
+       lease_expires_at = NULL,
        finished_at = :finished_at,
        updated_at = :updated_at
  WHERE ruc = :ruc
@@ -128,6 +154,7 @@ SELECT ruc,
 @dataclass(frozen=True)
 class StoreSummary:
     pending: int
+    in_progress: int
     succeeded: int
     failed: int
 
@@ -143,7 +170,7 @@ class JobStore:
         )
         self._conn.row_factory = sqlite3.Row
         self._configure()
-        self._migrate()
+        self._create_schema()
 
     def close(self) -> None:
         self._conn.close()
@@ -179,11 +206,56 @@ class JobStore:
         )
         return cursor.rowcount > 0
 
-    def pending_rucs(self) -> list[RUC]:
-        rows = self._conn.execute(
-            SELECT_PENDING_RUCS, {"pending": JOB_PENDING}
-        ).fetchall()
-        return [RUC(str(row["ruc"])) for row in rows]
+    def claim_next(self, *, owner: str, lease_s: float) -> RUC | None:
+        """Atomically take the oldest pending job, leasing it to `owner`.
+
+        The SELECT and UPDATE run inside one BEGIN IMMEDIATE transaction, so the
+        write lock serializes claims across every lane and process sharing this
+        DB: no two callers ever get the same RUC. Returns None when nothing is
+        pending, which the caller reads as "queue drained, stop".
+        """
+        now_dt = datetime.now(UTC)
+        now = now_dt.isoformat()
+        lease_expires_at = (now_dt + timedelta(seconds=lease_s)).isoformat()
+        with self._transaction():
+            row = self._conn.execute(
+                CLAIM_SELECT_PENDING, {"pending": JOB_PENDING}
+            ).fetchone()
+            if row is None:
+                return None
+            self._conn.execute(
+                CLAIM_MARK_IN_PROGRESS,
+                {
+                    "in_progress": JOB_IN_PROGRESS,
+                    "owner": owner,
+                    "lease_expires_at": lease_expires_at,
+                    "updated_at": now,
+                    "id": row["id"],
+                    "pending": JOB_PENDING,
+                },
+            )
+        return RUC(str(row["ruc"]))
+
+    def reset_expired_leases(self) -> int:
+        """Requeue in_progress jobs whose lease has elapsed (crashed owners).
+
+        Lease timestamps are timezone-aware UTC isoformat, so the lexical
+        comparison against `now` is a valid time comparison. A live owner
+        renews nothing; the lease just has to outlast the worst-case single
+        lookup, so an expired lease means the owner is gone.
+        """
+        now = _now()
+        with self._transaction():
+            cursor = self._conn.execute(
+                RESET_EXPIRED_LEASES,
+                {
+                    "pending": JOB_PENDING,
+                    "in_progress": JOB_IN_PROGRESS,
+                    "updated_at": now,
+                    "now": now,
+                },
+            )
+        return cursor.rowcount
 
     def complete_success(self, *, ruc: RUC, result: LookupResult) -> None:
         now = _now()
@@ -240,6 +312,7 @@ class JobStore:
         totals = {str(row["status"]): int(row["total"]) for row in rows}
         return StoreSummary(
             pending=totals.get(JOB_PENDING, 0),
+            in_progress=totals.get(JOB_IN_PROGRESS, 0),
             succeeded=totals.get(JOB_SUCCEEDED, 0),
             failed=totals.get(JOB_FAILED, 0),
         )
@@ -324,7 +397,7 @@ class JobStore:
         self._conn.execute("PRAGMA busy_timeout = 30000")
         self._conn.execute("PRAGMA foreign_keys = ON")
 
-    def _migrate(self) -> None:
+    def _create_schema(self) -> None:
         self._conn.executescript(SCHEMA_DDL)
 
 

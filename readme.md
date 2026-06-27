@@ -2,8 +2,8 @@
 
 Bulk-looks-up Peruvian RUC phone-line counts from the OSIPTEL public endpoint
 (`checatuslineas.osiptel.gob.pe`). Input is a CSV of RUCs; output is line-count
-CSVs. Work is fanned out across concurrent lanes, each routed through its own
-sticky GeoNode residential proxy session.
+CSVs. Work is fanned out across concurrent lanes, each routed through a sticky
+proxy session from the configured provider.
 
 ## Setup
 
@@ -15,13 +15,15 @@ uv sync                      # dependencies
 
 ## Configure
 
-Copy the example env file and fill in your GeoNode credentials:
+Copy the example env file and fill in the credentials for each provider listed
+in `PROXY_PROVIDER`:
 
 ```sh
 cp .env.example .env
 ```
 
 ```ini
+PROXY_PROVIDER=geonode
 GEONODE_USER=<value>
 GEONODE_PASS=<value>
 GEONODE_GATEWAY=fr            # fr | fr_whitelist | us | sg
@@ -43,11 +45,11 @@ uv run robot --input rucs.csv --output out.csv --env-file .env
 That is the whole command. The defaults are tuned for the live endpoint; you
 rarely need any other flag.
 
-Outputs (next to `--output`):
+Outputs next to `--output`:
 
-- `out.csv` — successes, columns `ruc,carrier,lines,total_lines`.
-- `out.errors.csv` — failures, columns `ruc,error_code,error_detail,attempt,session_id,proxy_id,timestamp`.
-- `out.state.sqlite3` — the resume database (source of truth). Do not edit it.
+- `out.csv`: successes, columns `ruc,carrier,lines,total_lines`.
+- `out.errors.csv`: failures, columns `ruc,error_code,error_detail,attempt,session_id,proxy_id,timestamp`.
+- `out.state.sqlite3`: the resume database and source of truth. Do not edit it.
 
 Runs are resumable: re-running the same command skips RUCs already succeeded in
 the state database. Delete `out.state.sqlite3` to start over. If the state
@@ -56,18 +58,15 @@ so prior results are not re-fetched.
 
 ## Tuning
 
-The defaults are the recommended settings. Two knobs matter:
+The defaults are the recommended settings. Each proxy provider owns its measured
+lane count and ban cooldown, so several providers can run side by side against
+one shared queue without per-provider CLI flags.
 
-- **`--workers` (default 15)** sets concurrency. Throughput scales nearly
-  linearly with it; memory stays flat (~350 MB at 20 workers), so the proxy
-  gateway is the limit, not the host. Use 10 for the cleanest run, 20 to
-  maximize throughput at the cost of some retryable proxy errors. Worker count
-  does not change how many proxy sessions you consume.
-- **`--session-budget` (default 1)** caps lookups per proxy session. Leave it
-  at 1. OSIPTEL needs a fresh home-page warmup before each lookup, so reusing a
-  session for a second API call triggers WAF blocks. A higher budget consumes
-  fewer sessions but fails most lookups.
+`--session-budget` defaults to 1. Leave it there. OSIPTEL requires a fresh
+home-page warmup before each lookup, so reusing a session for a second API call
+triggers WAF blocks. A higher budget consumes fewer proxy sessions but fails
+most lookups.
 
 Other flags: `--page-size` (default 5000, usually one request per RUC),
-`--ban-cooldown-s` (default 30), `--dedupe/--no-dedupe` (default on),
-`--wait-min-s` / `--wait-max-s` (default 0), `--debug`.
+`--dedupe/--no-dedupe` (default on), `--wait-min-s` / `--wait-max-s`
+(default 0), `--debug`.

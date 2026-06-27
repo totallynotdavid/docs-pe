@@ -40,7 +40,7 @@ class LaneConfig:
     session_budget: int
     wait_min_s: float
     wait_max_s: float
-    ban_cooldown_s: float
+    lease_s: float
 
 
 @dataclass
@@ -57,8 +57,8 @@ class ProxyLane:
     Single-threaded by construction. The event loop never preempts a store call
     or a session mutation mid-statement, so the lane writes results to the shared
     store directly and reads/mutates its own session state without locking. Do
-    not introduce an ``await`` inside a store transaction or between reading and
-    mutating ``self._active``.
+    not introduce an `await` inside a store transaction or between reading and
+    mutating `self._active`.
     """
 
     def __init__(
@@ -77,16 +77,19 @@ class ProxyLane:
         self._proxy = provider
         self._store = store
         self._cfg = cfg
+        self._owner = f"{run_id}:{provider.name}:{lane_id}"
         self._provider = OsiptelProvider(page_size=cfg.page_size)
         self._active: _ActiveSession | None = None
         self._last_proxy_id = ""
         self._cooldown_until = 0.0
 
-    async def run(self, feed: asyncio.Queue[RUC | None]) -> LaneTotals:
+    async def run(self) -> LaneTotals:
         totals = LaneTotals()
         try:
             while True:
-                ruc = await feed.get()
+                ruc = self._store.claim_next(
+                    owner=self._owner, lease_s=self._cfg.lease_s
+                )
                 if ruc is None:
                     break
                 result = await self.lookup(ruc)
@@ -139,7 +142,9 @@ class ProxyLane:
                     attempt=attempt,
                 )
             except RobotError as exc:
-                decision = classify(exc, ban_cooldown_s=self._cfg.ban_cooldown_s)
+                decision = classify(
+                    exc, ban_cooldown_s=self._proxy.tuning.ban_cooldown_s
+                )
                 session_id, proxy_id = self._active_ids()
                 logger.warning(
                     "%s %s",

@@ -32,7 +32,7 @@ def test_pipeline_exports_success_and_error_rows(tmp_path: Path) -> None:
         store.insert_pending(RUC(RUC_A))
         store.insert_pending(RUC(RUC_B))
 
-        assert store.pending_rucs() == [RUC(RUC_A), RUC(RUC_B)]
+        assert store.summary().pending == 2
 
         store.complete_success(
             ruc=RUC(RUC_A),
@@ -62,9 +62,8 @@ def test_pipeline_exports_success_and_error_rows(tmp_path: Path) -> None:
             ),
         )
 
-        # A completed RUC is no longer pending; only the failed one would re-run.
-        assert store.pending_rucs() == []
         summary = store.summary()
+        assert summary.pending == 0
         assert summary.succeeded == 1
         assert summary.failed == 1
 
@@ -91,3 +90,39 @@ def test_pipeline_exports_success_and_error_rows(tmp_path: Path) -> None:
     assert error_row[3] == "3"
     assert error_row[4] == "sess-2"
     assert error_row[5] == "proxy-2"
+
+
+def test_claim_next_is_fifo_and_exhausts(tmp_path: Path) -> None:
+    # The store is the queue: claim hands out each pending RUC exactly once in id
+    # order, then signals "drained" with None. This is the only coordination
+    # between lanes and processes, so it has to be exact.
+    store_path = state_path_for_output(tmp_path / "out.csv")
+    with JobStore(store_path) as store:
+        store.insert_pending(RUC(RUC_A))
+        store.insert_pending(RUC(RUC_B))
+
+        first = store.claim_next(owner="lane-1", lease_s=600.0)
+        second = store.claim_next(owner="lane-2", lease_s=600.0)
+        assert [first, second] == [RUC(RUC_A), RUC(RUC_B)]
+        assert store.claim_next(owner="lane-3", lease_s=600.0) is None
+
+        summary = store.summary()
+        assert summary.pending == 0
+        assert summary.in_progress == 2
+
+
+def test_reset_expired_leases_requeues_only_expired(tmp_path: Path) -> None:
+    # A crashed lane's job (expired lease) must return to pending; a live lane's
+    # job (unexpired lease) must not be stolen out from under it.
+    store_path = state_path_for_output(tmp_path / "out.csv")
+    with JobStore(store_path) as store:
+        store.insert_pending(RUC(RUC_A))
+        store.insert_pending(RUC(RUC_B))
+
+        live = store.claim_next(owner="alive", lease_s=600.0)
+        dead = store.claim_next(owner="crashed", lease_s=0.0)
+        assert [live, dead] == [RUC(RUC_A), RUC(RUC_B)]
+
+        assert store.reset_expired_leases() == 1
+        assert store.claim_next(owner="recovery", lease_s=600.0) == RUC(RUC_B)
+        assert store.claim_next(owner="recovery", lease_s=600.0) is None

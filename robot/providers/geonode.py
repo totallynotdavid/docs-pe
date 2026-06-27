@@ -33,9 +33,8 @@ _HTTP_STICKY_PORT_MAX = 10900
 _RELEASE_URL = "https://monitor.geonode.com/sessions/release/proxies"
 _RELEASE_RETRIES = 3
 
-# Measured against the live OSIPTEL endpoint through GeoNode Peru residential
-# exits: 15 workers is the balanced default (see robot/cli.py for the curve).
-# ban_cooldown_s parks a banned sticky IP before the lane acquires the next one.
+# GeoNode's measured default balances throughput and retryable proxy failures.
+# ban_cooldown_s parks a banned sticky IP before the next acquisition.
 _TUNING = ProviderTuning(workers=15, ban_cooldown_s=30.0)
 
 
@@ -70,6 +69,11 @@ def load_geonode_config(*, env_file: str) -> GeoNodeConfig:
 
     if not user or not password:
         msg = "missing GEONODE_USER or GEONODE_PASS"
+        raise RuntimeError(msg)
+    if not country:
+        # OSIPTEL's WAF blocks foreign exits, so an unset country silently routes
+        # through the wrong region and fails every lookup. Fail loudly instead.
+        msg = "GEONODE_COUNTRY must be set (OSIPTEL requires Peru exits, e.g. PE)"
         raise RuntimeError(msg)
     if gateway not in _GATEWAY_HOST_BY_NAME:
         msg = "GEONODE_GATEWAY must be one of " + "|".join(

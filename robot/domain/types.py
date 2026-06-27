@@ -66,4 +66,5 @@ class RunReport:
     succeeded: int
     failed: int
     pending: int
+    in_progress: int
     failed_jobs: int
