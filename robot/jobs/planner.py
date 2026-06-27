@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 from robot.domain.types import RUC
 
@@ -11,55 +11,51 @@ from robot.domain.types import RUC
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from robot.jobs.store import JobStore
+
 
 @dataclass
-class ReadStats:
+class PlanSummary:
     rows_read: int = 0
     valid: int = 0
     ignored: int = 0
     duplicates: int = 0
     skipped: int = 0
+    inserted: int = 0
 
 
-class TaskSink(Protocol):
-    def put(self, item: RUC | None) -> None: ...
-
-
-def enqueue_rucs(
-    path: Path,
-    task_queue: TaskSink,
+def plan_jobs(
     *,
+    input_csv: Path,
+    store: JobStore,
     dedupe: bool,
-    checkpoint: set[str],
-) -> ReadStats:
-    stats = ReadStats()
+) -> PlanSummary:
+    summary = PlanSummary()
     seen: set[str] = set()
 
-    with path.open(newline="", encoding="utf-8-sig") as file_obj:
+    with input_csv.open(newline="", encoding="utf-8-sig") as file_obj:
         for row in csv.reader(file_obj):
-            stats.rows_read += 1
+            summary.rows_read += 1
             if not row or not row[0].strip():
-                stats.ignored += 1
+                summary.ignored += 1
                 continue
 
             try:
                 ruc = RUC(row[0])
             except ValueError:
-                stats.ignored += 1
+                summary.ignored += 1
                 continue
 
             normalized = str(ruc)
             if dedupe and normalized in seen:
-                stats.duplicates += 1
+                summary.duplicates += 1
                 continue
-
             seen.add(normalized)
-            stats.valid += 1
+            summary.valid += 1
 
-            if normalized in checkpoint:
-                stats.skipped += 1
-                continue
+            if store.insert_pending(ruc):
+                summary.inserted += 1
+            else:
+                summary.skipped += 1
 
-            task_queue.put(ruc)
-
-    return stats
+    return summary

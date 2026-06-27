@@ -8,8 +8,13 @@ build/
 dist/
 *.egg-info/
 
-# files
+# runtime outputs
 *.csv
 .env
 
 *.log
+*.pid
+*.pgid
+*.state.sqlite3
+*.state.sqlite3-shm
+*.state.sqlite3-wal

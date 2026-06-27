@@ -5,12 +5,6 @@ Prerequisites
 2. Toolchain + deps
    mise install
    uv sync
-3. Chromium + unzip (Ubuntu)
-   sudo add-apt-repository ppa:xtradeb/apps -y
-   sudo apt update
-   sudo apt install -y chromium unzip
-4. SeleniumBase driver bundle (Chrome 146 in this repo)
-   uv run sbase get uc_driver 146
 
 Environment
 
@@ -23,28 +17,31 @@ Environment
    GEONODE_TYPE=residential|datacenter|mix
    GEONODE_COUNTRY=<country_code_or_empty>
    GEONODE_LIFETIME=3..1440 (minutes)
-3. Optional (only if Chromium is not auto-detected):
-   CHROME_BINARY=/absolute/path/to/chrome
 
 Run
 
 Default behavior:
-- Success rows are appended to `out.csv`.
-- Failed rows are appended to `out.errors.csv` with attempt, session, proxy, and timestamp.
-- If `out.csv` already has RUCs, they are skipped automatically.
+- Jobs and results are stored in `out.state.sqlite3`.
+- `out.csv` and `out.errors.csv` are exported atomically from the state database.
+- If `out.state.sqlite3` already has successful RUCs, they are skipped automatically.
+- If the state database does not exist yet, existing `out.csv` success rows are imported once as completed jobs.
 - Sticky sessions are always used (one concurrent sticky session per worker).
+- OSIPTEL's current endpoint is queried over HTTP through the sticky proxy.
+- `--page-size 5000` usually fetches all lines for a RUC in one request; pagination remains as a fallback for larger result sets.
 
 uv run robot \
   --input samples.csv \
   --output out.csv \
-  --workers 3 \
-  --page-size 100 \
-  --session-budget 4 \
-  --wait-min-s 6 \
-  --wait-max-s 10 \
-  --ban-cooldown-s 180 \
-  --captcha-timeout-s 20 \
-  --captcha-timeout-first-s 40 \
-  --captcha-same-session-retries 1 \
-  --captcha-first-token-jitter-max-s 5 \
+  --workers 8 \
+  --page-size 5000 \
+  --session-budget 1 \
+  --wait-min-s 0 \
+  --wait-max-s 0 \
+  --ban-cooldown-s 30 \
   --env-file .env
+
+Output contract
+
+- Success rows are written to the configured output CSV with columns: `ruc`, `carrier`, `lines`, `total_lines`.
+- Failed rows are written to `<output>.errors.csv` with columns: `ruc`, `error_code`, `error_detail`, `attempt`, `session_id`, `proxy_id`, `timestamp`.
+- The state database is an internal resume file named `<output>.state.sqlite3`. Do not edit it directly.

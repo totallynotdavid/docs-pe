@@ -4,10 +4,9 @@ from dataclasses import dataclass
 
 from robot.domain.errors import (
     BanSignalError,
-    CaptchaError,
-    CaptchaTimeoutError,
     ParseError,
     PermanentInputError,
+    ProviderSchemaError,
     RobotError,
     TransientTransportError,
 )
@@ -27,17 +26,11 @@ def decide_retry(exc: RobotError, *, default_cooldown_s: float) -> RetryDecision
             rotate_session=False,
             cooldown_proxy_s=0.0,
         )
-    if isinstance(exc, CaptchaTimeoutError):
+    if isinstance(exc, ProviderSchemaError):
         return RetryDecision(
-            error_code="captcha_timeout",
-            rotate_session=True,
-            cooldown_proxy_s=min(default_cooldown_s, 30.0),
-        )
-    if isinstance(exc, CaptchaError):
-        return RetryDecision(
-            error_code="captcha_error",
-            rotate_session=True,
-            cooldown_proxy_s=default_cooldown_s,
+            error_code="provider_schema_error",
+            rotate_session=False,
+            cooldown_proxy_s=0.0,
         )
     if isinstance(exc, BanSignalError):
         return RetryDecision(
