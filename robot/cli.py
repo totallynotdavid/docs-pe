@@ -35,9 +35,19 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--page-size", type=int, default=5000)
-    parser.add_argument("--workers", type=int, default=8)
+    # Measured against the live OSIPTEL endpoint (Peru residential exits):
+    # throughput scales near-linearly with --workers and memory stays flat
+    # (~350 MB at 20 workers), so workers are bounded by the proxy gateway, not
+    # the host. 15 is the balanced default; 20 roughly doubles 10's rate but
+    # starts surfacing retryable proxy-gateway errors. Total proxy sessions
+    # consumed is independent of --workers.
+    parser.add_argument("--workers", type=int, default=15)
     parser.add_argument("--dedupe", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--debug", action="store_true", default=False)
+    # Keep --session-budget at 1. OSIPTEL requires a fresh home-page warmup
+    # before each lookup; reusing a session for a second API call triggers WAF
+    # blocks (status=500). Budget>1 trades a smaller session count for a high
+    # ban rate, so it consumes fewer proxy sessions but fails most lookups.
     parser.add_argument("--session-budget", type=int, default=1)
     parser.add_argument("--wait-min-s", type=float, default=0.0)
     parser.add_argument("--wait-max-s", type=float, default=0.0)
