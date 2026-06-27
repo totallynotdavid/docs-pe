@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import contextlib
+import logging
+import signal
 
 from dataclasses import dataclass
 from pathlib import Path
+
+from robot.obs.events import RUN_START
+from robot.obs.logging import configure_logging, kv, new_run_id
+from robot.pipeline.run import run
 
 
 @dataclass(frozen=True)
@@ -18,10 +26,11 @@ class RunConfig:
     wait_min_s: float
     wait_max_s: float
     ban_cooldown_s: float
+    release_retries: int
     env_file: str
 
 
-def load_config(argv: list[str] | None = None) -> RunConfig:
+def parse_args(argv: list[str] | None = None) -> RunConfig:
     parser = argparse.ArgumentParser(prog="robot")
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
@@ -33,6 +42,7 @@ def load_config(argv: list[str] | None = None) -> RunConfig:
     parser.add_argument("--wait-min-s", type=float, default=0.0)
     parser.add_argument("--wait-max-s", type=float, default=0.0)
     parser.add_argument("--ban-cooldown-s", type=float, default=30.0)
+    parser.add_argument("--release-retries", type=int, default=3)
     parser.add_argument("--env-file", default=".env")
     ns = parser.parse_args(argv)
 
@@ -49,6 +59,8 @@ def load_config(argv: list[str] | None = None) -> RunConfig:
         errors.append("--wait-max-s must be >= --wait-min-s")
     if ns.ban_cooldown_s < 0:
         errors.append("--ban-cooldown-s must be >= 0")
+    if ns.release_retries < 1:
+        errors.append("--release-retries must be >= 1")
     if errors:
         parser.error("; ".join(errors))
 
@@ -63,5 +75,34 @@ def load_config(argv: list[str] | None = None) -> RunConfig:
         wait_min_s=ns.wait_min_s,
         wait_max_s=ns.wait_max_s,
         ban_cooldown_s=ns.ban_cooldown_s,
+        release_retries=ns.release_retries,
         env_file=ns.env_file,
     )
+
+
+def _raise_keyboard_interrupt(*_: object) -> None:
+    raise KeyboardInterrupt
+
+
+def main(argv: list[str] | None = None) -> None:
+    cfg = parse_args(argv)
+    run_id = new_run_id()
+
+    configure_logging(debug=cfg.debug, run_id=run_id)
+    logger = logging.getLogger(__name__)
+    logger.info("%s %s", RUN_START, kv(run_id=run_id))
+
+    # Translate SIGTERM (detached runs are stopped this way) into the same
+    # graceful cancellation path as Ctrl-C; lanes release their proxies in their
+    # finally blocks and the durable store lets a restart resume.
+    with contextlib.suppress(ValueError, OSError):
+        signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
+
+    try:
+        asyncio.run(run(cfg, run_id=run_id))
+    except KeyboardInterrupt:
+        logger.warning("run_interrupted %s", kv(run_id=run_id))
+
+
+if __name__ == "__main__":
+    main()

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from robot.domain.types import RUC, CarrierCount, LookupResult, Status
@@ -33,43 +32,48 @@ def test_pipeline_exports_success_and_error_rows(tmp_path: Path) -> None:
         store.insert_pending(RUC(RUC_A))
         store.insert_pending(RUC(RUC_B))
 
-        first = store.claim_next(worker_id=1)
-        second = store.claim_next(worker_id=1)
-        assert first is not None
-        assert second is not None
+        assert store.pending_rucs() == [RUC(RUC_A), RUC(RUC_B)]
 
         store.complete_success(
-            job=first,
+            ruc=RUC(RUC_A),
             result=LookupResult(
-                ruc=first.ruc,
+                ruc=RUC(RUC_A),
                 status=Status.OK,
                 total_lines=5,
                 carrier_counts=(
                     CarrierCount(carrier="claro", lines=3),
                     CarrierCount(carrier="movistar", lines=2),
                 ),
-                session_id="sess-1",
+                http_session_id="sess-1",
                 proxy_id="proxy-1",
+                attempt=1,
             ),
         )
         store.complete_failure(
-            job=second,
+            ruc=RUC(RUC_B),
             result=LookupResult(
-                ruc=second.ruc,
+                ruc=RUC(RUC_B),
                 status=Status.FAILED,
-                error_code="ban",
+                error_code="ban_signal",
                 error_detail="blocked",
-                session_id="sess-2",
+                http_session_id="sess-2",
                 proxy_id="proxy-2",
+                attempt=3,
             ),
         )
+
+        # A completed RUC is no longer pending; only the failed one would re-run.
+        assert store.pending_rucs() == []
+        summary = store.summary()
+        assert summary.succeeded == 1
+        assert summary.failed == 1
 
         export_csv(store=store, output_csv=output_csv)
 
     success = _read_csv(output_csv)
     assert success[0] == ["ruc", "carrier", "lines", "total_lines"]
-    assert [str(first.ruc), "claro", "3", "5"] in success
-    assert [str(first.ruc), "movistar", "2", "5"] in success
+    assert [RUC_A, "claro", "3", "5"] in success
+    assert [RUC_A, "movistar", "2", "5"] in success
 
     errors = _read_csv(output_csv.with_suffix(".errors.csv"))
     assert errors[0] == [
@@ -81,44 +85,9 @@ def test_pipeline_exports_success_and_error_rows(tmp_path: Path) -> None:
         "proxy_id",
         "timestamp",
     ]
-    error_row = next(row for row in errors[1:] if row[0] == str(second.ruc))
-    assert error_row[1] == "ban"
+    error_row = next(row for row in errors[1:] if row[0] == RUC_B)
+    assert error_row[1] == "ban_signal"
     assert error_row[2] == "blocked"
+    assert error_row[3] == "3"
     assert error_row[4] == "sess-2"
     assert error_row[5] == "proxy-2"
-
-
-def test_expired_lease_is_reclaimable(tmp_path: Path) -> None:
-    output_csv = tmp_path / "out.csv"
-    store_path = state_path_for_output(output_csv)
-
-    with JobStore(store_path) as store:
-        store.insert_pending(RUC(RUC_A))
-
-        claimed = store.claim_next(worker_id=1)
-        assert claimed is not None
-        assert claimed.attempt_no == 1
-
-        # The claim must actually stamp a lease in the future, not merely flip
-        # the job to running; otherwise expiry-based reclaim never fires.
-        lease = store._conn.execute(
-            "SELECT claimed_until FROM jobs WHERE id = :id",
-            {"id": claimed.id},
-        ).fetchone()["claimed_until"]
-        assert lease is not None
-        assert lease > datetime.now(UTC).isoformat()
-
-        # A live lease blocks any other worker from grabbing the same job.
-        assert store.claim_next(worker_id=2) is None
-
-        # Backdate the lease to stand in for a worker that died mid-flight.
-        store._conn.execute(
-            "UPDATE jobs SET claimed_until = :past WHERE id = :id",
-            {"past": "2000-01-01T00:00:00+00:00", "id": claimed.id},
-        )
-
-        reclaimed = store.claim_next(worker_id=2)
-        assert reclaimed is not None
-        assert reclaimed.id == claimed.id
-        assert reclaimed.ruc == claimed.ruc
-        assert reclaimed.attempt_no == 2

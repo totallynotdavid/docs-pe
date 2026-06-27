@@ -5,14 +5,24 @@ import os
 
 from typing import TYPE_CHECKING
 
-from robot.jobs.csv_contract import ERROR_HEADERS, SUCCESS_HEADERS
-
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
     from pathlib import Path
 
     from robot.jobs.store import JobStore
+
+
+SUCCESS_HEADERS = ["ruc", "carrier", "lines", "total_lines"]
+ERROR_HEADERS = [
+    "ruc",
+    "error_code",
+    "error_detail",
+    "attempt",
+    "session_id",
+    "proxy_id",
+    "timestamp",
+]
 
 
 def export_csv(*, store: JobStore, output_csv: Path) -> None:

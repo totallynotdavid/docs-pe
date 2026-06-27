@@ -1,4 +1,4 @@
-from robot.app.cli import main
+from robot.cli import main
 
 
 __all__ = ["main"]

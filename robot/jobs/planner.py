@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class PlanSummary:
+class PlanReport:
     rows_read: int = 0
     valid: int = 0
     ignored: int = 0
@@ -29,8 +29,8 @@ def plan_jobs(
     input_csv: Path,
     store: JobStore,
     dedupe: bool,
-) -> PlanSummary:
-    summary = PlanSummary()
+) -> PlanReport:
+    summary = PlanReport()
     seen: set[str] = set()
 
     with input_csv.open(newline="", encoding="utf-8-sig") as file_obj:

@@ -5,11 +5,11 @@ import sqlite3
 
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from robot.domain.types import RUC, CarrierCount, LookupResult, Status
-from robot.jobs.csv_contract import SUCCESS_HEADERS
+from robot.jobs.exporter import SUCCESS_HEADERS
 
 
 if TYPE_CHECKING:
@@ -18,34 +18,27 @@ if TYPE_CHECKING:
 
 
 JOB_PENDING = "pending"
-JOB_RUNNING = "running"
 JOB_SUCCEEDED = "succeeded"
 JOB_FAILED = "failed"
 
-# Upper bound on how long one job may stay claimed before another worker may
-# reclaim it. It must comfortably exceed a single lookup including retries and
-# ban cooldowns; a job whose worker died mid-flight becomes claimable again once
-# its lease lapses, without waiting for the next process start. Promote to
-# RunConfig if it ever needs to track wait/cooldown tuning.
-LEASE_SECONDS = 900
 
-
+# The store is the durable source of truth, owned by one process per run. A job
+# is pending, succeeded, or failed; there is no "running" state. A crash leaves
+# in-flight jobs on pending, so a restart re-runs exactly them with no orphan
+# recovery or lease bookkeeping.
 SCHEMA_DDL = """
 CREATE TABLE IF NOT EXISTS jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ruc TEXT NOT NULL UNIQUE,
     status TEXT NOT NULL,
     attempt_count INTEGER NOT NULL DEFAULT 0,
-    worker_id INTEGER,
     last_error_code TEXT NOT NULL DEFAULT '',
     last_error_detail TEXT NOT NULL DEFAULT '',
     session_id TEXT NOT NULL DEFAULT '',
     proxy_id TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    started_at TEXT,
-    finished_at TEXT,
-    claimed_until TEXT
+    finished_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_status_id ON jobs(status, id);
@@ -71,39 +64,11 @@ UPDATE jobs
        last_error_code = '',
        last_error_detail = '',
        updated_at = :updated_at,
-       started_at = NULL,
        finished_at = NULL
  WHERE ruc = :ruc AND status = :from_status
 """
 
-RESET_RUNNING_JOBS = """
-UPDATE jobs
-   SET status = :status, updated_at = :updated_at, started_at = NULL
- WHERE status = :from_status
-"""
-
-# Claimable means a fresh pending job or a running job whose lease has lapsed
-# (its worker died mid-flight). The enclosing BEGIN IMMEDIATE serializes claims,
-# so the follow-up UPDATE keys on id alone without a compare-and-set on status.
-SELECT_NEXT_PENDING = """
-SELECT id, ruc, attempt_count
-  FROM jobs
- WHERE status = :pending
-    OR (status = :running AND claimed_until IS NOT NULL AND claimed_until <= :now)
- ORDER BY id
- LIMIT 1
-"""
-
-MARK_JOB_RUNNING = """
-UPDATE jobs
-   SET status = :status,
-       attempt_count = :attempt_count,
-       worker_id = :worker_id,
-       started_at = :started_at,
-       updated_at = :updated_at,
-       claimed_until = :claimed_until
- WHERE id = :id
-"""
+SELECT_PENDING_RUCS = "SELECT ruc FROM jobs WHERE status = :pending ORDER BY id"
 
 DELETE_RESULTS_FOR_RUC = "DELETE FROM results WHERE ruc = :ruc"
 
@@ -115,27 +80,27 @@ VALUES (:ruc, :carrier, :lines, :total_lines)
 MARK_JOB_SUCCEEDED = """
 UPDATE jobs
    SET status = :status,
+       attempt_count = :attempt_count,
        last_error_code = '',
        last_error_detail = '',
        session_id = :session_id,
        proxy_id = :proxy_id,
        finished_at = :finished_at,
-       updated_at = :updated_at,
-       claimed_until = NULL
- WHERE id = :id
+       updated_at = :updated_at
+ WHERE ruc = :ruc
 """
 
 MARK_JOB_FAILED = """
 UPDATE jobs
    SET status = :status,
+       attempt_count = :attempt_count,
        last_error_code = :last_error_code,
        last_error_detail = :last_error_detail,
        session_id = :session_id,
        proxy_id = :proxy_id,
        finished_at = :finished_at,
-       updated_at = :updated_at,
-       claimed_until = NULL
- WHERE id = :id
+       updated_at = :updated_at
+ WHERE ruc = :ruc
 """
 
 SELECT_STATUS_COUNTS = "SELECT status, COUNT(*) AS total FROM jobs GROUP BY status"
@@ -159,20 +124,10 @@ SELECT ruc,
  ORDER BY ruc
 """
 
-SELECT_JOB_BY_RUC = "SELECT id, attempt_count FROM jobs WHERE ruc = :ruc"
-
-
-@dataclass(frozen=True)
-class ClaimedJob:
-    id: int
-    ruc: RUC
-    attempt_no: int
-
 
 @dataclass(frozen=True)
 class StoreSummary:
     pending: int
-    running: int
     succeeded: int
     failed: int
 
@@ -196,7 +151,7 @@ class JobStore:
     def __enter__(self) -> JobStore:
         return self
 
-    def __exit__(self, *_) -> None:
+    def __exit__(self, *_: object) -> None:
         self.close()
 
     def insert_pending(self, ruc: RUC) -> bool:
@@ -224,52 +179,16 @@ class JobStore:
         )
         return cursor.rowcount > 0
 
-    def reset_running(self) -> int:
-        now = _now()
-        cursor = self._conn.execute(
-            RESET_RUNNING_JOBS,
-            {
-                "status": JOB_PENDING,
-                "updated_at": now,
-                "from_status": JOB_RUNNING,
-            },
-        )
-        return cursor.rowcount
+    def pending_rucs(self) -> list[RUC]:
+        rows = self._conn.execute(
+            SELECT_PENDING_RUCS, {"pending": JOB_PENDING}
+        ).fetchall()
+        return [RUC(str(row["ruc"])) for row in rows]
 
-    def claim_next(self, *, worker_id: int) -> ClaimedJob | None:
-        with self._transaction():
-            now_dt = _now_dt()
-            now = now_dt.isoformat()
-            row = self._conn.execute(
-                SELECT_NEXT_PENDING,
-                {"pending": JOB_PENDING, "running": JOB_RUNNING, "now": now},
-            ).fetchone()
-            if row is None:
-                return None
-
-            attempt_no = int(row["attempt_count"]) + 1
-            self._conn.execute(
-                MARK_JOB_RUNNING,
-                {
-                    "status": JOB_RUNNING,
-                    "attempt_count": attempt_no,
-                    "worker_id": worker_id,
-                    "started_at": now,
-                    "updated_at": now,
-                    "claimed_until": _lease_deadline(now_dt),
-                    "id": int(row["id"]),
-                },
-            )
-            return ClaimedJob(
-                id=int(row["id"]),
-                ruc=RUC(str(row["ruc"])),
-                attempt_no=attempt_no,
-            )
-
-    def complete_success(self, *, job: ClaimedJob, result: LookupResult) -> None:
+    def complete_success(self, *, ruc: RUC, result: LookupResult) -> None:
         now = _now()
         with self._transaction():
-            self._conn.execute(DELETE_RESULTS_FOR_RUC, {"ruc": str(job.ruc)})
+            self._conn.execute(DELETE_RESULTS_FOR_RUC, {"ruc": str(ruc)})
             carriers = result.carrier_counts or (
                 CarrierCount(carrier="unknown", lines=result.total_lines),
             )
@@ -277,7 +196,7 @@ class JobStore:
                 INSERT_RESULT,
                 [
                     {
-                        "ruc": str(job.ruc),
+                        "ruc": str(ruc),
                         "carrier": item.carrier,
                         "lines": item.lines,
                         "total_lines": result.total_lines,
@@ -289,28 +208,30 @@ class JobStore:
                 MARK_JOB_SUCCEEDED,
                 {
                     "status": JOB_SUCCEEDED,
-                    "session_id": result.session_id,
+                    "attempt_count": result.attempt,
+                    "session_id": result.http_session_id,
                     "proxy_id": result.proxy_id,
                     "finished_at": now,
                     "updated_at": now,
-                    "id": job.id,
+                    "ruc": str(ruc),
                 },
             )
 
-    def complete_failure(self, *, job: ClaimedJob, result: LookupResult) -> None:
+    def complete_failure(self, *, ruc: RUC, result: LookupResult) -> None:
         now = _now()
         with self._transaction():
             self._conn.execute(
                 MARK_JOB_FAILED,
                 {
                     "status": JOB_FAILED,
+                    "attempt_count": result.attempt,
                     "last_error_code": result.error_code,
                     "last_error_detail": result.error_detail,
-                    "session_id": result.session_id,
+                    "session_id": result.http_session_id,
                     "proxy_id": result.proxy_id,
                     "finished_at": now,
                     "updated_at": now,
-                    "id": job.id,
+                    "ruc": str(ruc),
                 },
             )
 
@@ -319,7 +240,6 @@ class JobStore:
         totals = {str(row["status"]): int(row["total"]) for row in rows}
         return StoreSummary(
             pending=totals.get(JOB_PENDING, 0),
-            running=totals.get(JOB_RUNNING, 0),
             succeeded=totals.get(JOB_SUCCEEDED, 0),
             failed=totals.get(JOB_FAILED, 0),
         )
@@ -377,31 +297,15 @@ class JobStore:
         for ruc_raw, carriers in grouped.items():
             ruc = RUC(ruc_raw)
             self.insert_pending(ruc)
-            job = self._job_for_ruc(ruc)
-            if job is None:
-                continue
             result = LookupResult(
                 ruc=ruc,
                 status=Status.OK,
                 total_lines=totals[ruc_raw],
                 carrier_counts=tuple(carriers),
             )
-            self.complete_success(job=job, result=result)
+            self.complete_success(ruc=ruc, result=result)
             seeded += 1
         return seeded
-
-    def _job_for_ruc(self, ruc: RUC) -> ClaimedJob | None:
-        row = self._conn.execute(
-            SELECT_JOB_BY_RUC,
-            {"ruc": str(ruc)},
-        ).fetchone()
-        if row is None:
-            return None
-        return ClaimedJob(
-            id=int(row["id"]),
-            ruc=ruc,
-            attempt_no=int(row["attempt_count"]),
-        )
 
     @contextmanager
     def _transaction(self) -> Iterator[None]:
@@ -428,13 +332,5 @@ def state_path_for_output(output_csv: Path) -> Path:
     return output_csv.with_suffix(".state.sqlite3")
 
 
-def _now_dt() -> datetime:
-    return datetime.now(UTC)
-
-
 def _now() -> str:
-    return _now_dt().isoformat()
-
-
-def _lease_deadline(start: datetime) -> str:
-    return (start + timedelta(seconds=LEASE_SECONDS)).isoformat()
+    return datetime.now(UTC).isoformat()

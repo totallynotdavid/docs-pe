@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import asyncio
 import json
-import time
 import uuid
 
 from dataclasses import dataclass
@@ -151,10 +151,10 @@ def new_proxy_session(config: GeoNodeConfig, *, slot_id: int) -> ProxySessionCon
     )
 
 
-def release_proxy_session(
+async def release_proxy_session(
     *, config: GeoNodeConfig, session_id: str, port: int, timeout_s: float = 10.0
 ) -> tuple[bool, int, str]:
-    return _release_sticky_session(
+    return await _release_sticky_session(
         user=config.user,
         password=config.password,
         session_id=session_id,
@@ -163,14 +163,16 @@ def release_proxy_session(
     )
 
 
-def resolve_egress_ip(proxy: ProxySessionConfig) -> str:
-    with httpx.Client(proxy=proxy.as_http_proxy_url(), timeout=5.0) as client:
+async def resolve_egress_ip(proxy: ProxySessionConfig) -> str:
+    async with httpx.AsyncClient(
+        proxy=proxy.as_http_proxy_url(), timeout=5.0
+    ) as client:
         for _ in range(3):
             for url in _IP_PROBE_URLS:
-                value = _probe_ip(client, url)
+                value = await _probe_ip(client, url)
                 if value:
                     return value
-            time.sleep(0.2)
+            await asyncio.sleep(0.2)
     return ""
 
 
@@ -178,9 +180,9 @@ def _new_session_id(slot_id: int) -> str:
     return f"s{slot_id}_{uuid.uuid4().hex[:8]}"
 
 
-def _probe_ip(client: httpx.Client, url: str) -> str:
+async def _probe_ip(client: httpx.AsyncClient, url: str) -> str:
     try:
-        response = client.get(url)
+        response = await client.get(url)
     except httpx.HTTPError:
         return ""
     if response.status_code != 200:
@@ -213,12 +215,14 @@ def _is_valid_ip(value: str) -> bool:
     return True
 
 
-def _release_sticky_session(
+async def _release_sticky_session(
     *, user: str, password: str, session_id: str, port: int, timeout_s: float
 ) -> tuple[bool, int, str]:
     try:
-        with httpx.Client(timeout=timeout_s, auth=(user, password)) as client:
-            response = client.put(
+        async with httpx.AsyncClient(
+            timeout=timeout_s, auth=(user, password)
+        ) as client:
+            response = await client.put(
                 _RELEASE_URL,
                 json={"data": [{"sessionId": session_id, "port": port}]},
             )

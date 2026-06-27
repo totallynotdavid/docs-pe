@@ -17,6 +17,14 @@ class ParseError(TransientTransportError):
     """Response format is not parseable or empty."""
 
 
+class UpstreamNotReadyError(TransientTransportError):
+    """Upstream did not respond within the readiness window without an explicit block."""
+
+
+class SessionStateError(RobotError):
+    """Session is not in a state that allows the requested call."""
+
+
 class ProviderSchemaError(RobotError):
     """Provider response shape changed or violated its expected contract."""
 

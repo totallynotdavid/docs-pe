@@ -30,7 +30,7 @@ class CarrierCount:
     lines: int
 
 
-@dataclass
+@dataclass(frozen=True)
 class LookupResult:
     ruc: RUC
     status: Status
@@ -38,24 +38,32 @@ class LookupResult:
     carrier_counts: tuple[CarrierCount, ...] = ()
     error_code: str = ""
     error_detail: str = ""
-    session_id: str = ""
+    # http_session_id is the per-open OSIPTEL session uuid; proxy_id is the
+    # sticky GeoNode port label. They are different identifiers and the store
+    # persists both, so keep the names honest about which is which.
+    http_session_id: str = ""
     proxy_id: str = ""
+    attempt: int = 0
 
 
 @dataclass
-class WorkerSummary:
+class LaneTotals:
     processed: int = 0
     succeeded: int = 0
     failed: int = 0
 
 
-@dataclass
-class RunSummary:
-    rows_read: int = 0
-    valid: int = 0
-    ignored: int = 0
-    duplicates: int = 0
-    skipped: int = 0
-    processed: int = 0
-    succeeded: int = 0
-    failed: int = 0
+@dataclass(frozen=True)
+class RunReport:
+    rows_read: int
+    valid: int
+    ignored: int
+    duplicates: int
+    skipped: int
+    inserted: int
+    seeded: int
+    processed: int
+    succeeded: int
+    failed: int
+    pending: int
+    failed_jobs: int

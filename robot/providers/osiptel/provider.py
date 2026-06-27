@@ -1,22 +1,30 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from robot.domain.types import RUC, CarrierCount
 from robot.providers.osiptel.parser import parse_page
 from robot.providers.osiptel.payload import PageRequest, build_payload
+
+
+if TYPE_CHECKING:
+    from robot.providers.osiptel.session import OsiptelSession
 
 
 class OsiptelProvider:
     def __init__(self, *, page_size: int) -> None:
         self._page_size = page_size
 
-    def lookup_ruc(self, *, session, ruc: RUC) -> tuple[int, tuple[CarrierCount, ...]]:
+    async def lookup_ruc(
+        self, *, session: OsiptelSession, ruc: RUC
+    ) -> tuple[int, tuple[CarrierCount, ...]]:
         total: int | None = None
         start = 0
         draw = 1
         counts: dict[str, int] = {}
 
         while True:
-            payload = session.fetch_json(
+            payload = await session.fetch_json(
                 build_payload(
                     PageRequest(
                         ruc=str(ruc),

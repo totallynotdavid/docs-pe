@@ -16,7 +16,7 @@ authors = [
 ]
 
 [project.scripts]
-robot = "robot.app.cli:main"
+robot = "robot.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["robot*"]
