@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import ssl
 import time
 
 from typing import Any
@@ -77,7 +78,11 @@ class OsiptelSession:
             response = await client.post(
                 API_URL, data=data, headers=self._api_headers()
             )
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, ssl.SSLError) as exc:
+            # httpx maps httpcore transport errors, but a raw ssl.SSLError (e.g. a
+            # record-layer failure on a flaky proxy connection) leaks through
+            # unmapped. Catch it here so it is classified, not propagated out of
+            # the lane where it would tear down the whole TaskGroup.
             msg = f"osiptel request transport failed: {type(exc).__name__}: {exc}"
             raise TransientTransportError(msg) from exc
 
@@ -143,7 +148,7 @@ class OsiptelSession:
         while time.monotonic() < deadline:
             try:
                 response = await client.get(HOME_URL)
-            except httpx.HTTPError as exc:
+            except (httpx.HTTPError, ssl.SSLError) as exc:
                 last_error = f"{type(exc).__name__}: {exc}"
                 await asyncio.sleep(poll_s)
                 continue
