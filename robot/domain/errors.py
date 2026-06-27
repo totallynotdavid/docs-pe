@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 class RobotError(Exception):
-    """Base class for expected runtime errors."""
+    pass
 
 
 class TransientTransportError(RobotError):

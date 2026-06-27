@@ -21,7 +21,6 @@ robot = "robot.app.cli:main"
 [tool.setuptools.packages.find]
 include = ["robot*"]
 
-# ruff config
 [tool.ruff]
 fix = true
 target-version = "py310"
@@ -62,7 +61,6 @@ extend-select = [
     "RUF", # ruff checks
     "SIM", # flake8-simplify
     "T10", # flake8-debugger
-    # "T20", # flake8-print
     "TC",  # flake8-type-checking
     "TD",  # flake8-todos
     "TID", # flake8-tidy-imports

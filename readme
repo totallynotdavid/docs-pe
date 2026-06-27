@@ -39,3 +39,9 @@ uv run robot \
   --wait-max-s 0 \
   --ban-cooldown-s 30 \
   --env-file .env
+
+Output contract
+
+- Success rows are written to the configured output CSV with columns: `ruc`, `carrier`, `lines`, `total_lines`.
+- Failed rows are written to `<output>.errors.csv` with columns: `ruc`, `error_code`, `error_detail`, `attempt`, `session_id`, `proxy_id`, `timestamp`.
+- The state database is an internal resume file named `<output>.state.sqlite3`. Do not edit it directly.

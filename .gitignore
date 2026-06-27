@@ -8,7 +8,7 @@ build/
 dist/
 *.egg-info/
 
-# files
+# runtime outputs
 *.csv
 .env
 
