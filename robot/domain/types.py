@@ -38,9 +38,11 @@ class LookupResult:
     carrier_counts: tuple[CarrierCount, ...] = ()
     error_code: str = ""
     error_detail: str = ""
-    # http_session_id is the per-open OSIPTEL session uuid; proxy_id is the
-    # sticky proxy label the provider assigns. They are different identifiers
-    # and the store persists both, so keep the names honest about which is which.
+    # True when the failing attempts hit a healthy provider (breaker closed); the
+    # lane sets it False when the breaker was open. Gates MAX_TOTAL_ATTEMPTS.
+    made_healthy_contact: bool = True
+    # http_session_id is the per-open OSIPTEL session uuid; proxy_id is the sticky
+    # proxy label. Different identifiers, both persisted, so keep the names honest.
     http_session_id: str = ""
     proxy_id: str = ""
     attempt: int = 0
@@ -69,4 +71,7 @@ class RunReport:
     failed: int
     remaining: int
     total_succeeded: int
-    total_failed: int
+    # Durable, cap-aware split: terminal_failed have left the work set for good;
+    # retryable are transient failures still eligible for re-fetch next run.
+    total_terminal_failed: int
+    total_retryable: int

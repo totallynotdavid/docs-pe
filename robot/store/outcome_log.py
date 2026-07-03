@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from robot.domain.policy import MAX_TOTAL_ATTEMPTS
 from robot.domain.types import RUC, CarrierCount
 from robot.store.export import SUCCESS_HEADERS
 
@@ -19,7 +20,12 @@ if TYPE_CHECKING:
     from robot.domain.types import LookupResult
 
 
-# Done RUCs are the union of successful results and terminal errors.
+# Done RUCs are the successes plus the failures that have retired: those whose
+# cumulative healthy-contact attempts crossed the cap. Failures below the cap are
+# deliberately NOT done, so they re-queue on the next run.
+_TERMINAL_ERROR_PREDICATE = "attempt_count >= :cap"
+_RETRYABLE_ERROR_PREDICATE = "attempt_count < :cap"
+
 SCHEMA_DDL = """
 CREATE TABLE IF NOT EXISTS results (
     ruc TEXT NOT NULL,
@@ -48,23 +54,29 @@ INSERT INTO results (ruc, carrier, lines, total_lines)
 VALUES (:ruc, :carrier, :lines, :total_lines)
 """
 
-# A re-attempt that finally fails overwrites the prior failure for that RUC, so
-# the row always reflects the last attempt and its cumulative count.
+# A re-attempt that fails again overwrites the classification but ACCUMULATES the
+# attempt count, so cumulative attempts survive across runs and drive the cap.
 UPSERT_ERROR = """
 INSERT INTO errors
-    (ruc, error_code, error_detail, attempt_count, session_id, proxy_id, finished_at)
+    (ruc, error_code, error_detail,
+     attempt_count, session_id, proxy_id, finished_at)
 VALUES
-    (:ruc, :error_code, :error_detail, :attempt_count, :session_id, :proxy_id, :finished_at)
+    (:ruc, :error_code, :error_detail,
+     :attempt_count, :session_id, :proxy_id, :finished_at)
 ON CONFLICT(ruc) DO UPDATE SET
     error_code = excluded.error_code,
     error_detail = excluded.error_detail,
-    attempt_count = excluded.attempt_count,
+    attempt_count = errors.attempt_count + excluded.attempt_count,
     session_id = excluded.session_id,
     proxy_id = excluded.proxy_id,
     finished_at = excluded.finished_at
 """
 
-SELECT_DONE_RUCS = "SELECT ruc FROM results UNION SELECT ruc FROM errors"
+SELECT_DONE_RUCS = f"""
+SELECT ruc FROM results
+UNION
+SELECT ruc FROM errors WHERE {_TERMINAL_ERROR_PREDICATE}
+"""
 
 SELECT_RESULT_ROWS = """
 SELECT ruc, carrier, lines, total_lines
@@ -73,19 +85,26 @@ SELECT ruc, carrier, lines, total_lines
 """
 
 SELECT_ERROR_ROWS = """
-SELECT ruc, error_code, error_detail, attempt_count, session_id, proxy_id, finished_at
+SELECT ruc, error_code, error_detail,
+       attempt_count, session_id, proxy_id, finished_at
   FROM errors
  ORDER BY ruc
 """
 
 COUNT_SUCCEEDED = "SELECT COUNT(DISTINCT ruc) AS total FROM results"
-COUNT_FAILED = "SELECT COUNT(*) AS total FROM errors"
+COUNT_TERMINAL_FAILED = (
+    f"SELECT COUNT(*) AS total FROM errors WHERE {_TERMINAL_ERROR_PREDICATE}"
+)
+COUNT_RETRYABLE = (
+    f"SELECT COUNT(*) AS total FROM errors WHERE {_RETRYABLE_ERROR_PREDICATE}"
+)
 
 
 @dataclass(frozen=True)
 class OutcomeCounts:
     succeeded: int
-    failed: int
+    terminal_failed: int
+    retryable: int
 
 
 class OutcomeLog:
@@ -128,6 +147,9 @@ class OutcomeLog:
             )
 
     def record_failure(self, result: LookupResult) -> None:
+        # Unhealthy-contact failures are still recorded (the RUC stays retryable)
+        # but increment the cap by 0, so an outage cannot retire a RUC.
+        increment = result.attempt if result.made_healthy_contact else 0
         with self._transaction():
             self._conn.execute(
                 UPSERT_ERROR,
@@ -135,21 +157,30 @@ class OutcomeLog:
                     "ruc": str(result.ruc),
                     "error_code": result.error_code,
                     "error_detail": result.error_detail,
-                    "attempt_count": result.attempt,
+                    "attempt_count": increment,
                     "session_id": result.http_session_id,
                     "proxy_id": result.proxy_id,
                     "finished_at": _now(),
                 },
             )
 
-    def done_rucs(self) -> set[str]:
-        rows = self._conn.execute(SELECT_DONE_RUCS).fetchall()
+    def done_rucs(self, *, retry_cap: int = MAX_TOTAL_ATTEMPTS) -> set[str]:
+        rows = self._conn.execute(SELECT_DONE_RUCS, {"cap": retry_cap}).fetchall()
         return {str(row["ruc"]) for row in rows}
 
-    def counts(self) -> OutcomeCounts:
+    def counts(self, *, retry_cap: int = MAX_TOTAL_ATTEMPTS) -> OutcomeCounts:
         succeeded = int(self._conn.execute(COUNT_SUCCEEDED).fetchone()["total"])
-        failed = int(self._conn.execute(COUNT_FAILED).fetchone()["total"])
-        return OutcomeCounts(succeeded=succeeded, failed=failed)
+        terminal = int(
+            self._conn.execute(COUNT_TERMINAL_FAILED, {"cap": retry_cap}).fetchone()[
+                "total"
+            ]
+        )
+        retryable = int(
+            self._conn.execute(COUNT_RETRYABLE, {"cap": retry_cap}).fetchone()["total"]
+        )
+        return OutcomeCounts(
+            succeeded=succeeded, terminal_failed=terminal, retryable=retryable
+        )
 
     def result_rows(self) -> Iterator[list[str | int]]:
         for row in self._conn.execute(SELECT_RESULT_ROWS):

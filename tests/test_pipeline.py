@@ -31,7 +31,17 @@ def _write_input(path: Path, rucs: list[str]) -> None:
             writer.writerow([ruc])
 
 
-def test_log_exports_terminal_rows_and_done_set(tmp_path: Path) -> None:
+def _failure(ruc: str, *, code: str, attempt: int) -> LookupResult:
+    return LookupResult(
+        ruc=RUC(ruc),
+        status=Status.FAILED,
+        error_code=code,
+        error_detail=code,
+        attempt=attempt,
+    )
+
+
+def test_below_cap_failure_is_retryable_not_done(tmp_path: Path) -> None:
     output_csv = tmp_path / "out.csv"
     with OutcomeLog(state_path_for_output(output_csv)) as log:
         log.record_success(
@@ -48,45 +58,74 @@ def test_log_exports_terminal_rows_and_done_set(tmp_path: Path) -> None:
                 attempt=1,
             )
         )
-        log.record_failure(
-            LookupResult(
-                ruc=RUC(RUC_B),
-                status=Status.FAILED,
-                error_code="ban_signal",
-                error_detail="blocked",
-                http_session_id="sess-2",
-                proxy_id="proxy-2",
-                attempt=4,
-            )
-        )
+        # Below the cap: stays eligible for re-fetch, so it is not done.
+        log.record_failure(_failure(RUC_B, code="ban_signal", attempt=4))
 
         counts = log.counts()
-        assert counts.succeeded == 1
-        assert counts.failed == 1
-        assert log.done_rucs() == {RUC_A, RUC_B}
+        assert counts == OutcomeCounts(succeeded=1, terminal_failed=0, retryable=1)
+        assert log.done_rucs() == {RUC_A}
 
         export_csv(log=log, output_csv=output_csv)
 
     success = _read_csv(output_csv)
     assert success[0] == ["ruc", "carrier", "lines", "total_lines"]
     assert [RUC_A, "claro", "3", "5"] in success
-    assert [RUC_A, "movistar", "2", "5"] in success
 
     errors = _read_csv(output_csv.with_suffix(".errors.csv"))
-    error_row = next(row for row in errors[1:] if row[0] == RUC_B)
-    assert error_row[1] == "ban_signal"
-    assert error_row[3] == "4"
+    assert errors[0][1] == "error_code"
+    assert errors[0][2] == "error_detail"
+    ban_row = next(row for row in errors[1:] if row[0] == RUC_B)
+    assert ban_row[1] == "ban_signal"
+    assert ban_row[3] == "4"
+
+
+def test_healthy_attempts_accumulate_until_cap(tmp_path: Path) -> None:
+    with OutcomeLog(state_path_for_output(tmp_path / "out.csv")) as log:
+        # The same RUC failing across several healthy runs accumulates attempts;
+        # below the cap it stays retryable, then retires as terminal at the cap.
+        log.record_failure(_failure(RUC_A, code="transport_error", attempt=4))
+        assert log.done_rucs() == set()
+        assert log.counts().retryable == 1
+
+        while log.counts().retryable == 1:
+            log.record_failure(_failure(RUC_A, code="transport_error", attempt=4))
+
+        assert log.counts() == OutcomeCounts(
+            succeeded=0, terminal_failed=1, retryable=0
+        )
+        assert log.done_rucs() == {RUC_A}
+
+
+def test_outage_attempts_do_not_advance_cap(tmp_path: Path) -> None:
+    with OutcomeLog(state_path_for_output(tmp_path / "out.csv")) as log:
+        # An attempt made while the provider was unhealthy must not count toward
+        # the cap, so no length of outage can retire a valid RUC.
+        for _ in range(10):
+            log.record_failure(
+                LookupResult(
+                    ruc=RUC(RUC_A),
+                    status=Status.FAILED,
+                    error_code="transport_error",
+                    error_detail="outage",
+                    made_healthy_contact=False,
+                    attempt=4,
+                )
+            )
+        assert log.counts() == OutcomeCounts(
+            succeeded=0, terminal_failed=0, retryable=1
+        )
+        assert log.done_rucs() == set()
 
 
 def test_success_supersedes_prior_failure(tmp_path: Path) -> None:
     with OutcomeLog(state_path_for_output(tmp_path / "out.csv")) as log:
-        log.record_failure(
-            LookupResult(ruc=RUC(RUC_A), status=Status.FAILED, attempt=4)
-        )
+        log.record_failure(_failure(RUC_A, code="ban_signal", attempt=4))
         log.record_success(
             LookupResult(ruc=RUC(RUC_A), status=Status.OK, total_lines=1, attempt=2)
         )
-        assert log.counts() == OutcomeCounts(succeeded=1, failed=0)
+        assert log.counts() == OutcomeCounts(
+            succeeded=1, terminal_failed=0, retryable=0
+        )
         assert log.done_rucs() == {RUC_A}
 
 

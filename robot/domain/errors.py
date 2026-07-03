@@ -27,7 +27,3 @@ class SessionStateError(RobotError):
 
 class ProviderSchemaError(RobotError):
     pass
-
-
-class PermanentInputError(RobotError):
-    pass

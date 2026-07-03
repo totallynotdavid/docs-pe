@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from robot.domain.types import RunReport, RunTotals
 from robot.obs.events import PROVIDER_SELECTED, RUN_SUMMARY
 from robot.obs.logging import kv
+from robot.pipeline.breaker import CircuitBreaker
 from robot.pipeline.lane import run_lane
 from robot.pipeline.session import LaneConfig
 from robot.providers.proxy import load_proxy_providers
@@ -82,7 +83,8 @@ async def run(cfg: RunConfig, *, run_id: str) -> RunReport:
             failed=totals.failed,
             remaining=plan.pending - totals.processed,
             total_succeeded=counts.succeeded,
-            total_failed=counts.failed,
+            total_terminal_failed=counts.terminal_failed,
+            total_retryable=counts.retryable,
         )
 
     logger.info(
@@ -103,7 +105,8 @@ async def run(cfg: RunConfig, *, run_id: str) -> RunReport:
             failed=report.failed,
             remaining=report.remaining,
             total_succeeded=report.total_succeeded,
-            total_failed=report.total_failed,
+            total_terminal_failed=report.total_terminal_failed,
+            total_retryable=report.total_retryable,
         ),
     )
     return report
@@ -131,6 +134,9 @@ async def _run_lanes(
     async with asyncio.TaskGroup() as group:
         lane_id = 0
         for provider in providers:
+            # One breaker per provider, shared by its lanes: a provider-wide outage
+            # parks that provider without stalling a healthy sibling provider.
+            breaker = CircuitBreaker(provider=provider.name, run_id=run_id)
             for slot_id in range(1, provider.tuning.workers + 1):
                 lane_id += 1
                 group.create_task(
@@ -138,6 +144,7 @@ async def _run_lanes(
                         queue=queue,
                         log=log,
                         provider=provider,
+                        breaker=breaker,
                         slot_id=slot_id,
                         lane_id=lane_id,
                         run_id=run_id,

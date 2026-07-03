@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from robot.domain.errors import (
     BanSignalError,
     ParseError,
-    PermanentInputError,
     ProviderSchemaError,
     RobotError,
     SessionStateError,
@@ -14,51 +13,55 @@ from robot.domain.errors import (
 )
 
 
-# Total attempts a single RUC gets within one run before its failure is
-# persisted as terminal. Immediate ban rotation happens inside this budget, so
-# after MAX_ATTEMPTS the RUC is recorded failed and not retried on re-launch.
+# Per-run attempt budget for one RUC. Exhausting it does not retire the RUC.
 MAX_ATTEMPTS = 4
+
+# The single owner of the retirement rule. A failing RUC leaves the work set only
+# by succeeding or by reaching this many cumulative healthy-contact attempts across
+# all runs. OSIPTEL has no per-RUC permanent error (a RUC with no lines returns an
+# empty success), so every failure is environmental and stays eligible until then.
+# Attempts made while the provider is unhealthy do not count (see
+# LookupResult.made_healthy_contact), so no outage can grind a RUC to this cap.
+MAX_TOTAL_ATTEMPTS = 12
 
 
 @dataclass(frozen=True)
 class RetryDecision:
+    # Only a ban sets cooldown_s (let the banned exit cool before reuse); every
+    # other fault rotates immediately. error_code labels the fault for the log.
     error_code: str
-    # Three independent axes. retry controls whether the lane tries the same RUC
-    # again; rotate controls whether it discards the proxy session first;
-    # cooldown_s pauses the lane before acquiring the next session. They are not
-    # the same question: a degraded upstream wants retry without rotation.
-    retry: bool
-    rotate: bool
     cooldown_s: float
 
 
 def classify(exc: RobotError, *, ban_cooldown_s: float) -> RetryDecision:
-    if isinstance(exc, SessionStateError):
-        return RetryDecision(
-            "session_state_error", retry=False, rotate=False, cooldown_s=0.0
-        )
-    if isinstance(exc, PermanentInputError):
-        return RetryDecision(
-            "permanent_input_error", retry=False, rotate=False, cooldown_s=0.0
-        )
-    if isinstance(exc, ProviderSchemaError):
-        return RetryDecision(
-            "provider_schema_error", retry=False, rotate=False, cooldown_s=0.0
-        )
     if isinstance(exc, BanSignalError):
-        return RetryDecision(
-            "ban_signal", retry=True, rotate=True, cooldown_s=ban_cooldown_s
-        )
+        return RetryDecision("ban_signal", cooldown_s=ban_cooldown_s)
     if isinstance(exc, UpstreamNotReadyError):
-        return RetryDecision(
-            "upstream_not_ready", retry=True, rotate=True, cooldown_s=0.0
-        )
+        return RetryDecision("upstream_not_ready", cooldown_s=0.0)
     if isinstance(exc, ParseError):
-        return RetryDecision("parse_error", retry=True, rotate=True, cooldown_s=0.0)
+        return RetryDecision("parse_error", cooldown_s=0.0)
+    if isinstance(exc, ProviderSchemaError):
+        # Treated as transient, not permanent: an unexpected body is far more often
+        # a site-wide maintenance or rejection page served to every RUC than a
+        # genuinely malformed one, and calling it permanent would let one systemic
+        # event retire the whole backlog. Rotate and let the breaker trip if it
+        # correlates; a truly bad RUC still retires via the cap.
+        return RetryDecision("provider_schema_error", cooldown_s=0.0)
+    if isinstance(exc, SessionStateError):
+        return RetryDecision("session_state_error", cooldown_s=0.0)
     if isinstance(exc, TransientTransportError):
-        # Transport-layer failures (SSL record-layer faults, connect resets,
-        # read timeouts) are dominated by flaky proxy exits, not OSIPTEL itself.
-        # Retrying on the same sticky session just burns all attempts against the
-        # same bad exit and terminalizes a valid RUC, so rotate to a fresh proxy.
-        return RetryDecision("transport_error", retry=True, rotate=True, cooldown_s=0.0)
-    return RetryDecision("provider_error", retry=False, rotate=False, cooldown_s=0.0)
+        return RetryDecision("transport_error", cooldown_s=0.0)
+    return RetryDecision("provider_error", cooldown_s=0.0)
+
+
+def classify_exception(exc: BaseException, *, ban_cooldown_s: float) -> RetryDecision:
+    """Classify any lane exception, mapped or not.
+
+    RobotErrors carry their own taxonomy. Anything else (a raw transport fault
+    that slipped past normalization, a bug in a code path a lane touches) is an
+    unknown environmental fault: rotate and retry rather than let it escape the
+    lane and tear down the run.
+    """
+    if isinstance(exc, RobotError):
+        return classify(exc, ban_cooldown_s=ban_cooldown_s)
+    return RetryDecision("unknown_error", cooldown_s=0.0)
