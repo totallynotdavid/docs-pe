@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import ssl
 import time
 
 from typing import Any
@@ -18,6 +17,7 @@ from robot.domain.errors import (
 )
 from robot.obs.events import FETCH_PAGE_OK, FETCH_PAGE_START, OSIPTEL_REQUEST_FAILED
 from robot.obs.logging import kv, new_session_id
+from robot.providers.transport import build_transport
 
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ REQUEST_TIMEOUT_S = 45.0
 
 def build_client(*, proxy_url: str) -> httpx.AsyncClient:
     return httpx.AsyncClient(
-        proxy=proxy_url,
+        transport=build_transport(proxy_url=proxy_url),
         timeout=REQUEST_TIMEOUT_S,
         headers={"User-Agent": DEFAULT_USER_AGENT},
         follow_redirects=True,
@@ -74,17 +74,9 @@ class OsiptelSession:
             FETCH_PAGE_START,
             kv(ruc=ruc, draw=draw, start=start, length=length),
         )
-        try:
-            response = await client.post(
-                API_URL, data=data, headers=self._api_headers()
-            )
-        except (httpx.HTTPError, ssl.SSLError) as exc:
-            # httpx maps httpcore transport errors, but a raw ssl.SSLError (e.g. a
-            # record-layer failure on a flaky proxy connection) leaks through
-            # unmapped. Catch it here so it is classified, not propagated out of
-            # the lane where it would tear down the whole TaskGroup.
-            msg = f"osiptel request transport failed: {type(exc).__name__}: {exc}"
-            raise TransientTransportError(msg) from exc
+        # Transport faults are normalized to TransientTransportError by the client
+        # transport (providers/transport.py), so there is nothing to catch here.
+        response = await client.post(API_URL, data=data, headers=self._api_headers())
 
         status = response.status_code
         if status in _TRANSIENT_UPSTREAM_STATUSES:
@@ -148,7 +140,9 @@ class OsiptelSession:
         while time.monotonic() < deadline:
             try:
                 response = await client.get(HOME_URL)
-            except (httpx.HTTPError, ssl.SSLError) as exc:
+            # follow_redirects raises httpx.TooManyRedirects at the client level,
+            # past the transport that would otherwise normalize it, so catch both.
+            except (TransientTransportError, httpx.HTTPError) as exc:
                 last_error = f"{type(exc).__name__}: {exc}"
                 await asyncio.sleep(poll_s)
                 continue

@@ -7,6 +7,9 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from robot.domain.errors import TransientTransportError
+from robot.providers.transport import build_transport
+
 
 if TYPE_CHECKING:
     from robot.providers.proxy import ProxySession
@@ -24,7 +27,7 @@ _IP_PROBE_URLS = (
 
 async def resolve_egress_ip(session: ProxySession) -> str:
     async with httpx.AsyncClient(
-        proxy=session.as_http_proxy_url(), timeout=5.0
+        transport=build_transport(proxy_url=session.as_http_proxy_url()), timeout=5.0
     ) as client:
         for _ in range(3):
             for url in _IP_PROBE_URLS:
@@ -38,7 +41,10 @@ async def resolve_egress_ip(session: ProxySession) -> str:
 async def _probe_ip(client: httpx.AsyncClient, url: str) -> str:
     try:
         response = await client.get(url)
-    except httpx.HTTPError:
+    except TransientTransportError:
+        # The egress IP is informational, so a flaky probe is swallowed to try the
+        # next URL. Transport faults arrive here already normalized, so a raw
+        # ssl.SSLError can no longer escape and tear down session open.
         return ""
     if response.status_code != 200:
         return ""
