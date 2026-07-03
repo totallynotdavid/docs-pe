@@ -3,7 +3,7 @@ uv = "0.11.7"
 python = "3.14.4"
 
 [tasks.install]
-run = "uv sync"
+run = "uv sync --all-groups"
 
 [tasks.update]
 run = "uv sync -U"
