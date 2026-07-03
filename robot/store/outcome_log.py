@@ -6,7 +6,7 @@ import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from robot.domain.policy import MAX_TOTAL_ATTEMPTS
 from robot.domain.types import RUC, CarrierCount
@@ -119,7 +119,7 @@ class OutcomeLog:
     def close(self) -> None:
         self._conn.close()
 
-    def __enter__(self) -> OutcomeLog:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *_: object) -> None:
