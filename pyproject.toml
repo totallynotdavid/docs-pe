@@ -82,10 +82,17 @@ relative-imports-order = "closest-to-furthest"
 extra-standard-library = ["typing"]
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
+[tool.pytest.ini_options]
+# auto mode applies the asyncio marker to every async test, so the async site and
+# pipeline tests are plain `async def test_*` with no per-test decorator.
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
 [dependency-groups]
 dev = [
     "mypy>=2.1.0",
     "pyinstaller>=6.21.0",
     "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
     "ruff==0.15.20",
 ]
