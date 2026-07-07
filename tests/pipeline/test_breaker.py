@@ -109,3 +109,22 @@ async def test_acquire_returns_immediately_when_closed(
     clock = _Clock(1000.0)
     cb = _make(clock, monkeypatch, threshold=3)
     await cb.acquire()
+
+
+async def test_acquire_waits_out_the_cooldown_before_returning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # acquire()'s own loop (open, sleep, recheck) is what every lane sits in while a
+    # provider is unhealthy; fast-forward the fake clock on each sleep so the test
+    # proves the loop actually terminates instead of hanging.
+    clock = _Clock(1000.0)
+
+    async def fake_sleep(seconds: float) -> None:  # noqa: RUF029
+        clock.value += seconds
+
+    monkeypatch.setattr(breaker_mod.asyncio, "sleep", fake_sleep)
+    cb = _make(clock, monkeypatch, threshold=1, base_cooldown_s=5.0)
+    cb.record_failure()
+    assert cb.is_open()
+    await cb.acquire()
+    assert not cb.is_open()
