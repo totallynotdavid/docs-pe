@@ -4,14 +4,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from robot.domain.errors import ProviderSchemaError
-from robot.domain.types import CarrierCount
 
 
 @dataclass(frozen=True)
 class ParsedPage:
     total_records: int
     rows_returned: int
-    carrier_counts: tuple[CarrierCount, ...]
+    # carrier -> number of lines seen for it within this page.
+    carrier_counts: dict[str, int]
 
 
 def parse_page(payload: object) -> ParsedPage:
@@ -30,12 +30,7 @@ def parse_page(payload: object) -> ParsedPage:
         counts[carrier] = counts.get(carrier, 0) + 1
 
     return ParsedPage(
-        total_records=total,
-        rows_returned=len(rows),
-        carrier_counts=tuple(
-            CarrierCount(carrier=name, lines=lines)
-            for name, lines in sorted(counts.items())
-        ),
+        total_records=total, rows_returned=len(rows), carrier_counts=counts
     )
 
 
@@ -51,8 +46,6 @@ def _total_records(payload: dict[Any, Any]) -> int:
 
 def _rows(payload: dict[Any, Any]) -> list[Any]:
     rows = payload.get("data")
-    if rows is None:
-        rows = payload.get("aaData")
     if not isinstance(rows, list):
         msg = "osiptel response missing data rows"
         raise ProviderSchemaError(msg)
@@ -60,15 +53,10 @@ def _rows(payload: dict[Any, Any]) -> list[Any]:
 
 
 def _carrier_from_row(row: object) -> str:
-    if isinstance(row, dict):
-        return _required_text(row.get("operador"), field="operador")
-    if isinstance(row, list):
-        if len(row) <= 3:
-            msg = "osiptel legacy row is missing operador column"
-            raise ProviderSchemaError(msg)
-        return _required_text(row[3], field="operador")
-    msg = "osiptel row has unsupported shape"
-    raise ProviderSchemaError(msg)
+    if not isinstance(row, dict):
+        msg = "osiptel row has unsupported shape"
+        raise ProviderSchemaError(msg)
+    return _required_text(row.get("operador"), field="operador")
 
 
 def _required_text(value: object, *, field: str) -> str:
