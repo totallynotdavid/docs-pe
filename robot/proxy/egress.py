@@ -8,11 +8,11 @@ from typing import TYPE_CHECKING
 import httpx
 
 from robot.domain.errors import TransientTransportError
-from robot.providers.transport import build_transport
+from robot.proxy.transport import build_transport
 
 
 if TYPE_CHECKING:
-    from robot.providers.proxy import ProxySession
+    from robot.proxy.base import ProxySession
 
 
 # Egress IP resolution is identical for every provider: dial the proxy and ask a
@@ -43,8 +43,8 @@ async def _probe_ip(client: httpx.AsyncClient, url: str) -> str:
         response = await client.get(url)
     except TransientTransportError:
         # The egress IP is informational, so a flaky probe is swallowed to try the
-        # next URL. Transport faults arrive here already normalized, so a raw
-        # ssl.SSLError can no longer escape and tear down session open.
+        # next URL rather than aborting the session open. Transport faults arrive
+        # here already normalized, so catching this one exception type is enough.
         return ""
     if response.status_code != 200:
         return ""

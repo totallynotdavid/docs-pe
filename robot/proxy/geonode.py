@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 from robot.obs.events import STICKY_RELEASE_FAILED
 from robot.obs.logging import kv
-from robot.providers.proxy import ProviderTuning, ProxySession
+from robot.proxy.base import ProviderTuning, ProxySession
 
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,6 @@ _RELEASE_URL = "https://monitor.geonode.com/sessions/release/proxies"
 _RELEASE_RETRIES = 3
 
 # GeoNode's measured default balances throughput and retryable proxy failures.
-# ban_cooldown_s parks a banned sticky IP before the next acquisition.
 _TUNING = ProviderTuning(workers=15, ban_cooldown_s=30.0)
 
 

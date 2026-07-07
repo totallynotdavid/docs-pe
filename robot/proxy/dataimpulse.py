@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 from robot.obs.events import SESSION_RELEASE_SKIPPED
 from robot.obs.logging import kv
-from robot.providers.proxy import ProviderTuning, ProxySession
+from robot.proxy.base import ProviderTuning, ProxySession
 
 
 logger = logging.getLogger(__name__)
@@ -97,9 +97,9 @@ class DataImpulseProvider:
         )
 
     async def release(self, session: ProxySession) -> None:
-        # No release API: DataImpulse sticky sessions expire by sessttl, so
-        # dropping the reference is the whole teardown. Logged at debug so the
-        # no-op is visible when chasing a leak without spamming normal runs.
+        # Dropping the reference is the whole teardown (see class docstring).
+        # Logged at debug so the no-op is visible when chasing a leak without
+        # spamming normal runs.
         logger.debug(
             "%s %s",
             SESSION_RELEASE_SKIPPED,

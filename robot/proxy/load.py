@@ -1,38 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from os import getenv
-from typing import Protocol
+from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 
-
-@dataclass(frozen=True)
-class ProxySession:
-    proxy_id: str
-    host: str
-    port: str
-    username: str
-    password: str
-    session_id: str
-
-    def as_http_proxy_url(self) -> str:
-        return f"http://{self.username}:{self.password}@{self.host}:{self.port}"
+from robot.proxy.dataimpulse import DataImpulseProvider, load_dataimpulse_config
+from robot.proxy.geonode import GeoNodeProvider, load_geonode_config
 
 
-@dataclass(frozen=True)
-class ProviderTuning:
-    workers: int
-    ban_cooldown_s: float
-
-
-class ProxyProvider(Protocol):
-    name: str
-    tuning: ProviderTuning
-
-    def new_session(self, *, slot_id: int) -> ProxySession: ...
-
-    async def release(self, session: ProxySession) -> None: ...
+if TYPE_CHECKING:
+    from robot.proxy.base import ProxyProvider
 
 
 _KNOWN_PROVIDERS = ("geonode", "dataimpulse")
@@ -61,15 +39,6 @@ def load_proxy_providers(*, env_file: str) -> list[ProxyProvider]:
 
 
 def _construct_provider(name: str, *, env_file: str) -> ProxyProvider:
-    # Lazy imports: the provider modules import ProxySession/ProviderTuning from
-    # this module, so importing them at module scope here would be circular.
     if name == "geonode":
-        from robot.providers.geonode import GeoNodeProvider, load_geonode_config
-
         return GeoNodeProvider(load_geonode_config(env_file=env_file))
-    from robot.providers.dataimpulse import (
-        DataImpulseProvider,
-        load_dataimpulse_config,
-    )
-
     return DataImpulseProvider(load_dataimpulse_config(env_file=env_file))
