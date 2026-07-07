@@ -8,44 +8,75 @@ import signal
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from robot.obs.events import RUN_START
 from robot.obs.logging import configure_logging, kv, new_run_id
 from robot.pipeline.run import run
+from robot.sites.registry import SITES, get_sites
+
+
+if TYPE_CHECKING:
+    from robot.domain.types import Site
 
 
 @dataclass(frozen=True)
 class RunConfig:
     input_csv: Path
     output_csv: Path
-    page_size: int
+    sites: tuple[Site, ...]
     dedupe: bool
     debug: bool
-    session_budget: int
+    # The next three: None means "use each site's/provider's own default"; a
+    # value overrides it.
+    session_budget: int | None
+    workers: int | None
+    ban_cooldown_s: float | None
     wait_min_s: float
     wait_max_s: float
     env_file: str
+    do_import: bool
 
 
 def parse_args(argv: list[str] | None = None) -> RunConfig:
     parser = argparse.ArgumentParser(prog="robot")
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
-    parser.add_argument("--page-size", type=int, default=5000)
+    parser.add_argument(
+        "--sites", required=True, help="comma-separated: " + ",".join(sorted(SITES))
+    )
     parser.add_argument("--dedupe", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--debug", action="store_true", default=False)
-    # Session reuse is an OSIPTEL protocol constraint, not a proxy knob.
-    parser.add_argument("--session-budget", type=int, default=1)
+    parser.add_argument("--session-budget", type=int, default=None)
+    parser.add_argument("--workers", type=int, default=None)
+    parser.add_argument("--ban-cooldown-s", type=float, default=None)
     parser.add_argument("--wait-min-s", type=float, default=0.0)
     parser.add_argument("--wait-max-s", type=float, default=0.0)
     parser.add_argument("--env-file", default=".env")
+    # Opt-in recovery: rebuild the store from prior per-site exports before planning.
+    parser.add_argument(
+        "--import", dest="do_import", action="store_true", default=False
+    )
     ns = parser.parse_args(argv)
 
+    site_names = [
+        chunk.strip().lower() for chunk in ns.sites.split(",") if chunk.strip()
+    ]
+
     errors: list[str] = []
-    if ns.page_size < 1:
-        errors.append("--page-size must be >= 1")
-    if ns.session_budget < 1:
+    if not ns.input.exists():
+        errors.append(f"--input file not found: {ns.input}")
+    sites: tuple[Site, ...] = ()
+    try:
+        sites = tuple(get_sites(site_names))
+    except ValueError as exc:
+        errors.append(f"--sites {exc}")
+    if ns.session_budget is not None and ns.session_budget < 1:
         errors.append("--session-budget must be >= 1")
+    if ns.workers is not None and ns.workers < 1:
+        errors.append("--workers must be >= 1")
+    if ns.ban_cooldown_s is not None and ns.ban_cooldown_s < 0:
+        errors.append("--ban-cooldown-s must be >= 0")
     if ns.wait_min_s < 0:
         errors.append("--wait-min-s must be >= 0")
     if ns.wait_max_s < ns.wait_min_s:
@@ -56,13 +87,16 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
     return RunConfig(
         input_csv=ns.input,
         output_csv=ns.output,
-        page_size=ns.page_size,
+        sites=sites,
         dedupe=ns.dedupe,
         debug=ns.debug,
         session_budget=ns.session_budget,
+        workers=ns.workers,
+        ban_cooldown_s=ns.ban_cooldown_s,
         wait_min_s=ns.wait_min_s,
         wait_max_s=ns.wait_max_s,
         env_file=ns.env_file,
+        do_import=ns.do_import,
     )
 
 
@@ -76,7 +110,11 @@ def main(argv: list[str] | None = None) -> None:
 
     configure_logging(debug=cfg.debug, run_id=run_id)
     logger = logging.getLogger(__name__)
-    logger.info("%s %s", RUN_START, kv(run_id=run_id))
+    logger.info(
+        "%s %s",
+        RUN_START,
+        kv(run_id=run_id, sites=",".join(site.name for site in cfg.sites)),
+    )
 
     # Detached runs receive SIGTERM; route it through the graceful cancellation
     # path so lanes release proxies and the durable store can resume.
