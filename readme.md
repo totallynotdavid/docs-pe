@@ -1,10 +1,18 @@
 # robot
 
-Bulk lookup of phone-line counts for Peruvian RUCs against the public OSIPTEL
-endpoint (`checatuslineas.osiptel.gob.pe`). Reads a CSV of RUCs, writes
-per-RUC line counts and a resume state database. Work is fanned out across
-concurrent lanes, each routed through a sticky session on a configured proxy
-provider.
+Bulk lookup of public data for Peruvian RUCs across one or more public government
+sites. Reads a CSV of RUCs and writes one result CSV per site, backed by a durable
+resume database. Work is fanned out across concurrent async lanes, each routed
+through a sticky session on a configured proxy provider.
+
+Two sites are built in and compose in a single run:
+
+- `osiptel` (`checatuslineas.osiptel.gob.pe`): phone-line counts per carrier.
+- `sunat` (`e-consultaruc.sunat.gob.pe`): the "Tipo de Documento" record
+  (document type, number, and name) from the RUC consulta page.
+
+The unit of work is a `(ruc, site)` pair, so each site's lookup for a RUC is an
+independent, independently-resumable job.
 
 ## Install
 
@@ -18,14 +26,14 @@ Tasks (run from the repo root):
 ```sh
 mise run format       # ruff format + ruff check --fix
 mise run check        # mypy .
-mise run test         # pytest
 mise run build        # pyinstaller single binary
 ```
 
 ## Configure
 
-Copy `.env.example` to `.env`. `PROXY_PROVIDER` is a comma-separated list and
-the order is preserved. Unknown names or duplicates fail at startup.
+Copy `.env.example` to `.env`. `PROXY_PROVIDER` is a comma-separated list and the
+order is preserved. Unknown names or duplicates fail at startup. Every site is
+proxied, so a run fails fast if no provider is configured.
 
 ```ini
 PROXY_PROVIDER=geonode,dataimpulse
@@ -35,7 +43,7 @@ GEONODE_USER=<value>
 GEONODE_PASS=<value>
 GEONODE_GATEWAY=fr            # fr | fr_whitelist | us | sg
 GEONODE_TYPE=residential      # residential | datacenter | mix
-GEONODE_COUNTRY=PE            # uppercase, must be PE
+GEONODE_COUNTRY=PE            # uppercase, must be PE for OSIPTEL
 GEONODE_STATE=
 GEONODE_CITY=
 GEONODE_ASN=
@@ -49,117 +57,109 @@ DATAIMPULSE_COUNTRY=pe        # lowercase ISO-3166, must be pe
 DATAIMPULSE_SESSTTL=3         # minutes, >= 1
 ```
 
-`GEONODE_COUNTRY=PE` and `DATAIMPULSE_COUNTRY=pe` are required, not optional.
-OSIPTEL's WAF blocks foreign exits with `status=500`, and an empty country
-silently routes through a global pool. Both providers also need the
-corresponding `*_USER` and `*_PASS`.
+OSIPTEL's WAF blocks foreign exits, so `GEONODE_COUNTRY=PE` / `DATAIMPULSE_COUNTRY=pe`
+are required. SUNAT is not IP-bound but is still proxied to spread per-IP rate limits
+at scale. Both providers also need their `*_USER` and `*_PASS`.
 
 ## Run
 
 ```sh
-uv run robot --input rucs.csv --output out.csv --env-file .env
+uv run robot --input rucs.csv --output out.csv --sites sunat,osiptel --env-file .env
 ```
 
-`--input` is a single-column CSV of 11-digit RUCs. Rows that are empty or
-not 11 digits are dropped silently and counted in the run summary under
-`ignored`. The other flags default to the live-endpoint settings and rarely
-need changing:
+`--input` is a single-column CSV of 11-digit RUCs (RUC-10 for persons, RUC-20 for
+companies). Rows that are empty or not 11 digits are dropped silently and counted
+under `ignored`. `--sites` is required. Other flags default to per-site/per-provider
+settings and rarely need changing:
 
-| flag              | default | notes |
-| ----------------- | ------- | ----- |
-| `--page-size`     | 5000    | OSIPTEL returns all rows in one page for any RUC seen in practice |
-| `--dedupe`        | on      | collapse duplicate RUCs in the input |
-| `--session-budget`| 1       | OSIPTEL rejects a reused session on the second API call |
-| `--wait-min-s`    | 0       | optional sleep between successful lookups in a lane |
-| `--wait-max-s`    | 0       | upper bound; the wait is uniform in `[min, max]` |
-| `--debug`         | off     | `robot.*` loggers at DEBUG, `httpx` and `httpcore` at WARNING |
+| flag              | default        | notes |
+| ----------------- | -------------- | ----- |
+| `--sites`         | (required)     | comma-separated: `sunat`, `osiptel` |
+| `--dedupe`        | on             | collapse duplicate RUCs in the input |
+| `--session-budget`| site default   | global override of lookups per sticky session (OSIPTEL 1, SUNAT 50) |
+| `--workers`       | provider default | global override of lanes per provider (GeoNode 15, DataImpulse 18) |
+| `--ban-cooldown-s`| provider default | global override of the post-ban lane cooldown (30s) |
+| `--wait-min-s`    | 0              | optional sleep between successful lookups in a lane |
+| `--wait-max-s`    | 0              | upper bound; the wait is uniform in `[min, max]` |
+| `--import`        | off            | opt-in: rebuild the store from prior per-site exports before planning |
+| `--debug`         | off            | `robot.*` loggers at DEBUG, `httpx`/`httpcore` at WARNING |
 
-`--session-budget=1` is a protocol constraint, not a tuning knob. OSIPTEL
-requires a fresh home-page warmup per lookup, so a higher budget fails
-most lookups while saving only proxy sessions.
+`--session-budget=1` for OSIPTEL is a protocol constraint, not a tuning knob: it
+requires a fresh home-page warmup per lookup.
 
 ## Outputs
 
-Three files are written next to `--output`. All writes are atomic
-(`*.tmp` + rename) and happen even on interruption, so the artifacts on
-disk always reflect the durable state.
+For `--output out.csv` and each requested site, files are written next to `--output`.
+All writes are atomic (`*.tmp` + rename) and happen even on interruption, so the
+artifacts on disk always reflect the durable state.
 
-- `out.csv` — successes, columns `ruc,carrier,lines,total_lines`.
-- `out.errors.csv` — terminal failures, columns `ruc,error_code,error_detail,attempt,session_id,proxy_id,timestamp`.
-- `out.state.sqlite3` — the resume database and source of truth. Do not edit it.
+- `out.<site>.csv`: successes. Columns are the site's own:
+  - `osiptel`: `ruc,carrier,lines,total_lines`
+  - `sunat`: `ruc,tipo_doc,num_doc,nombre`
+- `out.<site>.errors.csv`: terminal failures, columns
+  `ruc,error_code,error_detail,attempt,session_id,proxy_id,timestamp`.
+- `out.state.sqlite3`: the resume database and source of truth. Do not edit it.
 
-A run is fully resumable. Re-running with the same `--output` skips any RUC
-that already has a row in `results` or `errors`. On the very first run, when
-the state DB does not exist yet, an existing `out.csv` is imported once so
-prior successes are not re-fetched. Delete `out.state.sqlite3` to start
-over. A re-run that finally succeeds clears the prior error for that RUC,
-and vice versa; each row always reflects the most recent attempt.
+A successful lookup with no data (an OSIPTEL RUC with no lines, a SUNAT company with
+no document row) is an honest success stored with an empty payload: the pair is done
+but contributes no CSV rows.
 
-Logs go to stdout and to `logs/<run_id>.log` (one file per run, append).
-A run summary is emitted at the end with `rows_read`, `valid`, `ignored`,
-`duplicates`, `already_done`, `pending`, `processed`, `succeeded`,
-`failed`, `remaining`, plus the cumulative counts in the state DB.
+A run is fully resumable. Re-running with the same `--output` skips any `(ruc, site)`
+pair that already succeeded or has retired at the retry cap. The state DB is the only
+durable artifact; delete `out.state.sqlite3` to start over. To rebuild a lost DB from
+its exports, run once with `--import`. A re-run that finally succeeds clears the prior
+error for that pair, and vice versa; each row reflects the most recent attempt.
+
+Logs go to stdout and to `logs/<run_id>.log` (one file per run, append). A per-site
+summary and a run summary are emitted at the end with `rows_read`, `valid`, `ignored`,
+`duplicates`, `pending`, `processed`, `succeeded`, `failed`, plus the cumulative
+counts in the state DB.
 
 ## How it works
 
-A run is one shared queue of pending RUCs. Each provider contributes a
-fixed number of lanes (`workers=15` for GeoNode, `workers=18` for
-DataImpulse) that pull from the queue in any order. A lane opens one
-sticky proxy session, warms up the OSIPTEL home page, performs lookups,
-and closes the session on rotate or exit.
+A run plans pending `(ruc, site)` pairs, then launches a worker pool per site under one
+async `TaskGroup`. Each provider contributes its configured number of lanes (see
+`--workers` above) that drain that site's queue. A lane opens one sticky proxy session,
+runs the site's `ready` warmup, performs lookups, and rotates the session on ban or when
+`session_budget` is reached.
+
+A **site** is just a value: a name, its output columns, its tuning, and two functions:
+`ready(client)` (warm a fresh proxy-bound client) and `lookup(client, ruc) -> rows`
+(perform the request(s), parse, return rows, raising the shared error taxonomy). The
+pipeline, store, and proxy code are entirely site-agnostic; adding a site is one new
+`sites/<name>/` module plus one entry in the `SITES` dict.
 
 Sticky sessions are provider-specific but lane-neutral:
 
-- GeoNode: one port per lane slot (`10000 + slot_id - 1`); a fresh random
-  `sessionId` is baked into the username on each new session, so a rotation
-  forces a new exit IP. Releases are explicit (`PUT
-  monitor.geonode.com/sessions/release/proxies`, up to 3 attempts with
-  backoff).
-- DataImpulse: a single rotating port (`823`); stickiness is the `sessid`
-  in the username. No release API; sessions expire by `sessttl`.
+- GeoNode: one port per lane slot (`10000 + slot - 1`, allocated per provider across all
+  sites so ports never collide); a fresh random `sessionId` in the username forces a new
+  exit IP on rotation. Releases are explicit (`PUT monitor.geonode.com/...`, 3 attempts).
+- DataImpulse: a single rotating port (`823`); stickiness is the `sessid` in the username.
+  No release API; sessions expire by `sessttl`.
 
-The OSIPTEL adapter is a paginated POST to
-`/Consultas/GetAllCabeceraConsulta/` with DataTables-style params. For
-each page it returns `iTotalRecords` and the rows, from which the adapter
-groups counts by `operador`. `page_size=5000` is one request per RUC in
-practice. Status classification:
+Site protocols:
 
-- `403` / `429` and WAF page text (`attack id:`, `web page blocked`, `url
-  you requested has been blocked`) are treated as bans; the sticky session
-  is rotated and the lane cools down for `ban_cooldown_s` (30s by default).
-- `502` / `503` / `504` are treated as upstream degradation; the same
-  session retries without rotation.
-- A non-JSON body, a missing `iTotalRecords`, a missing `data`/`aaData`
-  array, or `estado=true` is a schema error and rotates the session.
-- A `httpx.HTTPError` is a transport error and retries on the same
-  session.
+- **OSIPTEL** is a paginated POST to `/Consultas/GetAllCabeceraConsulta/` with
+  DataTables-style params, grouping counts by `operador`. `403`/`429` and WAF page text
+  are bans (rotate + cooldown); `502`/`503`/`504` are upstream degradation (retry);
+  non-JSON, missing `iTotalRecords`/`data`, or `estado=true` is a schema error.
+- **SUNAT** is a single POST to `jcrS00Alias` with `accion=consPorRuc`, the RUC, and a
+  random 52-char token (its reCAPTCHA is a client-side stub the server does not verify).
+  The result HTML is parsed for the "Tipo de Documento" row. An error page is a transient
+  failure; a result page with no document row is a valid empty success.
 
-The retry policy has three independent axes: `retry` (try the same RUC
-again), `rotate` (discard the sticky session first), and `cooldown_s`
-(pause the lane before the next acquisition). A RUC gets up to
-`MAX_ATTEMPTS=4` attempts within one run; beyond that, the failure is
-persisted as terminal and the RUC is not retried until the next launch.
+Retry classification has one owner (`domain/policy.py`): each fault maps to a retry
+action and an optional cooldown. A pair gets up to `MAX_ATTEMPTS=4` attempts within one
+run; beyond that the failure is persisted, and it retires permanently once its cumulative
+healthy-contact attempts cross the cap (attempts made while the provider's breaker is open
+do not count, so no outage can grind a valid pair to terminal).
 
-Every lane records its egress IP once per session by dialing a public
-probe service (`ip-api.com`, `ipify`, `httpbin.org`, in order, with three
-rounds) through its proxy. Failures are logged at WARNING and the lookup
-proceeds anyway.
-
-The two persisted session identifiers mean different things. `proxy_id`
-is the sticky label the provider assigns (`proxy-1-port-10000` for
-GeoNode, `dataimpulse-slot-1` for DataImpulse). `session_id` is the
-per-open OSIPTEL uuid, regenerated every time the lane opens a new
-session. Both are written to the error rows so a single failed RUC can be
-traced end to end.
-
-A RUC string is exactly 11 digits; non-conforming rows are dropped from
-the plan and counted in `ignored`, not in errors. `--dedupe` collapses
-duplicates inside the input CSV; duplicates are counted in `duplicates`.
+Every lane records its egress IP once per session by dialing a public probe service
+(`ip-api.com`, `ipify`, `httpbin.org`, in order). `proxy_id` is the provider's sticky
+label; `session_id` is the per-open uuid. Both are written to error rows for tracing.
 
 ## Cancellation
 
-`Ctrl-C` and `SIGTERM` both cancel through the same path. The lane
-currently in flight finishes its in-progress lookup, the sticky session
-is released (or expires by TTL), the state DB is closed, and the final
-CSV export runs in `finally` so the artifacts reflect the work that was
-recorded.
+`Ctrl-C` and `SIGTERM` both cancel through the same path. The in-flight lookup finishes,
+the sticky session is released (or expires by TTL), the state DB is closed, and the final
+per-site CSV export runs in `finally` so the artifacts reflect the work that was recorded.
