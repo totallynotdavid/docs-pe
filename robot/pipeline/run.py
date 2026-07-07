@@ -5,150 +5,226 @@ import logging
 
 from typing import TYPE_CHECKING
 
-from robot.domain.types import RunReport, RunTotals
-from robot.obs.events import PROVIDER_SELECTED, RUN_SUMMARY
+from robot.domain.types import RunTotals
+from robot.obs.events import (
+    PROVIDER_SELECTED,
+    RUN_SUMMARY,
+    SITE_SELECTED,
+    SITE_SUMMARY,
+)
 from robot.obs.logging import kv
 from robot.pipeline.breaker import CircuitBreaker
-from robot.pipeline.lane import run_lane
-from robot.pipeline.session import LaneConfig
-from robot.providers.proxy import load_proxy_providers
-from robot.store.export import export_csv
-from robot.store.outcome_log import OutcomeLog, state_path_for_output
-from robot.store.plan import derive_pending
+from robot.pipeline.session import WorkerConfig
+from robot.pipeline.worker import run_worker
+from robot.proxy.load import load_proxy_providers
+from robot.store.export import export_all
+from robot.store.import_ import import_site
+from robot.store.outcomes import OutcomeStore, state_path_for_output
+from robot.store.plan import plan_pending, read_rucs
 
 
 if TYPE_CHECKING:
     from robot.cli import RunConfig
-    from robot.domain.types import RUC
-    from robot.providers.proxy import ProxyProvider
+    from robot.domain.types import RUC, Site
+    from robot.proxy.base import ProxyProvider
+    from robot.store.plan import PlanCounts
 
 
 logger = logging.getLogger(__name__)
 
 
-async def run(cfg: RunConfig, *, run_id: str) -> RunReport:
-    store_path = state_path_for_output(cfg.output_csv)
+async def run(cfg: RunConfig, *, run_id: str) -> None:
+    sites = list(cfg.sites)
+    providers = load_proxy_providers(env_file=cfg.env_file)
 
-    with OutcomeLog(store_path) as log:
-        done = log.done_rucs()
-        if done:
-            seeded = 0
-        else:
-            seeded = log.import_csv(cfg.output_csv)
-            done = log.done_rucs()
-
-        pending, plan = derive_pending(
-            input_csv=cfg.input_csv, done=done, dedupe=cfg.dedupe
-        )
-
-        totals = RunTotals()
-        try:
-            if pending:
-                providers = load_proxy_providers(env_file=cfg.env_file)
-                for provider in providers:
-                    logger.info(
-                        "%s %s",
-                        PROVIDER_SELECTED,
-                        kv(
-                            run_id=run_id,
-                            provider=provider.name,
-                            workers=provider.tuning.workers,
-                            ban_cooldown_s=provider.tuning.ban_cooldown_s,
-                            pending=plan.pending,
-                        ),
-                    )
-                await _run_lanes(
-                    cfg=cfg,
-                    log=log,
-                    providers=providers,
-                    pending=pending,
-                    run_id=run_id,
-                    totals=totals,
+    with OutcomeStore(state_path_for_output(cfg.output_csv)) as store:
+        if cfg.do_import:
+            for site in sites:
+                imported = import_site(
+                    store=store, output_csv=cfg.output_csv, site=site
                 )
+                logger.info("site_import %s", kv(site=site.name, imported=imported))
+
+        rucs, plan = read_rucs(cfg.input_csv, dedupe=cfg.dedupe)
+        done = store.done_pairs()
+        pending = plan_pending(rucs, [site.name for site in sites], done)
+        totals = {site.name: RunTotals() for site in sites}
+
+        try:
+            for site in sites:
+                logger.info(
+                    "%s %s",
+                    SITE_SELECTED,
+                    kv(
+                        run_id=run_id,
+                        site=site.name,
+                        pending=len(pending[site.name]),
+                        session_budget=_budget(cfg, site),
+                    ),
+                )
+            for provider in providers:
+                logger.info(
+                    "%s %s",
+                    PROVIDER_SELECTED,
+                    kv(
+                        run_id=run_id,
+                        provider=provider.name,
+                        workers=_workers(cfg, provider),
+                        ban_cooldown_s=_cooldown(cfg, provider),
+                    ),
+                )
+            await _run_workers(
+                cfg=cfg,
+                store=store,
+                sites=sites,
+                providers=providers,
+                pending=pending,
+                run_id=run_id,
+                totals=totals,
+            )
         finally:
             # Always export in finally so interrupted runs leave CSV artifacts.
-            export_csv(log=log, output_csv=cfg.output_csv)
-            counts = log.counts()
+            export_all(store=store, output_csv=cfg.output_csv, sites=sites)
+            _log_summary(
+                run_id=run_id,
+                store=store,
+                sites=sites,
+                plan=plan,
+                pending=pending,
+                totals=totals,
+            )
 
-        report = RunReport(
-            rows_read=plan.rows_read,
-            valid=plan.valid,
-            ignored=plan.ignored,
-            duplicates=plan.duplicates,
-            already_done=plan.already_done,
-            seeded=seeded,
-            pending=plan.pending,
-            processed=totals.processed,
-            succeeded=totals.succeeded,
-            failed=totals.failed,
-            remaining=plan.pending - totals.processed,
-            total_succeeded=counts.succeeded,
-            total_terminal_failed=counts.terminal_failed,
-            total_retryable=counts.retryable,
+
+async def _run_workers(
+    *,
+    cfg: RunConfig,
+    store: OutcomeStore,
+    sites: list[Site],
+    providers: list[ProxyProvider],
+    pending: dict[str, list[RUC]],
+    run_id: str,
+    totals: dict[str, RunTotals],
+) -> None:
+    # Slots are allocated per provider across all sites so GeoNode's slot->port map
+    # never collides when two sites draw from the same provider.
+    next_slot = {provider.name: 0 for provider in providers}
+
+    async with asyncio.TaskGroup() as group:
+        lane_id = 0
+        for site in sites:
+            site_pending = pending[site.name]
+            if not site_pending:
+                continue
+            queue: asyncio.Queue[RUC] = asyncio.Queue()
+            for ruc in site_pending:
+                queue.put_nowait(ruc)
+            budget = _budget(cfg, site)
+
+            for provider in providers:
+                # One breaker per (site, provider): a provider-wide outage parks that
+                # site's lanes on it without stalling a healthy sibling provider.
+                breaker = CircuitBreaker(
+                    provider=f"{site.name}:{provider.name}", run_id=run_id
+                )
+                worker_cfg = WorkerConfig(
+                    session_budget=budget,
+                    wait_min_s=cfg.wait_min_s,
+                    wait_max_s=cfg.wait_max_s,
+                    ban_cooldown_s=_cooldown(cfg, provider),
+                )
+                for _ in range(_workers(cfg, provider)):
+                    next_slot[provider.name] += 1
+                    lane_id += 1
+                    group.create_task(
+                        run_worker(
+                            queue=queue,
+                            site=site,
+                            store=store,
+                            provider=provider,
+                            breaker=breaker,
+                            slot_id=next_slot[provider.name],
+                            lane_id=lane_id,
+                            run_id=run_id,
+                            cfg=worker_cfg,
+                            totals=totals[site.name],
+                        )
+                    )
+
+
+def _budget(cfg: RunConfig, site: Site) -> int:
+    if cfg.session_budget is not None:
+        return cfg.session_budget
+    return site.tuning.session_budget
+
+
+def _workers(cfg: RunConfig, provider: ProxyProvider) -> int:
+    if cfg.workers is not None:
+        return cfg.workers
+    return provider.tuning.workers
+
+
+def _cooldown(cfg: RunConfig, provider: ProxyProvider) -> float:
+    if cfg.ban_cooldown_s is not None:
+        return cfg.ban_cooldown_s
+    return provider.tuning.ban_cooldown_s
+
+
+def _log_summary(
+    *,
+    run_id: str,
+    store: OutcomeStore,
+    sites: list[Site],
+    plan: PlanCounts,
+    pending: dict[str, list[RUC]],
+    totals: dict[str, RunTotals],
+) -> None:
+    total_pending = total_processed = total_succeeded = total_failed = 0
+    overall_succeeded = overall_terminal = overall_retryable = 0
+
+    for site in sites:
+        counts = store.counts(site.name)
+        totals_for_site = totals[site.name]
+        site_pending = len(pending[site.name])
+        logger.info(
+            "%s %s",
+            SITE_SUMMARY,
+            kv(
+                run_id=run_id,
+                site=site.name,
+                pending=site_pending,
+                processed=totals_for_site.processed,
+                succeeded=totals_for_site.succeeded,
+                failed=totals_for_site.failed,
+                total_succeeded=counts.succeeded,
+                total_terminal_failed=counts.terminal_failed,
+                total_retryable=counts.retryable,
+            ),
         )
+        total_pending += site_pending
+        total_processed += totals_for_site.processed
+        total_succeeded += totals_for_site.succeeded
+        total_failed += totals_for_site.failed
+        overall_succeeded += counts.succeeded
+        overall_terminal += counts.terminal_failed
+        overall_retryable += counts.retryable
 
     logger.info(
         "%s %s",
         RUN_SUMMARY,
         kv(
             run_id=run_id,
-            state_db=store_path,
-            rows_read=report.rows_read,
-            valid=report.valid,
-            ignored=report.ignored,
-            duplicates=report.duplicates,
-            already_done=report.already_done,
-            seeded=report.seeded,
-            pending=report.pending,
-            processed=report.processed,
-            succeeded=report.succeeded,
-            failed=report.failed,
-            remaining=report.remaining,
-            total_succeeded=report.total_succeeded,
-            total_terminal_failed=report.total_terminal_failed,
-            total_retryable=report.total_retryable,
+            state_db=store.path,
+            sites=",".join(site.name for site in sites),
+            rows_read=plan.rows_read,
+            valid=plan.valid,
+            ignored=plan.ignored,
+            duplicates=plan.duplicates,
+            pending=total_pending,
+            processed=total_processed,
+            succeeded=total_succeeded,
+            failed=total_failed,
+            total_succeeded=overall_succeeded,
+            total_terminal_failed=overall_terminal,
+            total_retryable=overall_retryable,
         ),
     )
-    return report
-
-
-async def _run_lanes(
-    *,
-    cfg: RunConfig,
-    log: OutcomeLog,
-    providers: list[ProxyProvider],
-    pending: list[RUC],
-    run_id: str,
-    totals: RunTotals,
-) -> None:
-    lane_cfg = LaneConfig(
-        page_size=cfg.page_size,
-        session_budget=cfg.session_budget,
-        wait_min_s=cfg.wait_min_s,
-        wait_max_s=cfg.wait_max_s,
-    )
-    queue: asyncio.Queue[RUC] = asyncio.Queue()
-    for ruc in pending:
-        queue.put_nowait(ruc)
-
-    async with asyncio.TaskGroup() as group:
-        lane_id = 0
-        for provider in providers:
-            # One breaker per provider, shared by its lanes: a provider-wide outage
-            # parks that provider without stalling a healthy sibling provider.
-            breaker = CircuitBreaker(provider=provider.name, run_id=run_id)
-            for slot_id in range(1, provider.tuning.workers + 1):
-                lane_id += 1
-                group.create_task(
-                    run_lane(
-                        queue=queue,
-                        log=log,
-                        provider=provider,
-                        breaker=breaker,
-                        slot_id=slot_id,
-                        lane_id=lane_id,
-                        run_id=run_id,
-                        cfg=lane_cfg,
-                        totals=totals,
-                    )
-                )
