@@ -49,8 +49,8 @@ Row = tuple[Cell, ...]
 
 @dataclass(frozen=True)
 class SiteTuning:
-    # session_budget: lookups a sticky proxy session serves before rotation. It is a
-    # site/protocol constraint (OSIPTEL must rotate every lookup), not a proxy knob.
+    # Lookups a sticky proxy session serves before rotation. A site/protocol
+    # constraint, not a proxy knob.
     session_budget: int
 
 
@@ -66,6 +66,17 @@ class Site:
 
     name: str
     columns: tuple[str, ...]
+    # Input contract: the RUC kinds this site can serve. The planner routes each RUC
+    # only to sites whose supports include its kind, so a mixed input fans out by
+    # taxpayer type (RUC-10 to a natural-person lookup, RUC-20 to a company lookup)
+    # with no site ever handed a RUC it cannot answer.
+    supports: frozenset[RucKind]
+    # Output contract: may a lookup legitimately return zero rows? The engine enforces
+    # this after every lookup (pipeline/fetch.py), so a site whose result is always
+    # non-empty (a persona always has a document, a company always has a rep) turns an
+    # empty result into a loud fault instead of a silent blank success. Emptiness is a
+    # site policy declared here, never a parser's fall-through.
+    allows_empty: bool
     tuning: SiteTuning
     ready: Callable[[httpx.AsyncClient], Awaitable[None]]
     lookup: Callable[[httpx.AsyncClient, RUC], Awaitable[tuple[Row, ...]]]

@@ -14,7 +14,7 @@ from robot.domain.errors import (
     TransientTransportError,
     UpstreamNotReadyError,
 )
-from robot.domain.types import Site, SiteTuning
+from robot.domain.types import RucKind, Site, SiteTuning
 from robot.obs.events import FETCH_PAGE_OK, FETCH_PAGE_START, SITE_REQUEST_FAILED
 from robot.obs.logging import kv
 from robot.sites.osiptel.parser import parse_page
@@ -203,6 +203,11 @@ def _is_waf_block(body: str) -> bool:
 OSIPTEL = Site(
     name="osiptel",
     columns=("carrier", "lines", "total_lines"),
+    # Phone-line counts exist for any taxpayer, natural or juridica.
+    supports=frozenset({RucKind.NATURAL, RucKind.JURIDICA}),
+    # A RUC with no phone lines is a real, valid empty result, not a fault.
+    allows_empty=True,
+    # OSIPTEL must rotate every lookup.
     tuning=SiteTuning(session_budget=1),
     ready=_ready,
     lookup=_lookup,

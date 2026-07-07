@@ -6,6 +6,7 @@ import time
 
 from typing import TYPE_CHECKING
 
+from robot.domain.errors import ProviderSchemaError
 from robot.domain.policy import MAX_ATTEMPTS, classify_exception
 from robot.domain.types import Result, Status
 from robot.obs.events import LOOKUP_FAILED, LOOKUP_OK, WORKER_UNHANDLED_EXCEPTION
@@ -19,7 +20,7 @@ from robot.pipeline.session import (
 
 
 if TYPE_CHECKING:
-    from robot.domain.types import RUC, Site
+    from robot.domain.types import RUC, Row, Site
     from robot.pipeline.breaker import CircuitBreaker
     from robot.pipeline.session import WorkerConfig, WorkerState
     from robot.proxy.base import ProxyProvider
@@ -55,6 +56,7 @@ async def fetch_one(
             )
             started = time.perf_counter()
             rows = await site.lookup(session.client, ruc)
+            _enforce_allows_empty(site, rows)
             logger.info(
                 "%s %s",
                 LOOKUP_OK,
@@ -87,7 +89,7 @@ async def fetch_one(
             with contextlib.suppress(Exception):
                 await after_success(state, provider=provider, cfg=cfg)
             return result
-        except Exception as exc:  # noqa: BLE001 - the worker is the fault boundary
+        except Exception as exc:  # noqa: BLE001
             # Nothing may escape a worker into the TaskGroup, or one bad proxy read
             # takes down every lane. Even an unknown exception is handled here.
             decision = classify_exception(exc, ban_cooldown_s=cfg.ban_cooldown_s)
@@ -140,3 +142,10 @@ async def fetch_one(
                     proxy_id=proxy_id,
                     attempt=attempt,
                 )
+
+
+def _enforce_allows_empty(site: Site, rows: tuple[Row, ...]) -> None:
+    if rows or site.allows_empty:
+        return
+    msg = f"{site.name} returned no rows but disallows empty results"
+    raise ProviderSchemaError(msg)

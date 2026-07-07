@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from robot.domain.errors import BanSignalError, TransientTransportError
-from robot.domain.types import Site, SiteTuning
+from robot.domain.types import RucKind, Site, SiteTuning
 from robot.sites.sunat.parser import parse_page
 from robot.sites.sunat.request import build_body, random_token
 
@@ -66,6 +66,10 @@ def _headers() -> dict[str, str]:
 SUNAT = Site(
     name="sunat",
     columns=("tipo_doc", "num_doc", "nombre"),
+    supports=frozenset({RucKind.NATURAL}),
+    # A persona natural is defined by an identity document, so it is always present;
+    # an empty result is drift, never a valid blank.
+    allows_empty=False,
     # Not IP-bound (see _ready), so one sticky session serves many lookups; the
     # proxy still rotates on budget to spread IP-level rate limits.
     tuning=SiteTuning(session_budget=50),
