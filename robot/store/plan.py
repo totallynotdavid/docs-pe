@@ -11,6 +11,8 @@ from robot.domain.types import RUC
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from robot.domain.types import Site
+
 
 @dataclass(frozen=True)
 class PlanCounts:
@@ -50,10 +52,28 @@ def read_rucs(input_csv: Path, *, dedupe: bool) -> tuple[list[RUC], PlanCounts]:
     )
 
 
+def _serves(site: Site, ruc: RUC) -> bool:
+    # The sole owner of "can this site answer this RUC?"; both routing helpers below
+    # ask through here so the predicate never drifts between them.
+    return ruc.kind in site.supports
+
+
 def plan_pending(
-    rucs: list[RUC], sites: list[str], done_pairs: set[tuple[str, str]]
+    rucs: list[RUC], sites: list[Site], done_pairs: set[tuple[str, str]]
 ) -> dict[str, list[RUC]]:
+    # Excludes pairs already resolved in the store, so a resumed run never
+    # redoes completed work.
     return {
-        site: [ruc for ruc in rucs if (site, str(ruc)) not in done_pairs]
+        site.name: [
+            ruc
+            for ruc in rucs
+            if _serves(site, ruc) and (site.name, str(ruc)) not in done_pairs
+        ]
         for site in sites
     }
+
+
+def count_unrouted(rucs: list[RUC], sites: list[Site]) -> int:
+    # A RUC no selected site can serve falls out of every output; count it so the gap
+    # is visible, not a silent absence.
+    return sum(1 for ruc in rucs if not any(_serves(site, ruc) for site in sites))

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from robot.domain.types import RunTotals
 from robot.obs.events import (
     PROVIDER_SELECTED,
+    RUCS_UNROUTED,
     RUN_SUMMARY,
     SITE_SELECTED,
     SITE_SUMMARY,
@@ -20,7 +21,7 @@ from robot.proxy.load import load_proxy_providers
 from robot.store.export import export_all
 from robot.store.import_ import import_site
 from robot.store.outcomes import OutcomeStore, state_path_for_output
-from robot.store.plan import plan_pending, read_rucs
+from robot.store.plan import count_unrouted, plan_pending, read_rucs
 
 
 if TYPE_CHECKING:
@@ -47,8 +48,12 @@ async def run(cfg: RunConfig, *, run_id: str) -> None:
 
         rucs, plan = read_rucs(cfg.input_csv, dedupe=cfg.dedupe)
         done = store.done_pairs()
-        pending = plan_pending(rucs, [site.name for site in sites], done)
+        pending = plan_pending(rucs, sites, done)
         totals = {site.name: RunTotals() for site in sites}
+
+        unrouted = count_unrouted(rucs, sites)
+        if unrouted:
+            logger.warning("%s %s", RUCS_UNROUTED, kv(run_id=run_id, unrouted=unrouted))
 
         try:
             for site in sites:
@@ -92,6 +97,7 @@ async def run(cfg: RunConfig, *, run_id: str) -> None:
                 plan=plan,
                 pending=pending,
                 totals=totals,
+                unrouted=unrouted,
             )
 
 
@@ -177,6 +183,7 @@ def _log_summary(
     plan: PlanCounts,
     pending: dict[str, list[RUC]],
     totals: dict[str, RunTotals],
+    unrouted: int,
 ) -> None:
     total_pending = total_processed = total_succeeded = total_failed = 0
     overall_succeeded = overall_terminal = overall_retryable = 0
@@ -219,6 +226,7 @@ def _log_summary(
             valid=plan.valid,
             ignored=plan.ignored,
             duplicates=plan.duplicates,
+            unrouted=unrouted,
             pending=total_pending,
             processed=total_processed,
             succeeded=total_succeeded,

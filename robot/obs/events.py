@@ -3,6 +3,7 @@ from __future__ import annotations
 
 RUN_START = "run_start"
 RUN_SUMMARY = "run_summary"
+RUCS_UNROUTED = "rucs_unrouted"
 SITE_SELECTED = "site_selected"
 SITE_SUMMARY = "site_summary"
 PROVIDER_SELECTED = "provider_selected"
