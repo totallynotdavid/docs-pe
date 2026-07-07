@@ -7,7 +7,6 @@ from robot.domain.errors import (
     ParseError,
     ProviderSchemaError,
     RobotError,
-    SessionStateError,
     TransientTransportError,
     UpstreamNotReadyError,
 )
@@ -18,10 +17,10 @@ MAX_ATTEMPTS = 4
 
 # The single owner of the retirement rule. A failing RUC leaves the work set only
 # by succeeding or by reaching this many cumulative healthy-contact attempts across
-# all runs. OSIPTEL has no per-RUC permanent error (a RUC with no lines returns an
-# empty success), so every failure is environmental and stays eligible until then.
+# all runs. No RobotError variant is classified as a permanent per-RUC failure, so
+# every failure is environmental and stays eligible until then.
 # Attempts made while the provider is unhealthy do not count (see
-# LookupResult.made_healthy_contact), so no outage can grind a RUC to this cap.
+# Result.made_healthy_contact), so no outage can grind a RUC to this cap.
 MAX_TOTAL_ATTEMPTS = 12
 
 
@@ -33,7 +32,7 @@ class RetryDecision:
     cooldown_s: float
 
 
-def classify(exc: RobotError, *, ban_cooldown_s: float) -> RetryDecision:
+def _classify(exc: RobotError, *, ban_cooldown_s: float) -> RetryDecision:
     if isinstance(exc, BanSignalError):
         return RetryDecision("ban_signal", cooldown_s=ban_cooldown_s)
     if isinstance(exc, UpstreamNotReadyError):
@@ -47,8 +46,6 @@ def classify(exc: RobotError, *, ban_cooldown_s: float) -> RetryDecision:
         # event retire the whole backlog. Rotate and let the breaker trip if it
         # correlates; a truly bad RUC still retires via the cap.
         return RetryDecision("provider_schema_error", cooldown_s=0.0)
-    if isinstance(exc, SessionStateError):
-        return RetryDecision("session_state_error", cooldown_s=0.0)
     if isinstance(exc, TransientTransportError):
         return RetryDecision("transport_error", cooldown_s=0.0)
     return RetryDecision("provider_error", cooldown_s=0.0)
@@ -63,5 +60,5 @@ def classify_exception(exc: BaseException, *, ban_cooldown_s: float) -> RetryDec
     lane and tear down the run.
     """
     if isinstance(exc, RobotError):
-        return classify(exc, ban_cooldown_s=ban_cooldown_s)
+        return _classify(exc, ban_cooldown_s=ban_cooldown_s)
     return RetryDecision("unknown_error", cooldown_s=0.0)

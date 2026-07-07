@@ -21,9 +21,5 @@ class UpstreamNotReadyError(TransientTransportError):
     pass
 
 
-class SessionStateError(RobotError):
-    pass
-
-
 class ProviderSchemaError(RobotError):
     pass
