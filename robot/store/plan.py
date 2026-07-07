@@ -13,24 +13,17 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class PlanReport:
+class PlanCounts:
     rows_read: int
     valid: int
     ignored: int
     duplicates: int
-    already_done: int
-    pending: int
 
 
-def derive_pending(
-    *,
-    input_csv: Path,
-    done: set[str],
-    dedupe: bool,
-) -> tuple[list[RUC], PlanReport]:
-    rows_read = valid = ignored = duplicates = already_done = 0
+def read_rucs(input_csv: Path, *, dedupe: bool) -> tuple[list[RUC], PlanCounts]:
+    rows_read = valid = ignored = duplicates = 0
     seen: set[str] = set()
-    pending: list[RUC] = []
+    rucs: list[RUC] = []
 
     with input_csv.open(newline="", encoding="utf-8-sig") as file_obj:
         for row in csv.reader(file_obj):
@@ -50,18 +43,17 @@ def derive_pending(
                 continue
             seen.add(normalized)
             valid += 1
+            rucs.append(ruc)
 
-            if normalized in done:
-                already_done += 1
-                continue
-            pending.append(ruc)
-
-    report = PlanReport(
-        rows_read=rows_read,
-        valid=valid,
-        ignored=ignored,
-        duplicates=duplicates,
-        already_done=already_done,
-        pending=len(pending),
+    return rucs, PlanCounts(
+        rows_read=rows_read, valid=valid, ignored=ignored, duplicates=duplicates
     )
-    return pending, report
+
+
+def plan_pending(
+    rucs: list[RUC], sites: list[str], done_pairs: set[tuple[str, str]]
+) -> dict[str, list[RUC]]:
+    return {
+        site: [ruc for ruc in rucs if (site, str(ruc)) not in done_pairs]
+        for site in sites
+    }

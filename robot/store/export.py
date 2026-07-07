@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Iterator, Sequence
     from pathlib import Path
 
-    from robot.store.outcome_log import OutcomeLog
+    from robot.domain.types import Site
+    from robot.store.outcomes import OutcomeStore
 
 
-SUCCESS_HEADERS = ["ruc", "carrier", "lines", "total_lines"]
 ERROR_HEADERS = [
     "ruc",
     "error_code",
@@ -25,12 +25,34 @@ ERROR_HEADERS = [
 ]
 
 
-def export_csv(*, log: OutcomeLog, output_csv: Path) -> None:
-    output_csv.parent.mkdir(parents=True, exist_ok=True)
-    _write_atomic(output_csv, SUCCESS_HEADERS, log.result_rows())
+def export_all(*, store: OutcomeStore, output_csv: Path, sites: list[Site]) -> None:
+    for site in sites:
+        export_site(store=store, output_csv=output_csv, site=site)
+
+
+def export_site(*, store: OutcomeStore, output_csv: Path, site: Site) -> None:
+    success_path = site_csv_path(output_csv, site.name)
+    success_path.parent.mkdir(parents=True, exist_ok=True)
     _write_atomic(
-        output_csv.with_suffix(".errors.csv"), ERROR_HEADERS, log.error_rows()
+        success_path, ["ruc", *site.columns], _success_lines(store, site.name)
     )
+    _write_atomic(
+        success_path.with_suffix(".errors.csv"),
+        ERROR_HEADERS,
+        store.error_rows(site.name),
+    )
+
+
+def site_csv_path(output_csv: Path, site_name: str) -> Path:
+    return output_csv.with_name(f"{output_csv.stem}.{site_name}{output_csv.suffix}")
+
+
+def _success_lines(store: OutcomeStore, site_name: str) -> Iterator[list[str | int]]:
+    # An empty payload is an honest success with no data, so it yields no CSV lines:
+    # the pair is present in the store as done but absent from the projection.
+    for ruc, rows in store.success_rows(site_name):
+        for row in rows:
+            yield [ruc, *row]
 
 
 def _write_atomic(
