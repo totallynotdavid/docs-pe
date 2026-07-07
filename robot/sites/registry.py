@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from robot.sites.osiptel.site import OSIPTEL
-from robot.sites.sunat.site import SUNAT
+from robot.sites.sunat.site import SUNAT, SUNAT_REPS
 
 
 if TYPE_CHECKING:
@@ -12,7 +12,11 @@ if TYPE_CHECKING:
 
 # The registry is a plain dict, not a framework: name -> Site value. Adding a site
 # is one new sites/<name>/ module plus one entry here.
-SITES: dict[str, Site] = {SUNAT.name: SUNAT, OSIPTEL.name: OSIPTEL}
+SITES: dict[str, Site] = {
+    SUNAT.name: SUNAT,
+    SUNAT_REPS.name: SUNAT_REPS,
+    OSIPTEL.name: OSIPTEL,
+}
 
 
 def get_sites(names: list[str]) -> list[Site]:

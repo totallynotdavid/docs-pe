@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from robot.sites.registry import get_sites
+from robot.sites.registry import SITES, get_sites
+
+
+def test_every_expected_site_is_registered() -> None:
+    # A name collision between two Site values (e.g. a copy-pasted .name) would
+    # silently drop one entry from the dict; this catches that directly.
+    assert set(SITES) == {"sunat", "sunat_reps", "osiptel"}
 
 
 def test_resolves_sites_in_the_requested_order() -> None:

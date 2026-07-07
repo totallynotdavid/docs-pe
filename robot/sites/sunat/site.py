@@ -4,8 +4,16 @@ from typing import TYPE_CHECKING
 
 from robot.domain.errors import BanSignalError, TransientTransportError
 from robot.domain.types import RucKind, Site, SiteTuning
-from robot.sites.sunat.parser import parse_page
-from robot.sites.sunat.request import build_body, random_token
+from robot.sites.sunat.parser import (
+    parse_razon_social,
+    parse_reps,
+    parse_tipo_documento,
+)
+from robot.sites.sunat.request import (
+    build_consulta_body,
+    build_reps_body,
+    random_token,
+)
 
 
 if TYPE_CHECKING:
@@ -33,25 +41,54 @@ async def _ready(client: httpx.AsyncClient) -> None:
         raise BanSignalError(msg)
 
 
-async def _lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:
-    body = build_body(ruc=str(ruc), token=random_token())
-    response = await client.post(API_URL, data=body, headers=_headers())
-
-    status = response.status_code
-    if status in _TRANSIENT_STATUSES:
-        msg = f"sunat request transient status={status}"
-        raise TransientTransportError(msg)
-    if status >= 500 or status in _BAN_STATUSES:
-        msg = f"sunat request failed status={status}"
-        raise BanSignalError(msg)
-    if status != 200:
-        msg = f"sunat request failed status={status}"
-        raise TransientTransportError(msg)
-
-    record = parse_page(response.text)
+async def _lookup_tipo_documento(
+    client: httpx.AsyncClient, ruc: RUC
+) -> tuple[Row, ...]:
+    body = build_consulta_body(ruc=str(ruc), token=random_token())
+    page = await _post(client, body, what="consulta")
+    record = parse_tipo_documento(page)
     if record is None:
         return ()
     return ((record.tipo_doc, record.num_doc, record.nombre),)
+
+
+async def _lookup_representantes(
+    client: httpx.AsyncClient, ruc: RUC
+) -> tuple[Row, ...]:
+    # Two requests: the ficha RUC carries the razon social (getRepLeg only echoes
+    # back whatever name we send), then getRepLeg carries the representatives table.
+    consulta_body = build_consulta_body(ruc=str(ruc), token=random_token())
+    razon_social = parse_razon_social(
+        await _post(client, consulta_body, what="consulta")
+    )
+    reps_body = build_reps_body(ruc=str(ruc), razon_social=razon_social)
+    reps = parse_reps(await _post(client, reps_body, what="reps"))
+    return tuple(
+        (
+            razon_social,
+            rep.doc_type,
+            rep.num_doc,
+            rep.nombre,
+            rep.cargo,
+            rep.fecha_desde,
+        )
+        for rep in reps
+    )
+
+
+async def _post(client: httpx.AsyncClient, body: dict[str, str], *, what: str) -> str:
+    response = await client.post(API_URL, data=body, headers=_headers())
+    status = response.status_code
+    if status in _TRANSIENT_STATUSES:
+        msg = f"sunat {what} transient status={status}"
+        raise TransientTransportError(msg)
+    if status >= 500 or status in _BAN_STATUSES:
+        msg = f"sunat {what} failed status={status}"
+        raise BanSignalError(msg)
+    if status != 200:
+        msg = f"sunat {what} failed status={status}"
+        raise TransientTransportError(msg)
+    return response.text
 
 
 def _headers() -> dict[str, str]:
@@ -63,6 +100,10 @@ def _headers() -> dict[str, str]:
     }
 
 
+# Not IP-bound (see _ready), so one sticky session serves many lookups; the proxy
+# still rotates on budget to spread IP-level rate limits.
+_TUNING = SiteTuning(session_budget=50)
+
 SUNAT = Site(
     name="sunat",
     columns=("tipo_doc", "num_doc", "nombre"),
@@ -70,9 +111,19 @@ SUNAT = Site(
     # A persona natural is defined by an identity document, so it is always present;
     # an empty result is drift, never a valid blank.
     allows_empty=False,
-    # Not IP-bound (see _ready), so one sticky session serves many lookups; the
-    # proxy still rotates on budget to spread IP-level rate limits.
-    tuning=SiteTuning(session_budget=50),
+    tuning=_TUNING,
     ready=_ready,
-    lookup=_lookup,
+    lookup=_lookup_tipo_documento,
+)
+
+SUNAT_REPS = Site(
+    name="sunat_reps",
+    columns=("razon_social", "doc_type", "num_doc", "nombre", "cargo", "fecha_desde"),
+    supports=frozenset({RucKind.JURIDICA}),
+    # A company always has at least one legal representative, so an empty table is
+    # drift, never a repless company.
+    allows_empty=False,
+    tuning=_TUNING,
+    ready=_ready,
+    lookup=_lookup_representantes,
 )
