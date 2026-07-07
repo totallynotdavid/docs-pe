@@ -17,6 +17,11 @@ if TYPE_CHECKING:
 _RUC_RE = re.compile(r"^\d{11}$")
 
 
+class RucKind(Enum):
+    NATURAL = "natural"
+    JURIDICA = "juridica"
+
+
 class RUC(UserString):
     def __init__(self, value: str) -> None:
         normalized = value.strip()
@@ -24,6 +29,10 @@ class RUC(UserString):
             msg = f"invalid RUC {value!r}: must be 11 digits"
             raise ValueError(msg)
         super().__init__(normalized)
+
+    @property
+    def kind(self) -> RucKind:
+        return RucKind.JURIDICA if self.data.startswith("20") else RucKind.NATURAL
 
 
 class Status(str, Enum):
