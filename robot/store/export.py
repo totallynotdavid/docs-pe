@@ -23,6 +23,7 @@ ERROR_HEADERS = [
     "proxy_id",
     "timestamp",
 ]
+NOT_FOUND_HEADERS = ["ruc", "timestamp"]
 
 
 def export_all(*, store: OutcomeStore, output_csv: Path, sites: list[Site]) -> None:
@@ -40,6 +41,11 @@ def export_site(*, store: OutcomeStore, output_csv: Path, site: Site) -> None:
         success_path.with_suffix(".errors.csv"),
         ERROR_HEADERS,
         store.error_rows(site.name),
+    )
+    _write_atomic(
+        success_path.with_suffix(".not_found.csv"),
+        NOT_FOUND_HEADERS,
+        store.not_found_rows(site.name),
     )
 
 

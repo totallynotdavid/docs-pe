@@ -186,7 +186,8 @@ def _log_summary(
     unrouted: int,
 ) -> None:
     total_pending = total_processed = total_succeeded = total_failed = 0
-    overall_succeeded = overall_terminal = overall_retryable = 0
+    total_not_found = 0
+    overall_succeeded = overall_not_found = overall_terminal = overall_retryable = 0
 
     for site in sites:
         counts = store.counts(site.name)
@@ -201,8 +202,10 @@ def _log_summary(
                 pending=site_pending,
                 processed=totals_for_site.processed,
                 succeeded=totals_for_site.succeeded,
+                not_found=totals_for_site.not_found,
                 failed=totals_for_site.failed,
                 total_succeeded=counts.succeeded,
+                total_not_found=counts.not_found,
                 total_terminal_failed=counts.terminal_failed,
                 total_retryable=counts.retryable,
             ),
@@ -210,8 +213,10 @@ def _log_summary(
         total_pending += site_pending
         total_processed += totals_for_site.processed
         total_succeeded += totals_for_site.succeeded
+        total_not_found += totals_for_site.not_found
         total_failed += totals_for_site.failed
         overall_succeeded += counts.succeeded
+        overall_not_found += counts.not_found
         overall_terminal += counts.terminal_failed
         overall_retryable += counts.retryable
 
@@ -230,8 +235,10 @@ def _log_summary(
             pending=total_pending,
             processed=total_processed,
             succeeded=total_succeeded,
+            not_found=total_not_found,
             failed=total_failed,
             total_succeeded=overall_succeeded,
+            total_not_found=overall_not_found,
             total_terminal_failed=overall_terminal,
             total_retryable=overall_retryable,
         ),

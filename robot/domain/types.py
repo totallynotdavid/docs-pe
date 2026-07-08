@@ -38,6 +38,7 @@ class RUC(UserString):
 class Status(str, Enum):
     OK = "ok"
     FAILED = "failed"
+    NOT_FOUND = "not_found"
 
 
 # One output cell and a row of them, aligned to a site's columns. Every site
@@ -106,4 +107,5 @@ class Result:
 class RunTotals:
     processed: int = 0
     succeeded: int = 0
+    not_found: int = 0
     failed: int = 0

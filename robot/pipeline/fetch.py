@@ -6,10 +6,15 @@ import time
 
 from typing import TYPE_CHECKING
 
-from robot.domain.errors import ProviderSchemaError
+from robot.domain.errors import ProviderSchemaError, RucNotFoundError
 from robot.domain.policy import MAX_ATTEMPTS, classify_exception
 from robot.domain.types import Result, Status
-from robot.obs.events import LOOKUP_FAILED, LOOKUP_OK, WORKER_UNHANDLED_EXCEPTION
+from robot.obs.events import (
+    LOOKUP_FAILED,
+    LOOKUP_NOT_FOUND,
+    LOOKUP_OK,
+    WORKER_UNHANDLED_EXCEPTION,
+)
 from robot.obs.logging import kv
 from robot.pipeline.session import (
     after_success,
@@ -86,6 +91,33 @@ async def fetch_one(
             breaker.record_success()
             # A successful lookup must never be downgraded by post-success
             # bookkeeping, so any error winding down the session is swallowed.
+            with contextlib.suppress(Exception):
+                await after_success(state, provider=provider, cfg=cfg)
+            return result
+        except RucNotFoundError:
+            logger.info(
+                "%s %s",
+                LOOKUP_NOT_FOUND,
+                kv(
+                    run_id=run_id,
+                    lane_id=lane_id,
+                    site=site.name,
+                    provider=provider.name,
+                    session_id=session.session_id,
+                    proxy_id=session.proxy.proxy_id,
+                    ruc=ruc,
+                    attempt=attempt,
+                ),
+            )
+            result = Result(
+                ruc=ruc,
+                site=site.name,
+                status=Status.NOT_FOUND,
+                http_session_id=session.session_id,
+                proxy_id=session.proxy.proxy_id,
+                attempt=attempt,
+            )
+            breaker.record_success()
             with contextlib.suppress(Exception):
                 await after_success(state, provider=provider, cfg=cfg)
             return result

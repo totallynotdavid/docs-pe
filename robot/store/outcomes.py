@@ -19,7 +19,8 @@ if TYPE_CHECKING:
 
 
 # Implements the retirement rule owned by domain/policy.py (MAX_TOTAL_ATTEMPTS).
-_TERMINAL_PREDICATE = "status = 'ok' OR attempt_count >= :cap"
+# not_found is terminal on first contact, same as ok, never by attempt count.
+_TERMINAL_PREDICATE = "status IN ('ok', 'not_found') OR attempt_count >= :cap"
 
 SCHEMA_DDL = """
 CREATE TABLE IF NOT EXISTS outcomes (
@@ -71,6 +72,24 @@ ON CONFLICT(site, ruc) DO UPDATE SET
     session_id = excluded.session_id,
     proxy_id = excluded.proxy_id,
     finished_at = excluded.finished_at
+WHERE outcomes.status NOT IN ('ok', 'not_found')
+"""
+
+UPSERT_NOT_FOUND = """
+INSERT INTO outcomes
+    (site, ruc, status, payload, error_code, error_detail,
+     attempt_count, session_id, proxy_id, finished_at)
+VALUES
+    (:site, :ruc, 'not_found', '[]', '', '',
+     0, :session_id, :proxy_id, :finished_at)
+ON CONFLICT(site, ruc) DO UPDATE SET
+    status = 'not_found',
+    payload = '[]',
+    error_code = '',
+    error_detail = '',
+    session_id = excluded.session_id,
+    proxy_id = excluded.proxy_id,
+    finished_at = excluded.finished_at
 WHERE outcomes.status != 'ok'
 """
 
@@ -89,8 +108,17 @@ SELECT ruc, error_code, error_detail, attempt_count, session_id, proxy_id, finis
  ORDER BY ruc
 """
 
+SELECT_NOT_FOUND_ROWS = """
+SELECT ruc, finished_at FROM outcomes
+ WHERE site = :site AND status = 'not_found'
+ ORDER BY ruc
+"""
+
 COUNT_SUCCEEDED = (
     "SELECT COUNT(*) AS total FROM outcomes WHERE site = :site AND status = 'ok'"
+)
+COUNT_NOT_FOUND = (
+    "SELECT COUNT(*) AS total FROM outcomes WHERE site = :site AND status = 'not_found'"
 )
 COUNT_TERMINAL = (
     "SELECT COUNT(*) AS total FROM outcomes "
@@ -105,6 +133,7 @@ COUNT_RETRYABLE = (
 @dataclass(frozen=True)
 class OutcomeCounts:
     succeeded: int
+    not_found: int
     terminal_failed: int
     retryable: int
 
@@ -139,6 +168,19 @@ class OutcomeStore:
     def record_import(self, *, site: str, ruc: str, rows: tuple[Row, ...]) -> None:
         self._write_success(site=site, ruc=ruc, rows=rows, session_id="", proxy_id="")
 
+    def record_not_found(self, result: Result) -> None:
+        with self._transaction():
+            self._conn.execute(
+                UPSERT_NOT_FOUND,
+                {
+                    "site": result.site,
+                    "ruc": str(result.ruc),
+                    "session_id": result.http_session_id,
+                    "proxy_id": result.proxy_id,
+                    "finished_at": _now(),
+                },
+            )
+
     def record_failure(self, result: Result) -> None:
         # 0 when made_healthy_contact is False; see Result.made_healthy_contact.
         increment = result.attempt if result.made_healthy_contact else 0
@@ -169,6 +211,9 @@ class OutcomeStore:
         succeeded = int(
             self._conn.execute(COUNT_SUCCEEDED, {"site": site}).fetchone()["total"]
         )
+        not_found = int(
+            self._conn.execute(COUNT_NOT_FOUND, {"site": site}).fetchone()["total"]
+        )
         terminal = int(
             self._conn.execute(
                 COUNT_TERMINAL, {"site": site, "cap": retry_cap}
@@ -180,12 +225,19 @@ class OutcomeStore:
             ).fetchone()["total"]
         )
         return OutcomeCounts(
-            succeeded=succeeded, terminal_failed=terminal, retryable=retryable
+            succeeded=succeeded,
+            not_found=not_found,
+            terminal_failed=terminal,
+            retryable=retryable,
         )
 
     def success_rows(self, site: str) -> Iterator[tuple[str, tuple[Row, ...]]]:
         for row in self._conn.execute(SELECT_SUCCESS_ROWS, {"site": site}):
             yield str(row["ruc"]), decode_rows(str(row["payload"]))
+
+    def not_found_rows(self, site: str) -> Iterator[list[str]]:
+        for row in self._conn.execute(SELECT_NOT_FOUND_ROWS, {"site": site}):
+            yield [str(row["ruc"]), str(row["finished_at"])]
 
     def error_rows(self, site: str) -> Iterator[list[str]]:
         for row in self._conn.execute(SELECT_ERROR_ROWS, {"site": site}):

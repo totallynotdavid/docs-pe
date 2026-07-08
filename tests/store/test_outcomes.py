@@ -22,6 +22,17 @@ def _success(site: str, ruc: str, rows: tuple[Row, ...]) -> Result:
     )
 
 
+def _not_found(site: str, ruc: str) -> Result:
+    return Result(
+        ruc=RUC(ruc),
+        site=site,
+        status=Status.NOT_FOUND,
+        http_session_id="sess",
+        proxy_id="proxy",
+        attempt=1,
+    )
+
+
 def _failure(site: str, ruc: str, *, attempt: int, healthy: bool = True) -> Result:
     return Result(
         ruc=RUC(ruc),
@@ -45,7 +56,7 @@ def test_a_fresh_failure_is_retryable_not_done(store: OutcomeStore) -> None:
     store.record_failure(_failure("osiptel", "20100000001", attempt=4))
     assert ("osiptel", "20100000001") not in store.done_pairs(retry_cap=12)
     assert store.counts("osiptel", retry_cap=12) == OutcomeCounts(
-        succeeded=0, terminal_failed=0, retryable=1
+        succeeded=0, not_found=0, terminal_failed=0, retryable=1
     )
 
 
@@ -96,6 +107,32 @@ def test_an_empty_payload_is_an_honest_success_with_no_projected_rows(
     store.record_success(_success("sunat", "20100000001", ()))
     assert list(store.success_rows("sunat")) == [("20100000001", ())]
     assert ("sunat", "20100000001") in store.done_pairs()
+
+
+def test_not_found_is_terminal_on_first_contact_not_by_attempt_count(
+    store: OutcomeStore,
+) -> None:
+    store.record_not_found(_not_found("sunat_reps", "20100000001"))
+    assert ("sunat_reps", "20100000001") in store.done_pairs(retry_cap=12)
+    assert next(iter(store.not_found_rows("sunat_reps")))[0] == "20100000001"
+
+
+def test_not_found_is_counted_distinctly_from_success_and_failure(
+    store: OutcomeStore,
+) -> None:
+    store.record_not_found(_not_found("sunat_reps", "20100000001"))
+    counts = store.counts("sunat_reps")
+    assert counts == OutcomeCounts(
+        succeeded=0, not_found=1, terminal_failed=0, retryable=0
+    )
+
+
+def test_a_failure_never_downgrades_a_not_found(store: OutcomeStore) -> None:
+    ruc = "20100000001"
+    store.record_not_found(_not_found("sunat_reps", ruc))
+    store.record_failure(_failure("sunat_reps", ruc, attempt=4))
+    assert store.counts("sunat_reps").not_found == 1
+    assert list(store.error_rows("sunat_reps")) == []
 
 
 def test_the_same_ruc_is_tracked_independently_per_site(store: OutcomeStore) -> None:

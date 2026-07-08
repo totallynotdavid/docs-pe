@@ -52,6 +52,9 @@ async def run_worker(
             if result.status is Status.OK:
                 store.record_success(result)
                 totals.succeeded += 1
+            elif result.status is Status.NOT_FOUND:
+                store.record_not_found(result)
+                totals.not_found += 1
             else:
                 store.record_failure(result)
                 totals.failed += 1

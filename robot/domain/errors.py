@@ -23,3 +23,7 @@ class UpstreamNotReadyError(TransientTransportError):
 
 class ProviderSchemaError(RobotError):
     pass
+
+
+class RucNotFoundError(RobotError):
+    pass
