@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from robot.domain.errors import BanSignalError, TransientTransportError
+from robot.domain.errors import (
+    BanSignalError,
+    RucNotFoundError,
+    TransientTransportError,
+)
 from robot.domain.types import RucKind, Site, SiteTuning
 from robot.sites.sunat.parser import (
     parse_razon_social,
@@ -61,6 +65,9 @@ async def _lookup_representantes(
     razon_social = parse_razon_social(
         await _post(client, consulta_body, what="consulta")
     )
+    if razon_social is None:
+        msg = f"sunat has no record of ruc {ruc}"
+        raise RucNotFoundError(msg)
     reps_body = build_reps_body(ruc=str(ruc), razon_social=razon_social)
     reps = parse_reps(await _post(client, reps_body, what="reps"))
     return tuple(

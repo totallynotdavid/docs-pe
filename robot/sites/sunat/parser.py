@@ -44,6 +44,7 @@ _REP_CELL_COUNT = 5
 _RESULT_MARKER = "Resultado de la B"
 _ERROR_MARKERS = ("Pagina de Error", "Surgieron problemas")
 _NO_REPS_MARKER = "No se encontro información para representantes legales"
+_RUC_NOT_FOUND_RE = re.compile(r"<strong>\s*</strong>", re.IGNORECASE)
 
 
 def parse_tipo_documento(page: str) -> SunatRecord | None:
@@ -75,10 +76,12 @@ def parse_tipo_documento(page: str) -> SunatRecord | None:
     )
 
 
-def parse_razon_social(page: str) -> str:
-    # A juridica ficha RUC always carries its razon social in the header; its
-    # absence on a non-error page is schema drift, not an empty success.
+def parse_razon_social(page: str) -> str | None:
+    # None means SUNAT confirmed it has no record of this RUC at all; absence of
+    # that marker on a non-error page is schema drift, not a confirmed absence.
     _ensure_no_error_page(page)
+    if _RUC_NOT_FOUND_RE.search(page):
+        return None
     match = _RAZON_SOCIAL_RE.search(page)
     if match is None:
         msg = "sunat consulta is missing the razon social"

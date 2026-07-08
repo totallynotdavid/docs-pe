@@ -108,6 +108,14 @@ def test_razon_social_a_value_without_a_separator_raises() -> None:
         parse_razon_social(_ficha_page("20100000001 ACME SAC"))
 
 
+def test_razon_social_an_empty_result_panel_is_a_confirmed_not_found() -> None:
+    page = (
+        '<html><body><div class="panel-body text-center">'
+        "<strong>  </strong></div></body></html>"
+    )
+    assert parse_razon_social(page) is None
+
+
 def test_reps_extracts_every_representative() -> None:
     reps = parse_reps(
         _reps_page(

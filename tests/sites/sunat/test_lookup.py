@@ -7,7 +7,11 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from robot.domain.errors import BanSignalError, TransientTransportError
+from robot.domain.errors import (
+    BanSignalError,
+    RucNotFoundError,
+    TransientTransportError,
+)
 from robot.domain.types import RUC
 from robot.sites.sunat.site import SUNAT, SUNAT_REPS
 
@@ -25,6 +29,11 @@ _RESULT_HTML = (
 _FICHA_HTML = (
     "<html><body><h4>N&uacute;mero de RUC:</h4>"
     "<h4>20100000001 - ACME SAC</h4></body></html>"
+)
+
+_RUC_NOT_FOUND_HTML = (
+    '<html><body><div class="panel-body text-center">'
+    "<strong>  </strong></div></body></html>"
 )
 
 _REPS_HTML = (
@@ -120,6 +129,19 @@ async def test_reps_returns_empty_when_the_company_has_no_representatives() -> N
 
     async with _client(handler) as client:
         assert await SUNAT_REPS.lookup(client, RUC("20100000001")) == ()
+
+
+async def test_reps_raises_not_found_and_skips_the_second_request() -> None:
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(_accion(request))
+        return httpx.Response(200, text=_RUC_NOT_FOUND_HTML)
+
+    async with _client(handler) as client:
+        with pytest.raises(RucNotFoundError):
+            await SUNAT_REPS.lookup(client, RUC("20100000001"))
+    assert calls == ["consPorRuc"]
 
 
 async def test_reps_maps_a_fault_on_the_second_request_too() -> None:
