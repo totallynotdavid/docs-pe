@@ -120,9 +120,9 @@ SUNAT_REPS = Site(
     name="sunat_reps",
     columns=("razon_social", "doc_type", "num_doc", "nombre", "cargo", "fecha_desde"),
     supports=frozenset({RucKind.JURIDICA}),
-    # A company always has at least one legal representative, so an empty table is
-    # drift, never a repless company.
-    allows_empty=False,
+    # Some entities (associations, educational centers) don't carry any legal
+    # representative in SUNAT's records.
+    allows_empty=True,
     tuning=_TUNING,
     ready=_ready,
     lookup=_lookup_representantes,

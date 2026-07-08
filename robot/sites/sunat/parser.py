@@ -43,6 +43,7 @@ _REP_CELL_COUNT = 5
 
 _RESULT_MARKER = "Resultado de la B"
 _ERROR_MARKERS = ("Pagina de Error", "Surgieron problemas")
+_NO_REPS_MARKER = "No se encontro información para representantes legales"
 
 
 def parse_tipo_documento(page: str) -> SunatRecord | None:
@@ -90,6 +91,8 @@ def parse_razon_social(page: str) -> str:
 
 
 def parse_reps(page: str) -> tuple[RepRecord, ...]:
+    if _NO_REPS_MARKER in page:
+        return ()
     _ensure_no_error_page(page)
     body = _TBODY_RE.search(page)
     if body is None:
