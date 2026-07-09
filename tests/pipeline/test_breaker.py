@@ -11,8 +11,7 @@ if TYPE_CHECKING:
 
 
 class _Clock:
-    # A stand-in for the time module the breaker reads, so tests advance the clock
-    # explicitly instead of sleeping and stay deterministic.
+    # A stand-in for the time module the breaker reads.
     def __init__(self, value: float) -> None:
         self.value = value
 
@@ -65,10 +64,10 @@ def test_backoff_doubles_on_each_successive_trip(
     cb = _make(
         clock, monkeypatch, threshold=1, base_cooldown_s=5.0, max_cooldown_s=300.0
     )
-    cb.record_failure()  # first trip: cooldown 5
+    cb.record_failure()
     clock.value = 1005.1
     assert not cb.is_open()
-    cb.record_failure()  # second trip: cooldown doubles to 10
+    cb.record_failure()
     assert cb.is_open()
     clock.value = 1005.1 + 9.9
     assert cb.is_open()
@@ -79,9 +78,9 @@ def test_backoff_doubles_on_each_successive_trip(
 def test_cooldown_is_capped_at_the_maximum(monkeypatch: pytest.MonkeyPatch) -> None:
     clock = _Clock(1000.0)
     cb = _make(clock, monkeypatch, threshold=1, base_cooldown_s=5.0, max_cooldown_s=7.0)
-    cb.record_failure()  # cooldown 5
+    cb.record_failure()
     clock.value = 1005.1
-    cb.record_failure()  # would be 10, capped at 7
+    cb.record_failure()
     assert cb.is_open()
     clock.value = 1005.1 + 6.9
     assert cb.is_open()
@@ -94,10 +93,10 @@ def test_a_success_closes_the_breaker_and_resets_the_backoff(
 ) -> None:
     clock = _Clock(1000.0)
     cb = _make(clock, monkeypatch, threshold=1, base_cooldown_s=5.0)
-    cb.record_failure()  # first trip, level 1
-    cb.record_success()  # healthy contact closes it and resets the level
+    cb.record_failure()
+    cb.record_success()
     assert not cb.is_open()
-    cb.record_failure()  # next trip is back to the base cooldown, not doubled
+    cb.record_failure()
     assert cb.is_open()
     clock.value = 1005.1
     assert not cb.is_open()
@@ -115,8 +114,7 @@ async def test_acquire_waits_out_the_cooldown_before_returning(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # acquire()'s own loop (open, sleep, recheck) is what every lane sits in while a
-    # provider is unhealthy; fast-forward the fake clock on each sleep so the test
-    # proves the loop actually terminates instead of hanging.
+    # provider is unhealthy; this pins that the loop actually terminates.
     clock = _Clock(1000.0)
 
     async def fake_sleep(seconds: float) -> None:  # noqa: RUF029
