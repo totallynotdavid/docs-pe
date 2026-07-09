@@ -39,8 +39,7 @@ class _EchoTransport(httpx.AsyncBaseTransport):
 async def test_every_transport_fault_normalizes_to_transient(
     exc: BaseException,
 ) -> None:
-    # SSLError and bare OSError leak past httpx's own mapping; the wrapper must catch
-    # them so the retry policy only ever sees one transport fault type.
+    # SSLError and bare OSError leak past httpx's own mapping.
     transport = _NormalizingTransport(_RaisingTransport(exc))
     request = httpx.Request("GET", "https://example.test/")
     with pytest.raises(TransientTransportError):
