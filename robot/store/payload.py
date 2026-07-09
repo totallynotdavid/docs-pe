@@ -16,8 +16,8 @@ def encode_rows(rows: tuple[Row, ...]) -> str:
 
 
 def decode_rows(text: str) -> tuple[Row, ...]:
-    # json.loads is the one dynamic hop in the store; validate and narrow it here so
-    # the Any never escapes and a hand-edited or corrupt payload fails loudly.
+    # The one dynamic hop in the store; validate and narrow it here so a hand-edited
+    # or corrupt payload fails loudly.
     raw = json.loads(text)
     if not isinstance(raw, list):
         msg = "stored payload is not a list"

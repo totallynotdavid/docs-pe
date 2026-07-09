@@ -16,12 +16,9 @@ if TYPE_CHECKING:
 class _NormalizingTransport(httpx.AsyncBaseTransport):
     """Wraps the real transport and maps every transport-layer fault to one type.
 
-    httpx maps most httpcore failures to httpx.HTTPError, but a raw ssl.SSLError
-    (record-layer fault on a flaky proxy exit) and some OSErrors leak through
-    unmapped. Catching them at every call site was whack-a-mole that took down the
-    run each time a new one leaked. Normalizing here gives transport faults a
-    single owner: any caller using this transport only ever sees
-    TransientTransportError, which the retry policy already knows how to handle.
+    httpx maps most httpcore failures to httpx.HTTPError, but ssl.SSLError and some
+    OSErrors leak through unmapped. Normalizing here gives transport faults a single
+    owner: any caller using this transport only sees TransientTransportError.
     """
 
     def __init__(self, inner: httpx.AsyncBaseTransport) -> None:

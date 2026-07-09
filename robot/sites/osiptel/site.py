@@ -14,7 +14,8 @@ from robot.domain.errors import (
     TransientTransportError,
     UpstreamNotReadyError,
 )
-from robot.domain.types import RucKind, Site, SiteTuning
+from robot.domain.transport import classify_status
+from robot.domain.types import Endpoint, RucKind, Site, SiteTuning
 from robot.obs.events import FETCH_PAGE_OK, FETCH_PAGE_START, SITE_REQUEST_FAILED
 from robot.obs.logging import kv
 from robot.sites.osiptel.parser import parse_page
@@ -29,28 +30,26 @@ logger = logging.getLogger(__name__)
 
 HOME_URL = "https://checatuslineas.osiptel.gob.pe/"
 API_URL = "https://checatuslineas.osiptel.gob.pe/Consultas/GetAllCabeceraConsulta/"
-# 5000 usually fetches every line for a RUC in one call; the loop still paginates
-# when a RUC exceeds it.
+# OSIPTEL caps each page at 5000 rows; the loop in _lookup pages past the cap.
 PAGE_SIZE = 5000
 _READY_TIMEOUT_S = 25.0
 _READY_POLL_S = 0.25
 
-# OSIPTEL returns 502/503/504 for degraded upstreams. Other 5xx responses and
-# ban-shaped 4xx responses are treated as session blocks.
-_TRANSIENT_UPSTREAM_STATUSES = frozenset({502, 503, 504})
-_BAN_SIGNAL_STATUSES = frozenset({403, 429})
+_HOME = Endpoint(name="home", url=HOME_URL, warm=True)
+_API = Endpoint(name="api", url=API_URL)
 
 
-async def _ready(client: httpx.AsyncClient) -> None:
+async def _ready(client: httpx.AsyncClient, site: Site) -> None:
     # Poll the home page to seed cookies (kept in the client jar and auto-sent on the
     # API POST) and to detect a WAF block on this exit before spending a lookup.
+    home = next(endpoint for endpoint in site.endpoints if endpoint.warm)
     deadline = time.monotonic() + _READY_TIMEOUT_S
     last_status = 0
     last_body = ""
     last_error = ""
     while time.monotonic() < deadline:
         try:
-            response = await client.get(HOME_URL)
+            response = await client.get(home.url)
         # follow_redirects raises httpx.TooManyRedirects at the client level, past
         # the transport that would otherwise normalize it, so catch both.
         except (TransientTransportError, httpx.HTTPError) as exc:
@@ -60,6 +59,8 @@ async def _ready(client: httpx.AsyncClient) -> None:
 
         last_status = response.status_code
         last_body = response.text.replace("\n", " ").strip()[:240]
+        # OSIPTEL's WAF returns 200 with a CAPTCHA wall rather than a 4xx, so the
+        # success marker string is the real readiness signal.
         if response.status_code == 200 and "Checa tus l" in response.text:
             return
         if _is_waf_block(response.text):
@@ -115,28 +116,23 @@ async def _fetch_page(
     data = build_payload(PageRequest(ruc=ruc, draw=draw, start=start, length=length))
     # Transport faults are normalized to TransientTransportError by the client
     # transport (proxy/transport.py), so there is nothing to catch here.
-    response = await client.post(API_URL, data=data, headers=_api_headers())
+    response = await client.post(_API.url, data=data, headers=_api_headers())
 
     status = response.status_code
-    if status in _TRANSIENT_UPSTREAM_STATUSES:
-        _log_failed(
-            status, ruc=ruc, draw=draw, start=start, length=length, body=response.text
-        )
-        msg = f"osiptel request transient status={status}"
-        raise TransientTransportError(msg)
-    if status >= 500 or status in _BAN_SIGNAL_STATUSES:
+    fault = classify_status(status)
+    if fault is not None:
         body = _log_failed(
             status, ruc=ruc, draw=draw, start=start, length=length, body=response.text
         )
-        msg = (
-            "osiptel request failed "
-            f"status={status} draw={draw} start={start} length={length} "
-            f"ruc={ruc} body={body}"
-        )
-        raise BanSignalError(msg)
-    if status != 200:
-        msg = f"osiptel request failed status={status}"
-        raise TransientTransportError(msg)
+        if fault is BanSignalError:
+            msg = (
+                "osiptel request failed "
+                f"status={status} draw={draw} start={start} length={length} "
+                f"ruc={ruc} body={body}"
+            )
+        else:
+            msg = f"osiptel request transient status={status}"
+        raise fault(msg)
 
     try:
         payload = response.json()
@@ -209,6 +205,7 @@ OSIPTEL = Site(
     allows_empty=True,
     # OSIPTEL must rotate every lookup.
     tuning=SiteTuning(session_budget=1),
+    endpoints=(_HOME, _API),
     ready=_ready,
     lookup=_lookup,
 )

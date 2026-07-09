@@ -36,7 +36,6 @@ def test_robot_errors_map_to_their_code_and_rotate_without_cooldown(
 
 
 def test_a_leaked_non_robot_error_is_unknown_but_still_retried() -> None:
-    # Anything outside the taxonomy must be treated as environmental, not fatal, so
-    # a stray bug in a lane cannot tear down the run.
+    # A bug in a lane must not tear down the run.
     decision = classify_exception(ValueError("leaked"), ban_cooldown_s=30.0)
     assert decision == RetryDecision("unknown_error", cooldown_s=0.0)

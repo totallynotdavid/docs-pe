@@ -89,8 +89,7 @@ async def fetch_one(
                 attempt=attempt,
             )
             breaker.record_success()
-            # A successful lookup must never be downgraded by post-success
-            # bookkeeping, so any error winding down the session is swallowed.
+            # Post-success bookkeeping must never undo a successful lookup.
             with contextlib.suppress(Exception):
                 await after_success(state, provider=provider, cfg=cfg)
             return result
@@ -122,8 +121,7 @@ async def fetch_one(
                 await after_success(state, provider=provider, cfg=cfg)
             return result
         except Exception as exc:  # noqa: BLE001
-            # Nothing may escape a worker into the TaskGroup, or one bad proxy read
-            # takes down every lane. Even an unknown exception is handled here.
+            # Nothing may escape a worker into the TaskGroup.
             decision = classify_exception(exc, ban_cooldown_s=cfg.ban_cooldown_s)
             session_id, proxy_id = session_ids(state)
             logger.warning(
@@ -155,8 +153,7 @@ async def fetch_one(
                         error_type=type(exc).__name__,
                     ),
                 )
-            # Every fault is environmental, so it always feeds the breaker and
-            # rotates to a fresh session.
+            # Every fault is environmental, so it always rotates.
             breaker.record_failure()
             with contextlib.suppress(Exception):
                 await rotate_session(

@@ -54,8 +54,7 @@ def site_csv_path(output_csv: Path, site_name: str) -> Path:
 
 
 def _success_lines(store: OutcomeStore, site_name: str) -> Iterator[list[str | int]]:
-    # An empty payload is an honest success with no data, so it yields no CSV lines:
-    # the pair is present in the store as done but absent from the projection.
+    # An empty payload is an honest success with no rows; it yields no CSV lines.
     for ruc, rows in store.success_rows(site_name):
         for row in rows:
             yield [ruc, *row]

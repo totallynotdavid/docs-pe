@@ -88,7 +88,7 @@ async def run(cfg: RunConfig, *, run_id: str) -> None:
                 totals=totals,
             )
         finally:
-            # Always export in finally so interrupted runs leave CSV artifacts.
+            # Export even on interruption, so artifacts on disk reflect the run.
             export_all(store=store, output_csv=cfg.output_csv, sites=sites)
             _log_summary(
                 run_id=run_id,
@@ -111,8 +111,8 @@ async def _run_workers(
     run_id: str,
     totals: dict[str, RunTotals],
 ) -> None:
-    # Slots are allocated per provider across all sites so GeoNode's slot->port map
-    # never collides when two sites draw from the same provider.
+    # Slots are allocated per provider across all sites, so GeoNode's slot->port map
+    # never collides between sites sharing a provider.
     next_slot = {provider.name: 0 for provider in providers}
 
     async with asyncio.TaskGroup() as group:
@@ -127,8 +127,8 @@ async def _run_workers(
             budget = _budget(cfg, site)
 
             for provider in providers:
-                # One breaker per (site, provider): a provider-wide outage parks that
-                # site's lanes on it without stalling a healthy sibling provider.
+                # One breaker per (site, provider): a provider-wide outage parks
+                # that site's lanes without stalling a healthy sibling.
                 breaker = CircuitBreaker(
                     provider=f"{site.name}:{provider.name}", run_id=run_id
                 )

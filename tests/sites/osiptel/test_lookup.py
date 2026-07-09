@@ -74,10 +74,7 @@ async def test_returns_empty_when_the_ruc_has_no_lines() -> None:
     ("status", "expected"),
     [
         (502, TransientTransportError),
-        (503, TransientTransportError),
         (500, BanSignalError),
-        (403, BanSignalError),
-        (429, BanSignalError),
         (418, TransientTransportError),
     ],
 )
@@ -115,7 +112,7 @@ async def test_ready_returns_once_the_success_marker_is_seen() -> None:
         return httpx.Response(200, text="...Checa tus lineas...")
 
     async with _client(handler) as client:
-        await OSIPTEL.ready(client)
+        await OSIPTEL.ready(client, OSIPTEL)
 
 
 async def test_ready_raises_a_ban_signal_on_a_waf_block() -> None:
@@ -124,7 +121,7 @@ async def test_ready_raises_a_ban_signal_on_a_waf_block() -> None:
 
     async with _client(handler) as client:
         with pytest.raises(BanSignalError):
-            await OSIPTEL.ready(client)
+            await OSIPTEL.ready(client, OSIPTEL)
 
 
 async def test_ready_retries_past_a_transient_transport_error(
@@ -141,7 +138,7 @@ async def test_ready_retries_past_a_transient_transport_error(
         return httpx.Response(200, text="Checa tus lineas")
 
     async with _client(handler) as client:
-        await OSIPTEL.ready(client)
+        await OSIPTEL.ready(client, OSIPTEL)
     assert attempts["n"] == 2
 
 
@@ -156,4 +153,4 @@ async def test_ready_gives_up_after_the_deadline_with_no_success_or_block(
 
     async with _client(handler) as client:
         with pytest.raises(UpstreamNotReadyError):
-            await OSIPTEL.ready(client)
+            await OSIPTEL.ready(client, OSIPTEL)

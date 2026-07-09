@@ -11,12 +11,9 @@ from robot.obs.logging import kv
 logger = logging.getLogger(__name__)
 
 # Consecutive transient failures across a provider's lanes, with no healthy
-# contact in between, before the breaker trips. High enough that sporadic ban or
-# transport noise never trips it; a sustained outage (proxy credits gone, gateway
-# down) crosses it in seconds.
+# contact in between, before the breaker trips.
 DEFAULT_THRESHOLD = 10
-# Backoff doubles from base to max on each successive trip, so a long outage parks
-# the lanes instead of grinding the backlog into cumulative attempts.
+# Backoff doubles from base to max on each successive trip.
 DEFAULT_BASE_COOLDOWN_S = 5.0
 DEFAULT_MAX_COOLDOWN_S = 300.0
 
@@ -26,8 +23,7 @@ class CircuitBreaker:
 
     Lanes await acquire() before each attempt; a burst of transient failures parks
     every lane on that provider with exponential backoff, and the first healthy
-    contact closes it. No lock is needed: asyncio's single thread makes the counter
-    updates atomic with respect to each other.
+    contact closes it. No lock is needed: asyncio is single-threaded.
     """
 
     def __init__(
@@ -56,12 +52,11 @@ class CircuitBreaker:
             await asyncio.sleep(remaining)
 
     def is_open(self) -> bool:
-        # Open means the provider is in a tripped cooldown: the environment, not any
-        # one RUC, is the suspect.
+        # Open means the provider, not any one RUC, is the suspect.
         return self._open_until > time.monotonic()
 
     def record_success(self) -> None:
-        # A completed lookup is proof the environment is up, so fully reset.
+        # A healthy contact is proof the provider is up; fully reset.
         self._consecutive = 0
         if self._open_until:
             logger.info(

@@ -145,7 +145,7 @@ async def _open_session(
     )
     client = build_client(proxy_url=proxy.as_http_proxy_url())
     try:
-        await site.ready(client)
+        await site.ready(client, site)
         egress_ip = await resolve_egress_ip(proxy)
     except BaseException:
         await client.aclose()

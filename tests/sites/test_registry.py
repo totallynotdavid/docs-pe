@@ -6,8 +6,7 @@ from robot.sites.registry import SITES, get_sites
 
 
 def test_every_expected_site_is_registered() -> None:
-    # A name collision between two Site values (e.g. a copy-pasted .name) would
-    # silently drop one entry from the dict; this catches that directly.
+    # A duplicate .name would silently drop one entry from the dict.
     assert set(SITES) == {"sunat", "sunat_reps", "osiptel"}
 
 

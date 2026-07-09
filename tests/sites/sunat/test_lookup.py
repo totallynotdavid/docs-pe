@@ -26,15 +26,8 @@ _RESULT_HTML = (
     "</body></html>"
 )
 
-_FICHA_HTML = (
-    "<html><body><h4>N&uacute;mero de RUC:</h4>"
-    "<h4>20100000001 - ACME SAC</h4></body></html>"
-)
-
-_RUC_NOT_FOUND_HTML = (
-    '<html><body><div class="panel-body text-center">'
-    "<strong>  </strong></div></body></html>"
-)
+_IDENTITY_JSON = {"lista": [{"apenomdenunciado": "ACME SAC"}]}
+_IDENTITY_NOT_FOUND_JSON = {"error": "no existe"}
 
 _REPS_HTML = (
     "<html><body><table><tbody>"
@@ -42,14 +35,11 @@ _REPS_HTML = (
     "<td>GERENTE GENERAL</td><td>01/01/2020</td></tr>"
     "</tbody></table></body></html>"
 )
+_REPS_EMPTY_HTML = "<html><body><tbody></tbody></body></html>"
 
 
 def _client(handler: Callable[[httpx.Request], httpx.Response]) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
-
-
-def _accion(request: httpx.Request) -> str:
-    return urllib.parse.parse_qs(request.content.decode())["accion"][0]
 
 
 async def test_returns_the_document_record() -> None:
@@ -94,24 +84,22 @@ async def test_ready_passes_on_a_healthy_home_page() -> None:
         return httpx.Response(200, text="ok")
 
     async with _client(handler) as client:
-        await SUNAT.ready(client)
+        await SUNAT.ready(client, SUNAT)
 
 
 async def test_ready_flags_a_dead_exit() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(503, text="down")
+        return httpx.Response(500, text="down")
 
     async with _client(handler) as client:
         with pytest.raises(BanSignalError):
-            await SUNAT.ready(client)
+            await SUNAT.ready(client, SUNAT)
 
 
-async def test_reps_chains_consulta_razon_social_into_getrepleg() -> None:
+async def test_reps_chains_identity_into_getrepleg() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        if _accion(request) == "consPorRuc":
-            return httpx.Response(200, text=_FICHA_HTML)
-        body = urllib.parse.parse_qs(request.content.decode())
-        assert body["desRuc"][0] == "ACME SAC"
+        if request.method == "GET":
+            return httpx.Response(200, json=_IDENTITY_JSON)
         return httpx.Response(200, text=_REPS_HTML)
 
     async with _client(handler) as client:
@@ -121,36 +109,60 @@ async def test_reps_chains_consulta_razon_social_into_getrepleg() -> None:
     )
 
 
+async def test_reps_posts_an_empty_des_ruc_in_the_reps_request() -> None:
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, json=_IDENTITY_JSON)
+        captured["body"] = request.content.decode()
+        return httpx.Response(200, text=_REPS_HTML)
+
+    async with _client(handler) as client:
+        await SUNAT_REPS.lookup(client, RUC("20100000001"))
+
+    body = urllib.parse.parse_qs(captured["body"], keep_blank_values=True)
+    assert body["desRuc"][0] == ""
+
+
 async def test_reps_returns_empty_when_the_company_has_no_representatives() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        if _accion(request) == "consPorRuc":
-            return httpx.Response(200, text=_FICHA_HTML)
-        return httpx.Response(200, text="<html><body><tbody></tbody></body></html>")
+        if request.method == "GET":
+            return httpx.Response(200, json=_IDENTITY_JSON)
+        return httpx.Response(200, text=_REPS_EMPTY_HTML)
 
     async with _client(handler) as client:
         assert await SUNAT_REPS.lookup(client, RUC("20100000001")) == ()
 
 
-async def test_reps_raises_not_found_and_skips_the_second_request() -> None:
+async def test_reps_raises_not_found_and_skips_the_reps_request() -> None:
     calls = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        calls.append(_accion(request))
-        return httpx.Response(200, text=_RUC_NOT_FOUND_HTML)
+        calls.append(request.method)
+        return httpx.Response(200, json=_IDENTITY_NOT_FOUND_JSON)
 
     async with _client(handler) as client:
         with pytest.raises(RucNotFoundError):
             await SUNAT_REPS.lookup(client, RUC("20100000001"))
-    assert calls == ["consPorRuc"]
+    assert calls == ["GET"]
 
 
-async def test_reps_maps_a_fault_on_the_second_request_too() -> None:
-    # _post is shared with the consulta call (already status-mapped above); this
-    # proves a fault on the second request in the chain also propagates, rather
-    # than being swallowed once the first request has already succeeded.
+async def test_reps_maps_a_fault_on_the_identity_request() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        if _accion(request) == "consPorRuc":
-            return httpx.Response(200, text=_FICHA_HTML)
+        return httpx.Response(500, text="nope")
+
+    async with _client(handler) as client:
+        with pytest.raises(BanSignalError):
+            await SUNAT_REPS.lookup(client, RUC("20100000001"))
+
+
+async def test_reps_maps_a_fault_on_the_reps_request_after_identity_succeeds() -> None:
+    # A fault on the second request must not be swallowed just because the first
+    # succeeded.
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, json=_IDENTITY_JSON)
         return httpx.Response(500, text="nope")
 
     async with _client(handler) as client:

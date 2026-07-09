@@ -25,8 +25,7 @@ def test_counts_lines_per_carrier() -> None:
 
 
 def test_accepts_total_records_as_a_numeric_string() -> None:
-    # The DataTables endpoint sometimes serializes the count as a string; both forms
-    # must parse so pagination does not stall.
+    # The DataTables endpoint sometimes serializes the count as a string.
     assert parse_page(_page(iTotalRecords="5")).total_records == 5
 
 

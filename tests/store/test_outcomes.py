@@ -77,8 +77,7 @@ def test_a_pair_retires_once_attempts_reach_the_cap(store: OutcomeStore) -> None
 
 
 def test_unhealthy_contact_does_not_count_toward_the_cap(store: OutcomeStore) -> None:
-    # A failure recorded while the breaker was open is real (it is stored) but must
-    # not push the pair toward retirement, or an outage could grind the backlog out.
+    # An outage must not grind the backlog to terminal.
     store.record_failure(_failure("osiptel", "20100000001", attempt=4, healthy=False))
     assert next(iter(store.error_rows("osiptel")))[3] == "0"
     assert ("osiptel", "20100000001") not in store.done_pairs(retry_cap=4)

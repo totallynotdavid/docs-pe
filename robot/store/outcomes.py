@@ -182,7 +182,7 @@ class OutcomeStore:
             )
 
     def record_failure(self, result: Result) -> None:
-        # 0 when made_healthy_contact is False; see Result.made_healthy_contact.
+        # Breaker-open attempts do not count toward retirement.
         increment = result.attempt if result.made_healthy_contact else 0
         with self._transaction():
             self._conn.execute(

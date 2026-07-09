@@ -15,9 +15,7 @@ if TYPE_CHECKING:
     from robot.proxy.base import ProxySession
 
 
-# Egress IP resolution is identical for every provider: dial the proxy and ask a
-# public echo service who it sees. It is not provider-specific, so it lives here
-# instead of inside any one provider.
+# Public echo services, dialed through the proxy to learn the exit IP.
 _IP_PROBE_URLS = (
     "http://ip-api.com/json",
     "https://api.ipify.org?format=json",
@@ -42,9 +40,7 @@ async def _probe_ip(client: httpx.AsyncClient, url: str) -> str:
     try:
         response = await client.get(url)
     except TransientTransportError:
-        # The egress IP is informational, so a flaky probe is swallowed to try the
-        # next URL rather than aborting the session open. Transport faults arrive
-        # here already normalized, so catching this one exception type is enough.
+        # The egress IP is informational; try the next URL instead of aborting.
         return ""
     if response.status_code != 200:
         return ""

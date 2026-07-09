@@ -30,7 +30,5 @@ def test_rejects_anything_that_is_not_eleven_digits(value: str) -> None:
     ],
 )
 def test_kind_is_derived_from_the_leading_digits(value: str, kind: RucKind) -> None:
-    # This is the routing rule the planner uses to send a RUC-10 to a
-    # natural-person site and a RUC-20 to a company site (store/plan.py); pin it
-    # here directly rather than only through plan.py's routing tests.
+    # Pin the routing key directly; the planner reads it via _serves in plan.py.
     assert RUC(value).kind == kind

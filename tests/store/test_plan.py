@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from robot.domain.types import Row
 
 
-async def _ready(client: httpx.AsyncClient) -> None:
+async def _ready(client: httpx.AsyncClient, site: Site) -> None:
     await asyncio.sleep(0)
 
 
@@ -32,6 +32,7 @@ def _site(name: str, *kinds: RucKind) -> Site:
         supports=frozenset(kinds),
         allows_empty=True,
         tuning=SiteTuning(session_budget=1),
+        endpoints=(),
         ready=_ready,
         lookup=_lookup,
     )
@@ -66,8 +67,7 @@ def test_blank_and_invalid_rows_are_ignored(tmp_path: Path) -> None:
 
 def test_strips_a_utf8_bom(tmp_path: Path) -> None:
     csv_path = tmp_path / "in.csv"
-    # A CSV exported from a spreadsheet often carries a BOM on the first cell; it
-    # must not turn a valid RUC into an invalid one.
+    # Spreadsheet exports often carry a BOM on the first cell.
     csv_path.write_text("20100000001\n", encoding="utf-8-sig")
     rucs, counts = read_rucs(csv_path, dedupe=True)
     assert [str(r) for r in rucs] == ["20100000001"]

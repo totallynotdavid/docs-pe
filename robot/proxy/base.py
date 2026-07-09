@@ -19,8 +19,7 @@ class ProxySession:
 
 @dataclass(frozen=True)
 class ProviderTuning:
-    # Proxy-owned operational defaults: workers is the vendor's concurrency plateau,
-    # ban_cooldown_s parks a banned exit before the next acquisition.
+    # Vendor-supplied operational defaults.
     workers: int
     ban_cooldown_s: float
 

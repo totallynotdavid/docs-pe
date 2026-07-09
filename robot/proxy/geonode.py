@@ -31,9 +31,11 @@ _GATEWAY_HOST_BY_NAME: dict[str, str] = {
 _HTTP_STICKY_PORT_MIN = 10000
 _HTTP_STICKY_PORT_MAX = 10900
 _RELEASE_URL = "https://monitor.geonode.com/sessions/release/proxies"
+# The release endpoint returns 5xx under gateway load; 3 tries with linear 0.5/1.0/1.5s
+# backoff clears transient hiccups without blocking the lane.
 _RELEASE_RETRIES = 3
 
-# GeoNode's measured default balances throughput and retryable proxy failures.
+# GeoNode's measured default for this workload.
 _TUNING = ProviderTuning(workers=15, ban_cooldown_s=30.0)
 
 
@@ -199,6 +201,7 @@ def _new_session_id(slot_id: int) -> str:
 async def _release_sticky_session(
     *, user: str, password: str, session_id: str, port: int, timeout_s: float
 ) -> tuple[bool, int, str]:
+    # GeoNode contract: PUT {"data": [{sessionId, port}]}, 200 with truthy `success`.
     try:
         async with httpx.AsyncClient(
             timeout=timeout_s, auth=(user, password)

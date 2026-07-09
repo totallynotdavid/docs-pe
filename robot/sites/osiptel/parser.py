@@ -10,8 +10,7 @@ from robot.domain.errors import ProviderSchemaError
 class ParsedPage:
     total_records: int
     rows_returned: int
-    # carrier -> number of lines seen for it within this page.
-    carrier_counts: dict[str, int]
+    carrier_counts: dict[str, int]  # carrier -> lines on this page
 
 
 def parse_page(payload: object) -> ParsedPage:

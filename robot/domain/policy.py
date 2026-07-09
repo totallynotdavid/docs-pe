@@ -16,18 +16,18 @@ from robot.domain.errors import (
 MAX_ATTEMPTS = 4
 
 # The single owner of the retirement rule. A failing RUC leaves the work set only
-# by succeeding or by reaching this many cumulative healthy-contact attempts across
-# all runs. No RobotError variant is classified as a permanent per-RUC failure, so
-# every failure is environmental and stays eligible until then.
-# Attempts made while the provider is unhealthy do not count (see
-# Result.made_healthy_contact), so no outage can grind a RUC to this cap.
+# by succeeding or by reaching 12 cumulative healthy-contact attempts across all
+# runs. No RobotError variant is classified as a permanent per-RUC failure, so every
+# failure is environmental and stays eligible until then.
+# Attempts that hit a tripped breaker do not count toward the cap, so no outage can
+# grind a RUC out by exhausting the budget.
 MAX_TOTAL_ATTEMPTS = 12
 
 
 @dataclass(frozen=True)
 class RetryDecision:
     # Only a ban sets cooldown_s (let the banned exit cool before reuse); every
-    # other fault rotates immediately. error_code labels the fault for the log.
+    # other fault rotates immediately.
     error_code: str
     cooldown_s: float
 
@@ -40,11 +40,10 @@ def _classify(exc: RobotError, *, ban_cooldown_s: float) -> RetryDecision:
     if isinstance(exc, ParseError):
         return RetryDecision("parse_error", cooldown_s=0.0)
     if isinstance(exc, ProviderSchemaError):
-        # Treated as transient, not permanent: an unexpected body is far more often
-        # a site-wide maintenance or rejection page served to every RUC than a
-        # genuinely malformed one, and calling it permanent would let one systemic
-        # event retire the whole backlog. Rotate and let the breaker trip if it
-        # correlates; a truly bad RUC still retires via the cap.
+        # An unexpected body is far more often a site-wide maintenance or rejection
+        # page than a genuinely malformed one, so rotate instead of treating it as a
+        # per-RUC failure. The breaker will trip if the site is uniformly broken;
+        # a single bad RUC still retires via MAX_TOTAL_ATTEMPTS.
         return RetryDecision("provider_schema_error", cooldown_s=0.0)
     if isinstance(exc, TransientTransportError):
         return RetryDecision("transport_error", cooldown_s=0.0)

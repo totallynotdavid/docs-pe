@@ -17,13 +17,11 @@ logger = logging.getLogger(__name__)
 
 _GATEWAY_HOST = "gw.dataimpulse.com"
 # HTTP rotating port. Stickiness comes from the sessid in the username (see
-# new_session), which keeps the port count irrelevant and lets lanes scale past
-# the dedicated sticky-port range.
+# new_session), so one port serves every lane instead of needing one per lane.
 _HTTP_PORT = "823"
 _DEFAULT_SESSTTL_MIN = 3
 
-# The measured lane count reflects DataImpulse's current concurrency plateau.
-# Cooldown only handles rare WAF blocks after rotation.
+# DataImpulse's measured defaults for this workload.
 _TUNING = ProviderTuning(workers=18, ban_cooldown_s=30.0)
 
 
@@ -41,9 +39,9 @@ def load_dataimpulse_config(*, env_file: str) -> DataImpulseConfig:
 
     user = getenv("DATAIMPULSE_USER", "")
     password = getenv("DATAIMPULSE_PASS", "")
-    # OSIPTEL's WAF blocks foreign exits, so country is required, not defaulted:
-    # an unset value would silently route through the wrong region. DataImpulse
-    # country codes are lowercase ISO-3166.
+    # OSIPTEL's WAF blocks foreign exits; DataImpulse country codes are
+    # lowercase ISO-3166, and an unset value would silently route through
+    # the wrong region.
     country = getenv("DATAIMPULSE_COUNTRY", "").strip().lower()
     sessttl_raw = getenv("DATAIMPULSE_SESSTTL", "").strip()
     sessttl = int(sessttl_raw) if sessttl_raw else _DEFAULT_SESSTTL_MIN
@@ -97,9 +95,7 @@ class DataImpulseProvider:
         )
 
     async def release(self, session: ProxySession) -> None:
-        # Dropping the reference is the whole teardown (see class docstring).
-        # Logged at debug so the no-op is visible when chasing a leak without
-        # spamming normal runs.
+        # No-op: see class docstring. Debug-logged to surface leak hunts.
         logger.debug(
             "%s %s",
             SESSION_RELEASE_SKIPPED,

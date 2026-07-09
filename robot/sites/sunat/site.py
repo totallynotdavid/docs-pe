@@ -2,22 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from robot.domain.errors import (
-    BanSignalError,
-    RucNotFoundError,
-    TransientTransportError,
-)
-from robot.domain.types import RucKind, Site, SiteTuning
-from robot.sites.sunat.parser import (
-    parse_razon_social,
-    parse_reps,
-    parse_tipo_documento,
-)
-from robot.sites.sunat.request import (
-    build_consulta_body,
-    build_reps_body,
-    random_token,
-)
+from robot.domain.errors import RucNotFoundError
+from robot.domain.transport import raise_for_status, warm_endpoints
+from robot.domain.types import Endpoint, RucKind, Site, SiteTuning
+from robot.sites.sunat.identity import IDENTITY, fetch_identity
+from robot.sites.sunat.parser import parse_tipo_documento
+from robot.sites.sunat.reps import build_reps_body, parse_reps
+from robot.sites.sunat.request import build_consulta_body, random_token
 
 
 if TYPE_CHECKING:
@@ -31,25 +22,26 @@ HOME_URL = (
 )
 API_URL = "https://e-consultaruc.sunat.gob.pe/cl-ti-itmrconsruc/jcrS00Alias"
 _ORIGIN = "https://e-consultaruc.sunat.gob.pe"
-_TRANSIENT_STATUSES = frozenset({502, 503, 504})
-_BAN_STATUSES = frozenset({403, 429})
+
+# Declared once, used both to dispatch requests and (via warm=True) to tell ready()
+# which hosts to warm. Each site's endpoints tuple decides what its own ready()
+# touches; a host added to lookup must also be added here or it goes unwarmed.
+_HOME = Endpoint(name="home", url=HOME_URL, warm=True)
+_CONSULTA = Endpoint(name="consulta", url=API_URL)
+_REPS = Endpoint(name="reps", url=API_URL)
 
 
-async def _ready(client: httpx.AsyncClient) -> None:
-    # SUNAT is effectively stateless (no cookie or captcha handshake is required,
-    # verified live), so this GET only warms the client and fails a dead proxy fast
-    # before a lookup attempt is spent on it.
-    response = await client.get(HOME_URL)
-    if response.status_code >= 500 or response.status_code in _BAN_STATUSES:
-        msg = f"sunat home not ready status={response.status_code}"
-        raise BanSignalError(msg)
+async def _ready(client: httpx.AsyncClient, site: Site) -> None:
+    # SUNAT needs no cookie or captcha handshake; a status-classified GET per
+    # declared host is enough.
+    await warm_endpoints(client, site.endpoints)
 
 
 async def _lookup_tipo_documento(
     client: httpx.AsyncClient, ruc: RUC
 ) -> tuple[Row, ...]:
     body = build_consulta_body(ruc=str(ruc), token=random_token())
-    page = await _post(client, body, what="consulta")
+    page = await _post(client, _CONSULTA, body)
     record = parse_tipo_documento(page)
     if record is None:
         return ()
@@ -59,20 +51,15 @@ async def _lookup_tipo_documento(
 async def _lookup_representantes(
     client: httpx.AsyncClient, ruc: RUC
 ) -> tuple[Row, ...]:
-    # Two requests: the ficha RUC carries the razon social (getRepLeg only echoes
-    # back whatever name we send), then getRepLeg carries the representatives table.
-    consulta_body = build_consulta_body(ruc=str(ruc), token=random_token())
-    razon_social = parse_razon_social(
-        await _post(client, consulta_body, what="consulta")
-    )
-    if razon_social is None:
+    # Identity is the existence check: it gates whether the reps request runs at all.
+    identity = await fetch_identity(client, str(ruc))
+    if identity is None:
         msg = f"sunat has no record of ruc {ruc}"
         raise RucNotFoundError(msg)
-    reps_body = build_reps_body(ruc=str(ruc), razon_social=razon_social)
-    reps = parse_reps(await _post(client, reps_body, what="reps"))
+    reps = parse_reps(await _post(client, _REPS, build_reps_body(ruc=str(ruc))))
     return tuple(
         (
-            razon_social,
+            identity.razon_social,
             rep.doc_type,
             rep.num_doc,
             rep.nombre,
@@ -83,18 +70,11 @@ async def _lookup_representantes(
     )
 
 
-async def _post(client: httpx.AsyncClient, body: dict[str, str], *, what: str) -> str:
-    response = await client.post(API_URL, data=body, headers=_headers())
-    status = response.status_code
-    if status in _TRANSIENT_STATUSES:
-        msg = f"sunat {what} transient status={status}"
-        raise TransientTransportError(msg)
-    if status >= 500 or status in _BAN_STATUSES:
-        msg = f"sunat {what} failed status={status}"
-        raise BanSignalError(msg)
-    if status != 200:
-        msg = f"sunat {what} failed status={status}"
-        raise TransientTransportError(msg)
+async def _post(
+    client: httpx.AsyncClient, endpoint: Endpoint, body: dict[str, str]
+) -> str:
+    response = await client.post(endpoint.url, data=body, headers=_headers())
+    raise_for_status(response.status_code, endpoint=endpoint)
     return response.text
 
 
@@ -107,18 +87,19 @@ def _headers() -> dict[str, str]:
     }
 
 
-# Not IP-bound (see _ready), so one sticky session serves many lookups; the proxy
-# still rotates on budget to spread IP-level rate limits.
+# Not IP-bound, so one sticky session serves many lookups. Rotation on budget
+# spreads IP-level rate limits, not bans.
 _TUNING = SiteTuning(session_budget=50)
 
 SUNAT = Site(
     name="sunat",
     columns=("tipo_doc", "num_doc", "nombre"),
     supports=frozenset({RucKind.NATURAL}),
-    # A persona natural is defined by an identity document, so it is always present;
-    # an empty result is drift, never a valid blank.
+    # A persona natural always has an identity document, so an empty result is
+    # drift, never a valid blank.
     allows_empty=False,
     tuning=_TUNING,
+    endpoints=(_HOME, _CONSULTA),
     ready=_ready,
     lookup=_lookup_tipo_documento,
 )
@@ -127,10 +108,11 @@ SUNAT_REPS = Site(
     name="sunat_reps",
     columns=("razon_social", "doc_type", "num_doc", "nombre", "cargo", "fecha_desde"),
     supports=frozenset({RucKind.JURIDICA}),
-    # Some entities (associations, educational centers) don't carry any legal
+    # Some entities (associations, educational centers) carry no legal
     # representative in SUNAT's records.
     allows_empty=True,
     tuning=_TUNING,
+    endpoints=(_HOME, IDENTITY, _REPS),
     ready=_ready,
     lookup=_lookup_representantes,
 )
