@@ -1,9 +1,9 @@
 [tools]
-uv = "0.11.7"
-python = "3.14.4"
+uv = "0.11.29"
+python = "3.14.6"
 
 [tasks.install]
-run = "uv sync --all-groups"
+run = "uv sync --all-packages --all-groups"
 
 [tasks.update]
 run = "uv sync -U"
@@ -14,11 +14,20 @@ run = "uv pip list --outdated"
 [tasks.format]
 run = ["uv run ruff format", "uv run ruff check --fix"]
 
+# One mypy process per package: each workspace member has its own tests/ package,
+# so a single `mypy .` sees two modules named "tests" and refuses to run.
 [tasks.check]
-run = ["uv run mypy ."]
+run = [
+  "uv run mypy packages/fetch",
+  "uv run mypy packages/browser",
+  "uv run mypy packages/capture",
+]
 
 [tasks.test]
 run = "uv run pytest"
 
 [tasks.build]
-run = ["rm -rf dist build", "uv run pyinstaller robot.spec"]
+run = [
+  "rm -rf packages/fetch/dist packages/fetch/build",
+  "uv run pyinstaller --distpath packages/fetch/dist --workpath packages/fetch/build packages/fetch/fetch.spec",
+]

@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=83.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fetch"
+version = "0.1.0"
+requires-python = ">=3.11"
+description = "Bulk RUC lookup over httpx against the OSIPTEL and SUNAT public endpoints, fanned across worker processes behind sticky proxy sessions."
+dependencies = [
+    "httpx>=0.28.1",
+    "python-dotenv>=1.2.2",
+]
+
+authors = [
+    { name = "David Duran", email = "dadch1404@gmail.com" },
+]
+
+[project.scripts]
+fetch = "fetch.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["fetch*"]
