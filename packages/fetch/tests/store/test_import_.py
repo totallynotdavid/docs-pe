@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fetch.domain.types import RucKind, Site, SiteTuning
+from fetch.domain.types import DocKind, Site, SiteTuning
 from fetch.store.export import site_csv_path
 from fetch.store.import_ import import_site
 
@@ -12,21 +12,25 @@ if TYPE_CHECKING:
 
     import httpx
 
-    from fetch.domain.types import RUC, Row
+    from fetch.domain.types import Doc, Row
     from fetch.store.outcomes import OutcomeStore
+
+
+def _accepts_ruc(doc: Doc) -> bool:
+    return doc.kind is DocKind.RUC
 
 
 def _site(name: str, *columns: str) -> Site:
     async def ready(client: httpx.AsyncClient, site: Site) -> None:  # noqa: RUF029
         return None
 
-    async def lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
         return ()
 
     return Site(
         name=name,
         columns=columns,
-        supports=frozenset({RucKind.JURIDICA}),
+        accepts=_accepts_ruc,
         allows_empty=True,
         tuning=SiteTuning(session_budget=1),
         endpoints=(),
@@ -67,7 +71,7 @@ def test_a_row_with_the_wrong_column_count_is_skipped(
     site = _site("osiptel", "carrier", "lines", "total_lines")
     path = site_csv_path(tmp_path / "out.csv", site.name)
     path.write_text(
-        "ruc,carrier,lines,total_lines\n20100000001,CLARO,2\n20100000002,CLARO,2,2\n",
+        "doc,carrier,lines,total_lines\n20100000001,CLARO,2\n20100000002,CLARO,2,2\n",
         encoding="utf-8",
     )
     imported = import_site(store=store, output_csv=tmp_path / "out.csv", site=site)
@@ -78,23 +82,23 @@ def test_a_row_with_the_wrong_column_count_is_skipped(
     assert ("osiptel", "20100000001") not in store.done_pairs()
 
 
-def test_an_invalid_ruc_row_is_skipped(store: OutcomeStore, tmp_path: Path) -> None:
+def test_an_invalid_doc_row_is_skipped(store: OutcomeStore, tmp_path: Path) -> None:
     site = _site("osiptel", "carrier", "lines", "total_lines")
     path = site_csv_path(tmp_path / "out.csv", site.name)
     path.write_text(
-        "ruc,carrier,lines,total_lines\nnot-a-ruc,CLARO,1,1\n", encoding="utf-8"
+        "doc,carrier,lines,total_lines\nnot-a-doc,CLARO,1,1\n", encoding="utf-8"
     )
     imported = import_site(store=store, output_csv=tmp_path / "out.csv", site=site)
     assert imported == 0
 
 
-def test_rows_for_the_same_ruc_are_grouped_into_one_import(
+def test_rows_for_the_same_doc_are_grouped_into_one_import(
     store: OutcomeStore, tmp_path: Path
 ) -> None:
     site = _site("osiptel", "carrier", "lines", "total_lines")
     path = site_csv_path(tmp_path / "out.csv", site.name)
     path.write_text(
-        "ruc,carrier,lines,total_lines\n20100000001,CLARO,2,3\n20100000001,ENTEL,1,3\n",
+        "doc,carrier,lines,total_lines\n20100000001,CLARO,2,3\n20100000001,ENTEL,1,3\n",
         encoding="utf-8",
     )
     imported = import_site(store=store, output_csv=tmp_path / "out.csv", site=site)

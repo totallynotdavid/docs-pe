@@ -14,9 +14,9 @@ from fetch.domain.errors import (
     TransientTransportError,
     UpstreamNotReadyError,
 )
-from fetch.domain.types import RUC
+from fetch.domain.types import Doc
 from fetch.sites.osiptel import site as osiptel_site
-from fetch.sites.osiptel.site import OSIPTEL
+from fetch.sites.osiptel.site import OSIPTEL, _counts
 
 
 if TYPE_CHECKING:
@@ -27,19 +27,43 @@ def _client(handler: Callable[[httpx.Request], httpx.Response]) -> httpx.AsyncCl
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
 
-async def test_aggregates_a_single_page() -> None:
+def _row(modalidad: str, numero: str, operador: str) -> dict[str, str]:
+    return {"modalidad": modalidad, "numeroServicio": numero, "operador": operador}
+
+
+async def test_returns_one_row_per_line() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
             json={
                 "iTotalRecords": 2,
-                "data": [{"operador": "CLARO"}, {"operador": "MOVISTAR"}],
+                "data": [
+                    _row("PREPAGO", "96222****", "CLARO"),
+                    _row("POSTPAGO", "94915****", "ENTEL"),
+                ],
             },
         )
 
     async with _client(handler) as client:
-        rows = await OSIPTEL.lookup(client, RUC("20100000001"))
-    assert rows == (("CLARO", 1, 2), ("MOVISTAR", 1, 2))
+        rows = await OSIPTEL.lookup(client, Doc("20100000001"))
+    assert rows == (
+        ("PREPAGO", "96222****", "CLARO"),
+        ("POSTPAGO", "94915****", "ENTEL"),
+    )
+
+
+async def test_sends_id_tipo_doc_by_document_kind() -> None:
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        form = urllib.parse.parse_qs(request.content.decode())
+        seen[form["NumeroDocumento"][0]] = form["IdTipoDoc"][0]
+        return httpx.Response(200, json={"iTotalRecords": 0, "data": []})
+
+    async with _client(handler) as client:
+        await OSIPTEL.lookup(client, Doc("42953322"))
+        await OSIPTEL.lookup(client, Doc("20100000001"))
+    assert seen == {"42953322": "1", "20100000001": "2"}
 
 
 async def test_paginates_until_every_row_is_seen() -> None:
@@ -50,24 +74,45 @@ async def test_paginates_until_every_row_is_seen() -> None:
                 200,
                 json={
                     "iTotalRecords": 3,
-                    "data": [{"operador": "CLARO"}, {"operador": "CLARO"}],
+                    "data": [
+                        _row("PREPAGO", "96222****", "CLARO"),
+                        _row("PREPAGO", "96223****", "CLARO"),
+                    ],
                 },
             )
         return httpx.Response(
-            200, json={"iTotalRecords": 3, "data": [{"operador": "ENTEL"}]}
+            200,
+            json={"iTotalRecords": 3, "data": [_row("POSTPAGO", "90305****", "ENTEL")]},
         )
 
     async with _client(handler) as client:
-        rows = await OSIPTEL.lookup(client, RUC("20100000001"))
-    assert rows == (("CLARO", 2, 3), ("ENTEL", 1, 3))
+        rows = await OSIPTEL.lookup(client, Doc("20100000001"))
+    assert rows == (
+        ("PREPAGO", "96222****", "CLARO"),
+        ("PREPAGO", "96223****", "CLARO"),
+        ("POSTPAGO", "90305****", "ENTEL"),
+    )
 
 
-async def test_returns_empty_when_the_ruc_has_no_lines() -> None:
+async def test_returns_empty_when_the_doc_has_no_lines() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"iTotalRecords": 0, "data": []})
 
     async with _client(handler) as client:
-        assert await OSIPTEL.lookup(client, RUC("20100000001")) == ()
+        assert await OSIPTEL.lookup(client, Doc("20100000001")) == ()
+
+
+def test_counts_projection_folds_lines_into_per_carrier_totals() -> None:
+    rows = (
+        ("PREPAGO", "96222****", "CLARO"),
+        ("PREPAGO", "96223****", "CLARO"),
+        ("POSTPAGO", "90305****", "ENTEL"),
+    )
+    assert _counts(rows) == (("CLARO", 2, 3), ("ENTEL", 1, 3))
+
+
+def test_counts_projection_of_no_lines_is_empty() -> None:
+    assert _counts(()) == ()
 
 
 @pytest.mark.parametrize(
@@ -86,7 +131,7 @@ async def test_maps_http_status_to_the_right_fault(
 
     async with _client(handler) as client:
         with pytest.raises(expected):
-            await OSIPTEL.lookup(client, RUC("20100000001"))
+            await OSIPTEL.lookup(client, Doc("20100000001"))
 
 
 async def test_a_non_json_body_is_a_parse_error() -> None:
@@ -95,7 +140,7 @@ async def test_a_non_json_body_is_a_parse_error() -> None:
 
     async with _client(handler) as client:
         with pytest.raises(ParseError):
-            await OSIPTEL.lookup(client, RUC("20100000001"))
+            await OSIPTEL.lookup(client, Doc("20100000001"))
 
 
 async def test_a_rejected_request_surfaces_as_a_schema_error() -> None:
@@ -104,7 +149,7 @@ async def test_a_rejected_request_surfaces_as_a_schema_error() -> None:
 
     async with _client(handler) as client:
         with pytest.raises(ProviderSchemaError):
-            await OSIPTEL.lookup(client, RUC("20100000001"))
+            await OSIPTEL.lookup(client, Doc("20100000001"))
 
 
 async def test_ready_returns_once_the_success_marker_is_seen() -> None:

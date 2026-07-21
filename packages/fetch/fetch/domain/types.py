@@ -15,26 +15,50 @@ if TYPE_CHECKING:
     import httpx
 
 
+_DNI_RE = re.compile(r"^\d{7,8}$")
 _RUC_RE = re.compile(r"^\d{11}$")
 
 
+class DocKind(Enum):
+    # The document type. Sets the valid length and OSIPTEL's IdTipoDoc (DNI=1, RUC=2).
+    DNI = "dni"
+    RUC = "ruc"
+
+
 class RucKind(Enum):
+    # A RUC's subtype, read off the leading digits. Only RUC docs have one; it is the
+    # routing key that splits natural persons (sunat) from entities (sunat_reps).
     NATURAL = "natural"
     JURIDICA = "juridica"
 
 
-class RUC(UserString):
-    # The RUC vocabulary is this engine's own; browser keeps a separate copy so the
-    # two packages stay independent. Site, Result, and the planner all speak in it.
+class Doc(UserString):
+    # The engine's identifier vocabulary; browser keeps a separate copy so the two
+    # packages stay independent. Site, Result, and the planner all speak in it.
     def __init__(self, value: str) -> None:
         normalized = value.strip()
-        if not _RUC_RE.match(normalized):
-            msg = f"invalid RUC {value!r}: must be 11 digits"
+        if _RUC_RE.match(normalized):
+            self._kind = DocKind.RUC
+        elif _DNI_RE.match(normalized):
+            self._kind = DocKind.DNI
+            # A 7-digit DNI is the modern 8-digit form with a dropped leading zero, so
+            # pad to the canonical width; the same person keys to one row.
+            normalized = normalized.zfill(8)
+        else:
+            msg = (
+                f"invalid document {value!r}: expected a 7-8 digit DNI or 11-digit RUC"
+            )
             raise ValueError(msg)
         super().__init__(normalized)
 
     @property
-    def kind(self) -> RucKind:
+    def kind(self) -> DocKind:
+        return self._kind
+
+    @property
+    def ruc_kind(self) -> RucKind | None:
+        if self._kind is not DocKind.RUC:
+            return None
         return RucKind.JURIDICA if self.data.startswith("20") else RucKind.NATURAL
 
 
@@ -73,6 +97,20 @@ class Endpoint:
 
 
 @dataclass(frozen=True)
+class Projection:
+    """A named alternate view over a site's stored rows, materialized on export.
+
+    The store holds each site's richest form once; a projection is a pure function
+    that reshapes those rows into a derived CSV (e.g. per-line numbers folded into
+    per-carrier counts) without a second crawl.
+    """
+
+    name: str
+    columns: tuple[str, ...]
+    project: Callable[[tuple[Row, ...]], tuple[Row, ...]]
+
+
+@dataclass(frozen=True)
 class Site:
     """A lookup target: two functions plus its static data.
 
@@ -84,10 +122,10 @@ class Site:
 
     name: str
     columns: tuple[str, ...]
-    # Input contract: the RUC kinds this site can serve. The planner routes each RUC
-    # only to sites whose supports include its kind, so no site is ever handed a RUC
-    # it cannot answer.
-    supports: frozenset[RucKind]
+    # Input contract: the sole owner of "can this site answer this document?". The
+    # planner routes each doc only to sites that accept it, so no site is ever handed
+    # a document it cannot serve.
+    accepts: Callable[[Doc], bool]
     # Output contract: a non-empty guarantee. The engine enforces this after every
     # lookup, so a parser's empty fall-through becomes a loud fault.
     allows_empty: bool
@@ -95,12 +133,14 @@ class Site:
     # The hosts ready() warms before the first lookup.
     endpoints: tuple[Endpoint, ...]
     ready: Callable[[httpx.AsyncClient, Site], Awaitable[None]]
-    lookup: Callable[[httpx.AsyncClient, RUC], Awaitable[tuple[Row, ...]]]
+    lookup: Callable[[httpx.AsyncClient, Doc], Awaitable[tuple[Row, ...]]]
+    # Derived CSV views exported alongside the canonical rows, no extra fetch.
+    projections: tuple[Projection, ...] = ()
 
 
 @dataclass(frozen=True)
 class Result:
-    ruc: RUC
+    doc: Doc
     site: str
     status: Status
     rows: tuple[Row, ...] = ()

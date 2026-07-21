@@ -10,7 +10,7 @@ from fetch.domain.errors import (
     TransientTransportError,
 )
 from fetch.domain.policy import MAX_ATTEMPTS
-from fetch.domain.types import RUC, RucKind, Site, SiteTuning, Status
+from fetch.domain.types import Doc, DocKind, Site, SiteTuning, Status
 from fetch.pipeline import session as session_mod
 from fetch.pipeline.breaker import CircuitBreaker
 from fetch.pipeline.fetch import fetch_one
@@ -49,8 +49,12 @@ class _FakeProvider:
         self.released.append(session.proxy_id)
 
 
+def _accepts_ruc(doc: Doc) -> bool:
+    return doc.kind is DocKind.RUC
+
+
 def _site(
-    lookup: Callable[[httpx.AsyncClient, RUC], Awaitable[tuple[Row, ...]]],
+    lookup: Callable[[httpx.AsyncClient, Doc], Awaitable[tuple[Row, ...]]],
     *,
     allows_empty: bool = True,
 ) -> Site:
@@ -60,7 +64,7 @@ def _site(
     return Site(
         name="fake_site",
         columns=("value",),
-        supports=frozenset({RucKind.JURIDICA}),
+        accepts=_accepts_ruc,
         allows_empty=allows_empty,
         tuning=SiteTuning(session_budget=50),
         endpoints=(),
@@ -86,13 +90,13 @@ def _no_real_egress_probe(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 async def test_succeeds_on_the_first_attempt() -> None:
-    async def lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
         return (("value1",),)
 
     result = await fetch_one(
         site=_site(lookup),
         state=WorkerState(),
-        ruc=RUC("20100000001"),
+        doc=Doc("20100000001"),
         provider=_FakeProvider(),
         breaker=CircuitBreaker(provider="fake:fake", run_id="r"),
         slot_id=1,
@@ -106,7 +110,7 @@ async def test_succeeds_on_the_first_attempt() -> None:
 
 
 async def test_a_ruc_not_found_error_is_a_terminal_not_found_with_no_retry() -> None:
-    async def lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
         msg = "no record"
         raise RucNotFoundError(msg)
 
@@ -114,7 +118,7 @@ async def test_a_ruc_not_found_error_is_a_terminal_not_found_with_no_retry() -> 
     result = await fetch_one(
         site=_site(lookup),
         state=WorkerState(),
-        ruc=RUC("20100000001"),
+        doc=Doc("20100000001"),
         provider=_FakeProvider(),
         breaker=breaker,
         slot_id=1,
@@ -128,13 +132,13 @@ async def test_a_ruc_not_found_error_is_a_terminal_not_found_with_no_retry() -> 
 
 
 async def test_allows_empty_false_and_empty_rows_retries_then_fails() -> None:
-    async def lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
         return ()
 
     result = await fetch_one(
         site=_site(lookup, allows_empty=False),
         state=WorkerState(),
-        ruc=RUC("20100000001"),
+        doc=Doc("20100000001"),
         provider=_FakeProvider(),
         breaker=CircuitBreaker(provider="fake:fake", run_id="r"),
         slot_id=1,
@@ -157,13 +161,13 @@ async def test_allows_empty_false_and_empty_rows_retries_then_fails() -> None:
 async def test_a_fault_retries_up_to_max_attempts_with_the_classified_code(
     exc: BaseException, expected_code: str
 ) -> None:
-    async def lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
         raise exc
 
     result = await fetch_one(
         site=_site(lookup),
         state=WorkerState(),
-        ruc=RUC("20100000001"),
+        doc=Doc("20100000001"),
         provider=_FakeProvider(),
         breaker=CircuitBreaker(provider="fake:fake", run_id="r"),
         slot_id=1,
@@ -179,7 +183,7 @@ async def test_a_fault_retries_up_to_max_attempts_with_the_classified_code(
 async def test_a_ban_error_rotates_the_session_with_a_cooldown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
         msg = "blocked"
         raise BanSignalError(msg)
 
@@ -205,7 +209,7 @@ async def test_a_ban_error_rotates_the_session_with_a_cooldown(
     result = await fetch_one(
         site=_site(lookup),
         state=state,
-        ruc=RUC("20100000001"),
+        doc=Doc("20100000001"),
         provider=provider,
         breaker=CircuitBreaker(provider="fake:fake", run_id="r"),
         slot_id=1,
@@ -222,7 +226,7 @@ async def test_a_ban_error_rotates_the_session_with_a_cooldown(
 
 
 async def test_made_healthy_contact_is_false_once_the_breaker_trips() -> None:
-    async def lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
         msg = "boom"
         raise TransientTransportError(msg)
 
@@ -234,7 +238,7 @@ async def test_made_healthy_contact_is_false_once_the_breaker_trips() -> None:
     result = await fetch_one(
         site=_site(lookup),
         state=WorkerState(),
-        ruc=RUC("20100000001"),
+        doc=Doc("20100000001"),
         provider=_FakeProvider(),
         breaker=breaker,
         slot_id=1,

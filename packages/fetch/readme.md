@@ -1,18 +1,23 @@
 # fetch
 
-Bulk lookup of public data for Peruvian RUCs across one or more public government
-sites. Reads a CSV of RUCs and writes one result CSV per site, backed by a durable
-resume database. Work is fanned out across concurrent async lanes, each routed
-through a sticky session on a configured proxy provider.
+Bulk lookup of public data for Peruvian identity documents across one or more public
+government sites. Reads a CSV of documents (8-digit DNIs and/or 11-digit RUCs) and
+writes one result CSV per site, backed by a durable resume database. Work is fanned
+out across concurrent async lanes, each routed through a sticky session on a
+configured proxy provider.
 
-Two sites are built in and compose in a single run:
+Built-in sites compose in a single run:
 
-- `osiptel` (`checatuslineas.osiptel.gob.pe`): phone-line counts per carrier.
+- `osiptel` (`checatuslineas.osiptel.gob.pe`): the phone lines registered to a
+  document, one row per line (modality, redacted number, carrier). Serves both DNIs
+  and RUCs. A `counts` projection (per-carrier line counts) is exported alongside.
 - `sunat` (`e-consultaruc.sunat.gob.pe`): the "Tipo de Documento" record
-  (document type, number, and name) from the RUC consulta page.
+  (document type, number, and name) from the RUC consulta page. RUC-natural only.
 
-The unit of work is a `(ruc, site)` pair, so each site's lookup for a RUC is an
-independent, independently-resumable job.
+The unit of work is a `(doc, site)` pair, so each site's lookup for a document is an
+independent, independently-resumable job. Each site declares which documents it
+accepts; the planner routes only what a site can serve (OSIPTEL takes any document,
+SUNAT only RUCs), setting OSIPTEL's `IdTipoDoc` from the document kind.
 
 ## Install
 
@@ -67,15 +72,17 @@ at scale. Both providers also need their `*_USER` and `*_PASS`.
 uv run fetch --input rucs.csv --output out.csv --sites sunat,osiptel --env-file .env
 ```
 
-`--input` is a single-column CSV of 11-digit RUCs (RUC-10 for persons, RUC-20 for
-companies). Rows that are empty or not 11 digits are dropped silently and counted
-under `ignored`. `--sites` is required. Other flags default to per-site/per-provider
-settings and rarely need changing:
+`--input` is a single-column CSV of documents: 7-8 digit DNIs (7-digit ones are
+zero-padded to the canonical 8) and/or 11-digit RUCs (RUC-10 for persons, RUC-20 for
+companies). DNIs and RUCs can be mixed freely; the kind is detected per row. Rows that
+are empty or neither shape are dropped silently and counted under `ignored`. `--sites`
+is required. Other flags default to per-site/per-provider settings and rarely need
+changing:
 
 | flag              | default        | notes |
 | ----------------- | -------------- | ----- |
 | `--sites`         | (required)     | comma-separated: `sunat`, `osiptel` |
-| `--dedupe`        | on             | collapse duplicate RUCs in the input |
+| `--dedupe`        | on             | collapse duplicate documents in the input |
 | `--session-budget`| site default   | global override of lookups per sticky session (OSIPTEL 1, SUNAT 50) |
 | `--workers`       | provider default | global override of lanes per provider (GeoNode 15, DataImpulse 18) |
 | `--ban-cooldown-s`| provider default | global override of the post-ban lane cooldown (30s) |
@@ -93,18 +100,22 @@ For `--output out.csv` and each requested site, files are written next to `--out
 All writes are atomic (`*.tmp` + rename) and happen even on interruption, so the
 artifacts on disk always reflect the durable state.
 
-- `out.<site>.csv`: successes. Columns are the site's own:
-  - `osiptel`: `ruc,carrier,lines,total_lines`
-  - `sunat`: `ruc,tipo_doc,num_doc,nombre`
+- `out.<site>.csv`: successes. The first column is always `doc`; the rest are the
+  site's own:
+  - `osiptel`: `doc,modalidad,numero,operador` (one row per line)
+  - `sunat`: `doc,tipo_doc,num_doc,nombre`
+- `out.<site>.<projection>.csv`: a derived view over the same stored rows, materialized
+  at export with no extra fetch:
+  - `out.osiptel.counts.csv`: `doc,carrier,lines,total_lines` (per-carrier tallies)
 - `out.<site>.errors.csv`: terminal failures, columns
-  `ruc,error_code,error_detail,attempt,session_id,proxy_id,timestamp`.
+  `doc,error_code,error_detail,attempt,session_id,proxy_id,timestamp`.
 - `out.state.sqlite3`: the resume database and source of truth. Do not edit it.
 
-A successful lookup with no data (an OSIPTEL RUC with no lines, a SUNAT company with
+A successful lookup with no data (a document with no phone lines, a SUNAT company with
 no document row) is an honest success stored with an empty payload: the pair is done
 but contributes no CSV rows.
 
-A run is fully resumable. Re-running with the same `--output` skips any `(ruc, site)`
+A run is fully resumable. Re-running with the same `--output` skips any `(doc, site)`
 pair that already succeeded or has retired at the retry cap. The state DB is the only
 durable artifact; delete `out.state.sqlite3` to start over. To rebuild a lost DB from
 its exports, run once with `--import`. A re-run that finally succeeds clears the prior
@@ -123,11 +134,12 @@ async `TaskGroup`. Each provider contributes its configured number of lanes (see
 runs the site's `ready` warmup, performs lookups, and rotates the session on ban or when
 `session_budget` is reached.
 
-A **site** is just a value: a name, its output columns, its tuning, and two functions:
-`ready(client)` (warm a fresh proxy-bound client) and `lookup(client, ruc) -> rows`
-(perform the request(s), parse, return rows, raising the shared error taxonomy). The
-pipeline, store, and proxy code are entirely site-agnostic; adding a site is one new
-`sites/<name>/` module plus one entry in the `SITES` dict.
+A **site** is just a value: a name, its output columns, an `accepts(doc)` predicate,
+its tuning, optional projections, and two functions: `ready(client)` (warm a fresh
+proxy-bound client) and `lookup(client, doc) -> rows` (perform the request(s), parse,
+return rows, raising the shared error taxonomy). The pipeline, store, and proxy code
+are entirely site-agnostic; adding a site is one new `sites/<name>/` module plus one
+entry in the `SITES` dict.
 
 Sticky sessions are provider-specific but lane-neutral:
 
@@ -140,9 +152,11 @@ Sticky sessions are provider-specific but lane-neutral:
 Site protocols:
 
 - **OSIPTEL** is a paginated POST to `/Consultas/GetAllCabeceraConsulta/` with
-  DataTables-style params, grouping counts by `operador`. `403`/`429` and WAF page text
-  are bans (rotate + cooldown); `502`/`503`/`504` are upstream degradation (retry);
-  non-JSON, missing `iTotalRecords`/`data`, or `estado=true` is a schema error.
+  DataTables-style params and `IdTipoDoc` (1 for a DNI, 2 for a RUC), returning one row
+  per line (`modalidad`, redacted `numeroServicio`, `operador`); per-carrier counts are
+  a projection folded from those rows at export. `403`/`429` and WAF page text are bans
+  (rotate + cooldown); `502`/`503`/`504` are upstream degradation (retry); non-JSON,
+  missing `iTotalRecords`/`data`, or `estado=true` is a schema error.
 - **SUNAT** is a single POST to `jcrS00Alias` with `accion=consPorRuc`, the RUC, and a
   random 52-char token (its reCAPTCHA is a client-side stub the server does not verify).
   The result HTML is parsed for the "Tipo de Documento" row. An error page is a transient

@@ -5,7 +5,9 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class PageRequest:
-    ruc: str
+    numero: str
+    # OSIPTEL's document-type code: "1" for a DNI, "2" for a RUC.
+    id_tipo_doc: str
     draw: int
     start: int
     length: int
@@ -31,8 +33,8 @@ def build_payload(req: PageRequest) -> dict[str, str]:
             "length": str(req.length),
             "search[value]": "",
             "search[regex]": "false",
-            "IdTipoDoc": "2",
-            "NumeroDocumento": req.ruc,
+            "IdTipoDoc": req.id_tipo_doc,
+            "NumeroDocumento": req.numero,
             "HCaptchaTokenCon": "",
             "BoolConsulta": "true",
         }

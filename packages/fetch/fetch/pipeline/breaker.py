@@ -52,7 +52,7 @@ class CircuitBreaker:
             await asyncio.sleep(remaining)
 
     def is_open(self) -> bool:
-        # Open means the provider, not any one RUC, is the suspect.
+        # Open means the provider, not any one document, is the suspect.
         return self._open_until > time.monotonic()
 
     def record_success(self) -> None:

@@ -10,7 +10,7 @@ from fetch.pipeline.session import WorkerState, close_session
 
 
 if TYPE_CHECKING:
-    from fetch.domain.types import RUC, RunTotals, Site
+    from fetch.domain.types import Doc, RunTotals, Site
     from fetch.pipeline.breaker import CircuitBreaker
     from fetch.pipeline.session import WorkerConfig
     from fetch.proxy.base import ProxyProvider
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 async def run_worker(
     *,
-    queue: asyncio.Queue[RUC],
+    queue: asyncio.Queue[Doc],
     site: Site,
     store: OutcomeStore,
     provider: ProxyProvider,
@@ -34,14 +34,14 @@ async def run_worker(
     try:
         while True:
             try:
-                ruc = queue.get_nowait()
+                doc = queue.get_nowait()
             except asyncio.QueueEmpty:
                 break
 
             result = await fetch_one(
                 site=site,
                 state=state,
-                ruc=ruc,
+                doc=doc,
                 provider=provider,
                 breaker=breaker,
                 slot_id=slot_id,

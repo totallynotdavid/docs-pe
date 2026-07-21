@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 from fetch.domain.types import RunTotals
 from fetch.obs.events import (
+    DOCS_UNROUTED,
     PROVIDER_SELECTED,
-    RUCS_UNROUTED,
     RUN_SUMMARY,
     SITE_SELECTED,
     SITE_SUMMARY,
@@ -21,12 +21,12 @@ from fetch.proxy.load import load_proxy_providers
 from fetch.store.export import export_all
 from fetch.store.import_ import import_site
 from fetch.store.outcomes import OutcomeStore, state_path_for_output
-from fetch.store.plan import count_unrouted, plan_pending, read_rucs
+from fetch.store.plan import count_unrouted, plan_pending, read_docs
 
 
 if TYPE_CHECKING:
     from fetch.cli import RunConfig
-    from fetch.domain.types import RUC, Site
+    from fetch.domain.types import Doc, Site
     from fetch.proxy.base import ProxyProvider
     from fetch.store.plan import PlanCounts
 
@@ -46,14 +46,14 @@ async def run(cfg: RunConfig, *, run_id: str) -> None:
                 )
                 logger.info("site_import %s", kv(site=site.name, imported=imported))
 
-        rucs, plan = read_rucs(cfg.input_csv, dedupe=cfg.dedupe)
+        docs, plan = read_docs(cfg.input_csv, dedupe=cfg.dedupe)
         done = store.done_pairs()
-        pending = plan_pending(rucs, sites, done)
+        pending = plan_pending(docs, sites, done)
         totals = {site.name: RunTotals() for site in sites}
 
-        unrouted = count_unrouted(rucs, sites)
+        unrouted = count_unrouted(docs, sites)
         if unrouted:
-            logger.warning("%s %s", RUCS_UNROUTED, kv(run_id=run_id, unrouted=unrouted))
+            logger.warning("%s %s", DOCS_UNROUTED, kv(run_id=run_id, unrouted=unrouted))
 
         try:
             for site in sites:
@@ -107,7 +107,7 @@ async def _run_workers(
     store: OutcomeStore,
     sites: list[Site],
     providers: list[ProxyProvider],
-    pending: dict[str, list[RUC]],
+    pending: dict[str, list[Doc]],
     run_id: str,
     totals: dict[str, RunTotals],
 ) -> None:
@@ -121,9 +121,9 @@ async def _run_workers(
             site_pending = pending[site.name]
             if not site_pending:
                 continue
-            queue: asyncio.Queue[RUC] = asyncio.Queue()
-            for ruc in site_pending:
-                queue.put_nowait(ruc)
+            queue: asyncio.Queue[Doc] = asyncio.Queue()
+            for doc in site_pending:
+                queue.put_nowait(doc)
             budget = _budget(cfg, site)
 
             for provider in providers:
@@ -181,7 +181,7 @@ def _log_summary(
     store: OutcomeStore,
     sites: list[Site],
     plan: PlanCounts,
-    pending: dict[str, list[RUC]],
+    pending: dict[str, list[Doc]],
     totals: dict[str, RunTotals],
     unrouted: int,
 ) -> None:

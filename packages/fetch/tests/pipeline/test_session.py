@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from fetch.domain.types import RucKind, Site, SiteTuning
+from fetch.domain.types import DocKind, Site, SiteTuning
 from fetch.pipeline import session as session_mod
 from fetch.pipeline.session import (
     WorkerConfig,
@@ -21,7 +21,11 @@ from fetch.proxy.base import ProviderTuning, ProxySession
 
 
 if TYPE_CHECKING:
-    from fetch.domain.types import RUC, Row
+    from fetch.domain.types import Doc, Row
+
+
+def _accepts_ruc(doc: Doc) -> bool:
+    return doc.kind is DocKind.RUC
 
 
 class _Clock:
@@ -60,13 +64,13 @@ def _site() -> Site:
     async def ready(client: httpx.AsyncClient, site: Site) -> None:  # noqa: RUF029
         return None
 
-    async def lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
         return ()
 
     return Site(
         name="fake_site",
         columns=(),
-        supports=frozenset({RucKind.JURIDICA}),
+        accepts=_accepts_ruc,
         allows_empty=True,
         tuning=SiteTuning(session_budget=50),
         endpoints=(),

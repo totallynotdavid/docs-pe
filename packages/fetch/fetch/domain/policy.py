@@ -12,15 +12,15 @@ from fetch.domain.errors import (
 )
 
 
-# Per-run attempt budget for one RUC. Exhausting it does not retire the RUC.
+# Per-run attempt budget for one document. Exhausting it does not retire the document.
 MAX_ATTEMPTS = 4
 
-# The single owner of the retirement rule. A failing RUC leaves the work set only
+# The single owner of the retirement rule. A failing document leaves the work set only
 # by succeeding or by reaching 12 cumulative healthy-contact attempts across all
-# runs. No FetchError variant is classified as a permanent per-RUC failure, so every
-# failure is environmental and stays eligible until then.
+# runs. No FetchError variant is classified as a permanent per-document failure, so
+# every failure is environmental and stays eligible until then.
 # Attempts that hit a tripped breaker do not count toward the cap, so no outage can
-# grind a RUC out by exhausting the budget.
+# grind a document out by exhausting the budget.
 MAX_TOTAL_ATTEMPTS = 12
 
 
@@ -42,8 +42,8 @@ def _classify(exc: FetchError, *, ban_cooldown_s: float) -> RetryDecision:
     if isinstance(exc, ProviderSchemaError):
         # An unexpected body is far more often a site-wide maintenance or rejection
         # page than a genuinely malformed one, so rotate instead of treating it as a
-        # per-RUC failure. The breaker will trip if the site is uniformly broken;
-        # a single bad RUC still retires via MAX_TOTAL_ATTEMPTS.
+        # per-document failure. The breaker will trip if the site is uniformly broken;
+        # a single bad document still retires via MAX_TOTAL_ATTEMPTS.
         return RetryDecision("provider_schema_error", cooldown_s=0.0)
     if isinstance(exc, TransientTransportError):
         return RetryDecision("transport_error", cooldown_s=0.0)

@@ -6,22 +6,39 @@ from fetch.domain.errors import ProviderSchemaError
 from fetch.sites.osiptel.parser import parse_page
 
 
-def _page(**overrides: object) -> dict[str, object]:
-    page: dict[str, object] = {
-        "iTotalRecords": 2,
-        "data": [{"operador": "CLARO"}, {"operador": "MOVISTAR"}],
+def _row(**overrides: object) -> dict[str, object]:
+    row: dict[str, object] = {
+        "modalidad": "POSTPAGO",
+        "numeroServicio": "98857****",
+        "operador": "AMERICA MOVIL PERU S.A.C.",
     }
+    row.update(overrides)
+    return row
+
+
+def _page(**overrides: object) -> dict[str, object]:
+    page: dict[str, object] = {"iTotalRecords": 1, "data": [_row()]}
     page.update(overrides)
     return page
 
 
-def test_counts_lines_per_carrier() -> None:
+def test_extracts_one_row_per_line() -> None:
     parsed = parse_page(
-        _page(data=[{"operador": "CLARO"}, {"operador": "CLARO"}], iTotalRecords=2)
+        _page(
+            data=[
+                _row(modalidad="PREPAGO", numeroServicio="96222****", operador="CLARO"),
+                _row(
+                    modalidad="POSTPAGO", numeroServicio="94915****", operador="ENTEL"
+                ),
+            ],
+            iTotalRecords=2,
+        )
     )
-    assert parsed.carrier_counts == {"CLARO": 2}
+    assert parsed.rows == (
+        ("PREPAGO", "96222****", "CLARO"),
+        ("POSTPAGO", "94915****", "ENTEL"),
+    )
     assert parsed.total_records == 2
-    assert parsed.rows_returned == 2
 
 
 def test_accepts_total_records_as_a_numeric_string() -> None:
@@ -31,8 +48,7 @@ def test_accepts_total_records_as_a_numeric_string() -> None:
 
 def test_an_empty_data_array_is_a_valid_empty_page() -> None:
     parsed = parse_page(_page(data=[], iTotalRecords=0))
-    assert parsed.carrier_counts == {}
-    assert parsed.rows_returned == 0
+    assert parsed.rows == ()
 
 
 def test_the_rejection_flag_raises() -> None:
@@ -44,10 +60,11 @@ def test_the_rejection_flag_raises() -> None:
     "payload",
     [
         "not-a-dict",
-        {"data": [{"operador": "CLARO"}]},
+        {"data": [_row()]},
         {"iTotalRecords": 1},
         {"iTotalRecords": 1, "data": ["not-a-dict"]},
-        {"iTotalRecords": 1, "data": [{"operador": "  "}]},
+        {"iTotalRecords": 1, "data": [{"modalidad": "POSTPAGO", "operador": "CLARO"}]},
+        {"iTotalRecords": 1, "data": [_row(operador="  ")]},
         {"iTotalRecords": 1, "data": [{}]},
     ],
 )

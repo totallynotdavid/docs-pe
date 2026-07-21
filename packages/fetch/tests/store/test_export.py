@@ -5,7 +5,15 @@ import re
 
 from typing import TYPE_CHECKING
 
-from fetch.domain.types import RUC, Result, RucKind, Site, SiteTuning, Status
+from fetch.domain.types import (
+    Doc,
+    DocKind,
+    Projection,
+    Result,
+    Site,
+    SiteTuning,
+    Status,
+)
 from fetch.store.export import ERROR_HEADERS, export_all, export_site, site_csv_path
 
 
@@ -18,36 +26,41 @@ if TYPE_CHECKING:
     from fetch.store.outcomes import OutcomeStore
 
 
-def _site(name: str, *columns: str) -> Site:
+def _accepts_ruc(doc: Doc) -> bool:
+    return doc.kind is DocKind.RUC
+
+
+def _site(name: str, *columns: str, projections: tuple[Projection, ...] = ()) -> Site:
     async def ready(client: httpx.AsyncClient, site: Site) -> None:  # noqa: RUF029
         return None
 
-    async def lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
         return ()
 
     return Site(
         name=name,
         columns=columns,
-        supports=frozenset({RucKind.JURIDICA}),
+        accepts=_accepts_ruc,
         allows_empty=True,
         tuning=SiteTuning(session_budget=1),
         endpoints=(),
         ready=ready,
         lookup=lookup,
+        projections=projections,
     )
 
 
-def _success(site: str, ruc: str, rows: tuple[Row, ...]) -> Result:
-    return Result(ruc=RUC(ruc), site=site, status=Status.OK, rows=rows)
+def _success(site: str, doc: str, rows: tuple[Row, ...]) -> Result:
+    return Result(doc=Doc(doc), site=site, status=Status.OK, rows=rows)
 
 
-def _not_found(site: str, ruc: str) -> Result:
-    return Result(ruc=RUC(ruc), site=site, status=Status.NOT_FOUND, attempt=1)
+def _not_found(site: str, doc: str) -> Result:
+    return Result(doc=Doc(doc), site=site, status=Status.NOT_FOUND, attempt=1)
 
 
-def _failure(site: str, ruc: str) -> Result:
+def _failure(site: str, doc: str) -> Result:
     return Result(
-        ruc=RUC(ruc),
+        doc=Doc(doc),
         site=site,
         status=Status.FAILED,
         error_code="ban_signal",
@@ -66,15 +79,52 @@ def _read_csv(path: Path) -> list[list[str]]:
 def test_export_site_writes_success_rows_under_the_sites_columns(
     store: OutcomeStore, tmp_path: Path
 ) -> None:
-    store.record_success(_success("osiptel", "20100000001", (("CLARO", 2, 2),)))
+    store.record_success(
+        _success("osiptel", "20100000001", (("POSTPAGO", "98857****", "CLARO"),))
+    )
     output_csv = tmp_path / "out.csv"
-    site = _site("osiptel", "carrier", "lines", "total_lines")
+    site = _site("osiptel", "modalidad", "numero", "operador")
 
     export_site(store=store, output_csv=output_csv, site=site)
 
     rows = _read_csv(site_csv_path(output_csv, "osiptel"))
     assert rows == [
-        ["ruc", "carrier", "lines", "total_lines"],
+        ["doc", "modalidad", "numero", "operador"],
+        ["20100000001", "POSTPAGO", "98857****", "CLARO"],
+    ]
+
+
+def test_export_site_writes_each_projection_to_its_own_file(
+    store: OutcomeStore, tmp_path: Path
+) -> None:
+    def counts(rows: tuple[Row, ...]) -> tuple[Row, ...]:
+        return ((rows[0][2], len(rows), len(rows)),)
+
+    store.record_success(
+        _success(
+            "osiptel",
+            "20100000001",
+            (
+                ("POSTPAGO", "98857****", "CLARO"),
+                ("PREPAGO", "96222****", "CLARO"),
+            ),
+        )
+    )
+    output_csv = tmp_path / "out.csv"
+    projection = Projection(
+        name="counts", columns=("carrier", "lines", "total_lines"), project=counts
+    )
+    site = _site(
+        "osiptel", "modalidad", "numero", "operador", projections=(projection,)
+    )
+
+    export_site(store=store, output_csv=output_csv, site=site)
+
+    counts_path = site_csv_path(output_csv, "osiptel").with_name(
+        "out.osiptel.counts.csv"
+    )
+    assert _read_csv(counts_path) == [
+        ["doc", "carrier", "lines", "total_lines"],
         ["20100000001", "CLARO", "2", "2"],
     ]
 
@@ -89,7 +139,7 @@ def test_an_empty_success_payload_writes_no_data_row(
     export_site(store=store, output_csv=output_csv, site=site)
 
     rows = _read_csv(site_csv_path(output_csv, "sunat"))
-    assert rows == [["ruc", "tipo_doc", "num_doc", "nombre"]]
+    assert rows == [["doc", "tipo_doc", "num_doc", "nombre"]]
 
 
 def test_export_site_writes_error_rows_with_the_fixed_headers(
@@ -97,7 +147,7 @@ def test_export_site_writes_error_rows_with_the_fixed_headers(
 ) -> None:
     store.record_failure(_failure("osiptel", "20100000001"))
     output_csv = tmp_path / "out.csv"
-    site = _site("osiptel", "carrier", "lines", "total_lines")
+    site = _site("osiptel", "modalidad", "numero", "operador")
 
     export_site(store=store, output_csv=output_csv, site=site)
 
@@ -127,16 +177,18 @@ def test_export_site_writes_not_found_rows(store: OutcomeStore, tmp_path: Path) 
     rows = _read_csv(
         site_csv_path(output_csv, "sunat_reps").with_suffix(".not_found.csv")
     )
-    assert rows[0] == ["ruc", "timestamp"]
+    assert rows[0] == ["doc", "timestamp"]
     assert rows[1][0] == "20100000001"
 
 
 def test_export_all_writes_every_site(store: OutcomeStore, tmp_path: Path) -> None:
-    store.record_success(_success("osiptel", "20100000001", (("CLARO", 1, 1),)))
+    store.record_success(
+        _success("osiptel", "20100000001", (("POSTPAGO", "98857****", "CLARO"),))
+    )
     store.record_success(_success("sunat", "20100000002", ()))
     output_csv = tmp_path / "out.csv"
     sites = [
-        _site("osiptel", "carrier", "lines", "total_lines"),
+        _site("osiptel", "modalidad", "numero", "operador"),
         _site("sunat", "tipo_doc", "num_doc", "nombre"),
     ]
 
@@ -144,8 +196,8 @@ def test_export_all_writes_every_site(store: OutcomeStore, tmp_path: Path) -> No
 
     osiptel_rows = _read_csv(site_csv_path(output_csv, "osiptel"))
     assert osiptel_rows == [
-        ["ruc", "carrier", "lines", "total_lines"],
-        ["20100000001", "CLARO", "1", "1"],
+        ["doc", "modalidad", "numero", "operador"],
+        ["20100000001", "POSTPAGO", "98857****", "CLARO"],
     ]
     sunat_rows = _read_csv(site_csv_path(output_csv, "sunat"))
-    assert sunat_rows == [["ruc", "tipo_doc", "num_doc", "nombre"]]
+    assert sunat_rows == [["doc", "tipo_doc", "num_doc", "nombre"]]

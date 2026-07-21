@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fetch.domain.errors import ProviderSchemaError
+
+
+if TYPE_CHECKING:
+    from fetch.domain.types import Row
 
 
 @dataclass(frozen=True)
 class ParsedPage:
     total_records: int
-    rows_returned: int
-    carrier_counts: dict[str, int]  # carrier -> lines on this page
+    # One row per line: (modalidad, numero, operador). The redacted number and the
+    # modality are the raw truth; per-carrier counts are a projection derived later.
+    rows: tuple[Row, ...]
 
 
 def parse_page(payload: object) -> ParsedPage:
@@ -22,15 +27,8 @@ def parse_page(payload: object) -> ParsedPage:
         raise ProviderSchemaError(msg)
 
     total = _total_records(payload)
-    rows = _rows(payload)
-    counts: dict[str, int] = {}
-    for row in rows:
-        carrier = _carrier_from_row(row)
-        counts[carrier] = counts.get(carrier, 0) + 1
-
-    return ParsedPage(
-        total_records=total, rows_returned=len(rows), carrier_counts=counts
-    )
+    rows = tuple(_line_from_row(row) for row in _rows(payload))
+    return ParsedPage(total_records=total, rows=rows)
 
 
 def _total_records(payload: dict[Any, Any]) -> int:
@@ -51,11 +49,14 @@ def _rows(payload: dict[Any, Any]) -> list[Any]:
     return rows
 
 
-def _carrier_from_row(row: object) -> str:
+def _line_from_row(row: object) -> Row:
     if not isinstance(row, dict):
         msg = "osiptel row has unsupported shape"
         raise ProviderSchemaError(msg)
-    return _required_text(row.get("operador"), field="operador")
+    modalidad = _required_text(row.get("modalidad"), field="modalidad")
+    numero = _required_text(row.get("numeroServicio"), field="numeroServicio")
+    operador = _required_text(row.get("operador"), field="operador")
+    return (modalidad, numero, operador)
 
 
 def _required_text(value: object, *, field: str) -> str:

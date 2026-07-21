@@ -10,12 +10,12 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
     from pathlib import Path
 
-    from fetch.domain.types import Site
+    from fetch.domain.types import Projection, Site
     from fetch.store.outcomes import OutcomeStore
 
 
 ERROR_HEADERS = [
-    "ruc",
+    "doc",
     "error_code",
     "error_detail",
     "attempt",
@@ -23,7 +23,7 @@ ERROR_HEADERS = [
     "proxy_id",
     "timestamp",
 ]
-NOT_FOUND_HEADERS = ["ruc", "timestamp"]
+NOT_FOUND_HEADERS = ["doc", "timestamp"]
 
 
 def export_all(*, store: OutcomeStore, output_csv: Path, sites: list[Site]) -> None:
@@ -35,8 +35,15 @@ def export_site(*, store: OutcomeStore, output_csv: Path, site: Site) -> None:
     success_path = site_csv_path(output_csv, site.name)
     success_path.parent.mkdir(parents=True, exist_ok=True)
     _write_atomic(
-        success_path, ["ruc", *site.columns], _success_lines(store, site.name)
+        success_path, ["doc", *site.columns], _success_lines(store, site.name)
     )
+    # Every projection is a free re-read of the same stored rows, no second crawl.
+    for projection in site.projections:
+        _write_atomic(
+            _projection_path(success_path, projection.name),
+            ["doc", *projection.columns],
+            _projection_lines(store, site.name, projection),
+        )
     _write_atomic(
         success_path.with_suffix(".errors.csv"),
         ERROR_HEADERS,
@@ -53,11 +60,26 @@ def site_csv_path(output_csv: Path, site_name: str) -> Path:
     return output_csv.with_name(f"{output_csv.stem}.{site_name}{output_csv.suffix}")
 
 
+def _projection_path(success_path: Path, projection_name: str) -> Path:
+    # out.osiptel.csv -> out.osiptel.counts.csv
+    return success_path.with_name(
+        f"{success_path.stem}.{projection_name}{success_path.suffix}"
+    )
+
+
 def _success_lines(store: OutcomeStore, site_name: str) -> Iterator[list[str | int]]:
     # An empty payload is an honest success with no rows; it yields no CSV lines.
-    for ruc, rows in store.success_rows(site_name):
+    for doc, rows in store.success_rows(site_name):
         for row in rows:
-            yield [ruc, *row]
+            yield [doc, *row]
+
+
+def _projection_lines(
+    store: OutcomeStore, site_name: str, projection: Projection
+) -> Iterator[list[str | int]]:
+    for doc, rows in store.success_rows(site_name):
+        for row in projection.project(rows):
+            yield [doc, *row]
 
 
 def _write_atomic(

@@ -25,7 +25,7 @@ from fetch.pipeline.session import (
 
 
 if TYPE_CHECKING:
-    from fetch.domain.types import RUC, Row, Site
+    from fetch.domain.types import Doc, Row, Site
     from fetch.pipeline.breaker import CircuitBreaker
     from fetch.pipeline.session import WorkerConfig, WorkerState
     from fetch.proxy.base import ProxyProvider
@@ -38,7 +38,7 @@ async def fetch_one(
     *,
     site: Site,
     state: WorkerState,
-    ruc: RUC,
+    doc: Doc,
     provider: ProxyProvider,
     breaker: CircuitBreaker,
     slot_id: int,
@@ -60,7 +60,7 @@ async def fetch_one(
                 lane_id=lane_id,
             )
             started = time.perf_counter()
-            rows = await site.lookup(session.client, ruc)
+            rows = await site.lookup(session.client, doc)
             _enforce_allows_empty(site, rows)
             logger.info(
                 "%s %s",
@@ -73,14 +73,14 @@ async def fetch_one(
                     session_id=session.session_id,
                     proxy_id=session.proxy.proxy_id,
                     egress_ip=session.egress_ip,
-                    ruc=ruc,
+                    doc=doc,
                     attempt=attempt,
                     elapsed_ms=int((time.perf_counter() - started) * 1000),
                     rows=len(rows),
                 ),
             )
             result = Result(
-                ruc=ruc,
+                doc=doc,
                 site=site.name,
                 status=Status.OK,
                 rows=rows,
@@ -104,12 +104,12 @@ async def fetch_one(
                     provider=provider.name,
                     session_id=session.session_id,
                     proxy_id=session.proxy.proxy_id,
-                    ruc=ruc,
+                    doc=doc,
                     attempt=attempt,
                 ),
             )
             result = Result(
-                ruc=ruc,
+                doc=doc,
                 site=site.name,
                 status=Status.NOT_FOUND,
                 http_session_id=session.session_id,
@@ -134,7 +134,7 @@ async def fetch_one(
                     provider=provider.name,
                     session_id=session_id,
                     proxy_id=proxy_id,
-                    ruc=ruc,
+                    doc=doc,
                     attempt=attempt,
                     error_code=decision.error_code,
                     error_type=type(exc).__name__,
@@ -149,7 +149,7 @@ async def fetch_one(
                         run_id=run_id,
                         lane_id=lane_id,
                         site=site.name,
-                        ruc=ruc,
+                        doc=doc,
                         error_type=type(exc).__name__,
                     ),
                 )
@@ -161,7 +161,7 @@ async def fetch_one(
                 )
             if attempt >= MAX_ATTEMPTS:
                 return Result(
-                    ruc=ruc,
+                    doc=doc,
                     site=site.name,
                     status=Status.FAILED,
                     error_code=decision.error_code,

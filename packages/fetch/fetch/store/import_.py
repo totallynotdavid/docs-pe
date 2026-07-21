@@ -4,7 +4,7 @@ import csv
 
 from typing import TYPE_CHECKING
 
-from fetch.domain.types import RUC
+from fetch.domain.types import Doc
 from fetch.store.export import site_csv_path
 
 
@@ -25,7 +25,7 @@ def import_site(*, store: OutcomeStore, output_csv: Path, site: Site) -> int:
     if not path.exists() or path.stat().st_size == 0:
         return 0
 
-    expected = ["ruc", *site.columns]
+    expected = ["doc", *site.columns]
     grouped: dict[str, list[Row]] = {}
     with path.open(newline="", encoding="utf-8") as file_obj:
         reader = csv.reader(file_obj)
@@ -36,11 +36,11 @@ def import_site(*, store: OutcomeStore, output_csv: Path, site: Site) -> int:
             if len(row) != len(expected):
                 continue
             try:
-                ruc = str(RUC(row[0]))
+                doc = str(Doc(row[0]))
             except ValueError:
                 continue
-            grouped.setdefault(ruc, []).append(tuple(row[1:]))
+            grouped.setdefault(doc, []).append(tuple(row[1:]))
 
-    for ruc, rows in grouped.items():
-        store.record_import(site=site.name, ruc=ruc, rows=tuple(rows))
+    for doc, rows in grouped.items():
+        store.record_import(site=site.name, doc=doc, rows=tuple(rows))
     return len(grouped)

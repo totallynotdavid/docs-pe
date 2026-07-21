@@ -9,7 +9,7 @@ import pytest
 
 from fetch.cli import RunConfig
 from fetch.domain.errors import BanSignalError
-from fetch.domain.types import RUC, RucKind, Site, SiteTuning
+from fetch.domain.types import Doc, DocKind, RucKind, Site, SiteTuning
 from fetch.pipeline import run as run_mod
 from fetch.pipeline import session as session_mod
 from fetch.pipeline.run import run
@@ -50,17 +50,20 @@ class _FakeProvider:
 
 def _site(
     name: str,
-    supports: frozenset[RucKind],
+    kinds: frozenset[RucKind],
     *,
-    lookup: Callable[[httpx.AsyncClient, RUC], Awaitable[tuple[Row, ...]]],
+    lookup: Callable[[httpx.AsyncClient, Doc], Awaitable[tuple[Row, ...]]],
 ) -> Site:
     async def ready(client: httpx.AsyncClient, site: Site) -> None:  # noqa: RUF029
         return None
 
+    def accepts(doc: Doc) -> bool:
+        return doc.kind is DocKind.RUC and doc.ruc_kind in kinds
+
     return Site(
         name=name,
         columns=("value",),
-        supports=supports,
+        accepts=accepts,
         allows_empty=True,
         tuning=SiteTuning(session_budget=1),
         endpoints=(),
@@ -117,7 +120,7 @@ def test_run_writes_a_success_csv_for_every_ruc(
 ) -> None:
     _install_provider(monkeypatch)
 
-    async def lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
         return (("ok",),)
 
     input_csv = _write_input(tmp_path, "20100000001", "20100000002")
@@ -132,7 +135,7 @@ def test_run_writes_a_success_csv_for_every_ruc(
     output = tmp_path / "out.csv"
     rows = list(csv.reader(output.with_name("out.osiptel.csv").open(encoding="utf-8")))
     assert rows == [
-        ["ruc", "value"],
+        ["doc", "value"],
         ["20100000001", "ok"],
         ["20100000002", "ok"],
     ]
@@ -145,12 +148,12 @@ def test_run_routes_each_ruc_kind_to_the_right_site(
     natural_hits: list[str] = []
     juridica_hits: list[str] = []
 
-    async def natural_lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:  # noqa: RUF029
-        natural_hits.append(str(ruc))
+    async def natural_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+        natural_hits.append(str(doc))
         return (("N",),)
 
-    async def juridica_lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:  # noqa: RUF029
-        juridica_hits.append(str(ruc))
+    async def juridica_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+        juridica_hits.append(str(doc))
         return (("J",),)
 
     input_csv = _write_input(tmp_path, "10100000001", "20100000001")
@@ -174,7 +177,7 @@ def test_run_exports_failures_to_the_errors_csv(
 ) -> None:
     _install_provider(monkeypatch)
 
-    async def lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
         msg = "blocked"
         raise BanSignalError(msg)
 
@@ -192,7 +195,7 @@ def test_run_exports_failures_to_the_errors_csv(
     with errors_path.open(encoding="utf-8") as file_obj:
         rows = list(csv.reader(file_obj))
     assert rows[0] == [
-        "ruc",
+        "doc",
         "error_code",
         "error_detail",
         "attempt",
@@ -211,12 +214,12 @@ def test_run_drops_already_done_rucs_on_a_resumed_run(
     first_hits: list[str] = []
     second_hits: list[str] = []
 
-    async def first_lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:  # noqa: RUF029
-        first_hits.append(str(ruc))
+    async def first_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+        first_hits.append(str(doc))
         return (("ok",),)
 
-    async def second_lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:  # noqa: RUF029
-        second_hits.append(str(ruc))
+    async def second_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+        second_hits.append(str(doc))
         return (("ok",),)
 
     cfg = _cfg(
@@ -227,8 +230,8 @@ def test_run_drops_already_done_rucs_on_a_resumed_run(
     asyncio.run(run(cfg, run_id="r1"))
     assert sorted(first_hits) == ["20100000001", "20100000002"]
 
-    # Re-run with one new RUC: the durable store is the source of truth, so only
-    # the new RUC is fetched.
+    # Re-run with one new Doc: the durable store is the source of truth, so only
+    # the new Doc is fetched.
     cfg2 = _cfg(
         tmp_path,
         _write_input(tmp_path, "20100000001", "20100000002", "20100000003"),
@@ -243,7 +246,7 @@ def test_run_releases_every_proxy_session_it_opened(
 ) -> None:
     provider = _install_provider(monkeypatch)
 
-    async def lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
         return (("ok",),)
 
     cfg = _cfg(

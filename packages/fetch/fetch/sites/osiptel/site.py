@@ -15,7 +15,7 @@ from fetch.domain.errors import (
     UpstreamNotReadyError,
 )
 from fetch.domain.transport import classify_status
-from fetch.domain.types import Endpoint, RucKind, Site, SiteTuning
+from fetch.domain.types import Doc, DocKind, Endpoint, Projection, Site, SiteTuning
 from fetch.obs.events import FETCH_PAGE_OK, FETCH_PAGE_START, SITE_REQUEST_FAILED
 from fetch.obs.logging import kv
 from fetch.sites.osiptel.parser import parse_page
@@ -23,7 +23,7 @@ from fetch.sites.osiptel.payload import PageRequest, build_payload
 
 
 if TYPE_CHECKING:
-    from fetch.domain.types import RUC, Row
+    from fetch.domain.types import Row
 
 
 logger = logging.getLogger(__name__)
@@ -74,45 +74,76 @@ async def _ready(client: httpx.AsyncClient, site: Site) -> None:
     raise UpstreamNotReadyError(msg)
 
 
-async def _lookup(client: httpx.AsyncClient, ruc: RUC) -> tuple[Row, ...]:
+async def _lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
+    numero = str(doc)
+    id_tipo_doc = _id_tipo_doc(doc)
     total: int | None = None
     start = 0
     draw = 1
-    counts: dict[str, int] = {}
+    rows: list[Row] = []
 
     while True:
         payload = await _fetch_page(
-            client, ruc=str(ruc), draw=draw, start=start, length=PAGE_SIZE
+            client,
+            numero=numero,
+            id_tipo_doc=id_tipo_doc,
+            draw=draw,
+            start=start,
+            length=PAGE_SIZE,
         )
         page = parse_page(payload)
         total = page.total_records
+        rows.extend(page.rows)
 
-        for carrier, lines in page.carrier_counts.items():
-            counts[carrier] = counts.get(carrier, 0) + lines
-
-        if total == 0 or page.rows_returned == 0:
+        if total == 0 or len(page.rows) == 0:
             break
-        start += page.rows_returned
+        start += len(page.rows)
         draw += 1
         if start >= total:
             break
 
-    grand_total = total or 0
-    return tuple(
-        (carrier, lines, grand_total) for carrier, lines in sorted(counts.items())
-    )
+    return tuple(rows)
+
+
+def _id_tipo_doc(doc: Doc) -> str:
+    return "1" if doc.kind is DocKind.DNI else "2"
+
+
+def _counts(rows: tuple[Row, ...]) -> tuple[Row, ...]:
+    # Fold the per-line rows into per-carrier counts; total_lines is the doc's grand
+    # total. A pure projection over stored rows, so counts never costs a second fetch.
+    counts: dict[str, int] = {}
+    for _modalidad, _numero, operador in rows:
+        key = str(operador)
+        counts[key] = counts.get(key, 0) + 1
+    total = len(rows)
+    return tuple((carrier, lines, total) for carrier, lines in sorted(counts.items()))
 
 
 async def _fetch_page(
-    client: httpx.AsyncClient, *, ruc: str, draw: int, start: int, length: int
+    client: httpx.AsyncClient,
+    *,
+    numero: str,
+    id_tipo_doc: str,
+    draw: int,
+    start: int,
+    length: int,
 ) -> Any:
     started = time.perf_counter()
     logger.info(
         "%s %s",
         FETCH_PAGE_START,
-        kv(ruc=ruc, draw=draw, start=start, length=length),
+        kv(doc=numero, draw=draw, start=start, length=length),
     )
-    data = build_payload(PageRequest(ruc=ruc, draw=draw, start=start, length=length))
+    data = build_payload(
+        PageRequest(
+            numero=numero,
+            id_tipo_doc=id_tipo_doc,
+            draw=draw,
+            start=start,
+            length=length,
+        )
+    )
     # Transport faults are normalized to TransientTransportError by the client
     # transport (proxy/transport.py), so there is nothing to catch here.
     response = await client.post(_API.url, data=data, headers=_api_headers())
@@ -121,13 +152,18 @@ async def _fetch_page(
     fault = classify_status(status)
     if fault is not None:
         body = _log_failed(
-            status, ruc=ruc, draw=draw, start=start, length=length, body=response.text
+            status,
+            numero=numero,
+            draw=draw,
+            start=start,
+            length=length,
+            body=response.text,
         )
         if fault is BanSignalError:
             msg = (
                 "osiptel request failed "
                 f"status={status} draw={draw} start={start} length={length} "
-                f"ruc={ruc} body={body}"
+                f"doc={numero} body={body}"
             )
         else:
             msg = f"osiptel request transient status={status}"
@@ -143,7 +179,7 @@ async def _fetch_page(
         "%s %s",
         FETCH_PAGE_OK,
         kv(
-            ruc=ruc,
+            doc=numero,
             draw=draw,
             start=start,
             length=length,
@@ -167,7 +203,7 @@ def _api_headers() -> dict[str, str]:
 
 
 def _log_failed(
-    status: int, *, ruc: str, draw: int, start: int, length: int, body: str
+    status: int, *, numero: str, draw: int, start: int, length: int, body: str
 ) -> str:
     text = body.replace("\n", " ").strip()[:160]
     logger.warning(
@@ -176,7 +212,7 @@ def _log_failed(
         kv(
             site="osiptel",
             status=status,
-            ruc=ruc,
+            doc=numero,
             draw=draw,
             start=start,
             length=length,
@@ -195,16 +231,30 @@ def _is_waf_block(body: str) -> bool:
     )
 
 
+def _accepts_any(doc: Doc) -> bool:
+    # The public endpoint answers any document type (DNI or RUC), keyed by IdTipoDoc.
+    return True
+
+
+_COUNTS = Projection(
+    name="counts",
+    columns=("carrier", "lines", "total_lines"),
+    project=_counts,
+)
+
+
 OSIPTEL = Site(
     name="osiptel",
-    columns=("carrier", "lines", "total_lines"),
-    # Phone-line counts exist for any taxpayer, natural or juridica.
-    supports=frozenset({RucKind.NATURAL, RucKind.JURIDICA}),
-    # A RUC with no phone lines is a real, valid empty result, not a fault.
+    # The raw truth is one row per line: its modality, redacted number, and carrier.
+    columns=("modalidad", "numero", "operador"),
+    accepts=_accepts_any,
+    # A document with no phone lines is a real, valid empty result, not a fault.
     allows_empty=True,
     # OSIPTEL must rotate every lookup.
     tuning=SiteTuning(session_budget=1),
     endpoints=(_HOME,),
     ready=_ready,
     lookup=_lookup,
+    # Per-carrier line counts, folded from the stored rows at export time.
+    projections=(_COUNTS,),
 )

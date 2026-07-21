@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from fetch.domain.errors import RucNotFoundError
 from fetch.domain.transport import raise_for_status, warm_endpoints
-from fetch.domain.types import Endpoint, RucKind, Site, SiteTuning
+from fetch.domain.types import Doc, DocKind, Endpoint, RucKind, Site, SiteTuning
 from fetch.sites.sunat.identity import IDENTITY, fetch_identity
 from fetch.sites.sunat.parser import parse_tipo_documento
 from fetch.sites.sunat.reps import build_reps_body, parse_reps
@@ -14,7 +14,7 @@ from fetch.sites.sunat.request import build_consulta_body, random_token
 if TYPE_CHECKING:
     import httpx
 
-    from fetch.domain.types import RUC, Row
+    from fetch.domain.types import Row
 
 
 HOME_URL = (
@@ -38,9 +38,9 @@ async def _ready(client: httpx.AsyncClient, site: Site) -> None:
 
 
 async def _lookup_tipo_documento(
-    client: httpx.AsyncClient, ruc: RUC
+    client: httpx.AsyncClient, doc: Doc
 ) -> tuple[Row, ...]:
-    body = build_consulta_body(ruc=str(ruc), token=random_token())
+    body = build_consulta_body(ruc=str(doc), token=random_token())
     page = await _post(client, _CONSULTA, body)
     record = parse_tipo_documento(page)
     if record is None:
@@ -49,14 +49,14 @@ async def _lookup_tipo_documento(
 
 
 async def _lookup_representantes(
-    client: httpx.AsyncClient, ruc: RUC
+    client: httpx.AsyncClient, doc: Doc
 ) -> tuple[Row, ...]:
     # Identity is the existence check: it gates whether the reps request runs at all.
-    identity = await fetch_identity(client, str(ruc))
+    identity = await fetch_identity(client, str(doc))
     if identity is None:
-        msg = f"sunat has no record of ruc {ruc}"
+        msg = f"sunat has no record of ruc {doc}"
         raise RucNotFoundError(msg)
-    reps = parse_reps(await _post(client, _REPS, build_reps_body(ruc=str(ruc))))
+    reps = parse_reps(await _post(client, _REPS, build_reps_body(ruc=str(doc))))
     return tuple(
         (
             identity.razon_social,
@@ -87,6 +87,18 @@ def _headers() -> dict[str, str]:
     }
 
 
+def _accepts_ruc(doc: Doc, *, kind: RucKind) -> bool:
+    return doc.kind is DocKind.RUC and doc.ruc_kind is kind
+
+
+def _accepts_natural_ruc(doc: Doc) -> bool:
+    return _accepts_ruc(doc, kind=RucKind.NATURAL)
+
+
+def _accepts_juridica_ruc(doc: Doc) -> bool:
+    return _accepts_ruc(doc, kind=RucKind.JURIDICA)
+
+
 # Not IP-bound, so one sticky session serves many lookups. Rotation on budget
 # spreads IP-level rate limits, not bans.
 _TUNING = SiteTuning(session_budget=50)
@@ -94,7 +106,7 @@ _TUNING = SiteTuning(session_budget=50)
 SUNAT = Site(
     name="sunat",
     columns=("tipo_doc", "num_doc", "nombre"),
-    supports=frozenset({RucKind.NATURAL}),
+    accepts=_accepts_natural_ruc,
     # A persona natural always has an identity document, so an empty result is
     # drift, never a valid blank.
     allows_empty=False,
@@ -107,7 +119,7 @@ SUNAT = Site(
 SUNAT_REPS = Site(
     name="sunat_reps",
     columns=("razon_social", "doc_type", "num_doc", "nombre", "cargo", "fecha_desde"),
-    supports=frozenset({RucKind.JURIDICA}),
+    accepts=_accepts_juridica_ruc,
     # Some entities (associations, educational centers) carry no legal
     # representative in SUNAT's records.
     allows_empty=True,

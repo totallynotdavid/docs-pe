@@ -5,7 +5,7 @@ import csv
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from fetch.domain.types import RUC
+from fetch.domain.types import Doc
 
 
 if TYPE_CHECKING:
@@ -22,10 +22,10 @@ class PlanCounts:
     duplicates: int
 
 
-def read_rucs(input_csv: Path, *, dedupe: bool) -> tuple[list[RUC], PlanCounts]:
+def read_docs(input_csv: Path, *, dedupe: bool) -> tuple[list[Doc], PlanCounts]:
     rows_read = valid = ignored = duplicates = 0
     seen: set[str] = set()
-    rucs: list[RUC] = []
+    docs: list[Doc] = []
 
     with input_csv.open(newline="", encoding="utf-8-sig") as file_obj:
         for row in csv.reader(file_obj):
@@ -34,44 +34,44 @@ def read_rucs(input_csv: Path, *, dedupe: bool) -> tuple[list[RUC], PlanCounts]:
                 ignored += 1
                 continue
             try:
-                ruc = RUC(row[0])
+                doc = Doc(row[0])
             except ValueError:
                 ignored += 1
                 continue
 
-            normalized = str(ruc)
+            normalized = str(doc)
             if dedupe and normalized in seen:
                 duplicates += 1
                 continue
             seen.add(normalized)
             valid += 1
-            rucs.append(ruc)
+            docs.append(doc)
 
-    return rucs, PlanCounts(
+    return docs, PlanCounts(
         rows_read=rows_read, valid=valid, ignored=ignored, duplicates=duplicates
     )
 
 
-def _serves(site: Site, ruc: RUC) -> bool:
-    # The sole owner of "can this site answer this RUC?".
-    return ruc.kind in site.supports
+def _serves(site: Site, doc: Doc) -> bool:
+    # The sole owner of "can this site answer this document?".
+    return site.accepts(doc)
 
 
 def plan_pending(
-    rucs: list[RUC], sites: list[Site], done_pairs: set[tuple[str, str]]
-) -> dict[str, list[RUC]]:
+    docs: list[Doc], sites: list[Site], done_pairs: set[tuple[str, str]]
+) -> dict[str, list[Doc]]:
     # Excludes pairs already resolved, so a resumed run never redoes them.
     return {
         site.name: [
-            ruc
-            for ruc in rucs
-            if _serves(site, ruc) and (site.name, str(ruc)) not in done_pairs
+            doc
+            for doc in docs
+            if _serves(site, doc) and (site.name, str(doc)) not in done_pairs
         ]
         for site in sites
     }
 
 
-def count_unrouted(rucs: list[RUC], sites: list[Site]) -> int:
-    # A RUC no selected site can serve falls out of every output; count it so the
+def count_unrouted(docs: list[Doc], sites: list[Site]) -> int:
+    # A document no selected site can serve falls out of every output; count it so the
     # gap is visible.
-    return sum(1 for ruc in rucs if not any(_serves(site, ruc) for site in sites))
+    return sum(1 for doc in docs if not any(_serves(site, doc) for site in sites))

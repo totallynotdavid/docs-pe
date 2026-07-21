@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fetch.domain.types import RUC, Result, Status
+from fetch.domain.types import Doc, Result, Status
 from fetch.store.outcomes import OutcomeCounts
 
 
@@ -11,9 +11,9 @@ if TYPE_CHECKING:
     from fetch.store.outcomes import OutcomeStore
 
 
-def _success(site: str, ruc: str, rows: tuple[Row, ...]) -> Result:
+def _success(site: str, doc: str, rows: tuple[Row, ...]) -> Result:
     return Result(
-        ruc=RUC(ruc),
+        doc=Doc(doc),
         site=site,
         status=Status.OK,
         rows=rows,
@@ -22,9 +22,9 @@ def _success(site: str, ruc: str, rows: tuple[Row, ...]) -> Result:
     )
 
 
-def _not_found(site: str, ruc: str) -> Result:
+def _not_found(site: str, doc: str) -> Result:
     return Result(
-        ruc=RUC(ruc),
+        doc=Doc(doc),
         site=site,
         status=Status.NOT_FOUND,
         http_session_id="sess",
@@ -33,9 +33,9 @@ def _not_found(site: str, ruc: str) -> Result:
     )
 
 
-def _failure(site: str, ruc: str, *, attempt: int, healthy: bool = True) -> Result:
+def _failure(site: str, doc: str, *, attempt: int, healthy: bool = True) -> Result:
     return Result(
-        ruc=RUC(ruc),
+        doc=Doc(doc),
         site=site,
         status=Status.FAILED,
         error_code="ban_signal",

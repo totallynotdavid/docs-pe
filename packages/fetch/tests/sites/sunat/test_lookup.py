@@ -12,7 +12,7 @@ from fetch.domain.errors import (
     RucNotFoundError,
     TransientTransportError,
 )
-from fetch.domain.types import RUC
+from fetch.domain.types import Doc
 from fetch.sites.sunat.site import SUNAT, SUNAT_REPS
 
 
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 _RESULT_HTML = (
     "<html><body><h2>Resultado de la Búsqueda</h2>"
-    "<h4>Tipo de Documento:</h4><p>RUC  20100000001  - ACME SAC</p>"
+    "<h4>Tipo de Documento:</h4><p>Doc  20100000001  - ACME SAC</p>"
     "</body></html>"
 )
 
@@ -47,8 +47,8 @@ async def test_returns_the_document_record() -> None:
         return httpx.Response(200, text=_RESULT_HTML)
 
     async with _client(handler) as client:
-        rows = await SUNAT.lookup(client, RUC("20100000001"))
-    assert rows == (("RUC", "20100000001", "ACME SAC"),)
+        rows = await SUNAT.lookup(client, Doc("20100000001"))
+    assert rows == (("Doc", "20100000001", "ACME SAC"),)
 
 
 async def test_returns_empty_for_a_result_page_without_a_document_row() -> None:
@@ -56,7 +56,7 @@ async def test_returns_empty_for_a_result_page_without_a_document_row() -> None:
         return httpx.Response(200, text="<html>Resultado de la Búsqueda</html>")
 
     async with _client(handler) as client:
-        assert await SUNAT.lookup(client, RUC("20100000001")) == ()
+        assert await SUNAT.lookup(client, Doc("20100000001")) == ()
 
 
 @pytest.mark.parametrize(
@@ -76,7 +76,7 @@ async def test_maps_http_status_to_the_right_fault(
 
     async with _client(handler) as client:
         with pytest.raises(expected):
-            await SUNAT.lookup(client, RUC("20100000001"))
+            await SUNAT.lookup(client, Doc("20100000001"))
 
 
 async def test_ready_passes_on_a_healthy_home_page() -> None:
@@ -103,7 +103,7 @@ async def test_reps_chains_identity_into_getrepleg() -> None:
         return httpx.Response(200, text=_REPS_HTML)
 
     async with _client(handler) as client:
-        rows = await SUNAT_REPS.lookup(client, RUC("20100000001"))
+        rows = await SUNAT_REPS.lookup(client, Doc("20100000001"))
     assert rows == (
         ("ACME SAC", "DNI", "12345678", "JUAN PEREZ", "GERENTE GENERAL", "01/01/2020"),
     )
@@ -119,7 +119,7 @@ async def test_reps_posts_an_empty_des_ruc_in_the_reps_request() -> None:
         return httpx.Response(200, text=_REPS_HTML)
 
     async with _client(handler) as client:
-        await SUNAT_REPS.lookup(client, RUC("20100000001"))
+        await SUNAT_REPS.lookup(client, Doc("20100000001"))
 
     body = urllib.parse.parse_qs(captured["body"], keep_blank_values=True)
     assert body["desRuc"][0] == ""
@@ -132,7 +132,7 @@ async def test_reps_returns_empty_when_the_company_has_no_representatives() -> N
         return httpx.Response(200, text=_REPS_EMPTY_HTML)
 
     async with _client(handler) as client:
-        assert await SUNAT_REPS.lookup(client, RUC("20100000001")) == ()
+        assert await SUNAT_REPS.lookup(client, Doc("20100000001")) == ()
 
 
 async def test_reps_raises_not_found_and_skips_the_reps_request() -> None:
@@ -144,7 +144,7 @@ async def test_reps_raises_not_found_and_skips_the_reps_request() -> None:
 
     async with _client(handler) as client:
         with pytest.raises(RucNotFoundError):
-            await SUNAT_REPS.lookup(client, RUC("20100000001"))
+            await SUNAT_REPS.lookup(client, Doc("20100000001"))
     assert calls == ["GET"]
 
 
@@ -154,7 +154,7 @@ async def test_reps_maps_a_fault_on_the_identity_request() -> None:
 
     async with _client(handler) as client:
         with pytest.raises(BanSignalError):
-            await SUNAT_REPS.lookup(client, RUC("20100000001"))
+            await SUNAT_REPS.lookup(client, Doc("20100000001"))
 
 
 async def test_reps_maps_a_fault_on_the_reps_request_after_identity_succeeds() -> None:
@@ -167,4 +167,4 @@ async def test_reps_maps_a_fault_on_the_reps_request_after_identity_succeeds() -
 
     async with _client(handler) as client:
         with pytest.raises(BanSignalError):
-            await SUNAT_REPS.lookup(client, RUC("20100000001"))
+            await SUNAT_REPS.lookup(client, Doc("20100000001"))
