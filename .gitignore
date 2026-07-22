@@ -7,7 +7,7 @@ dist/
 
 downloaded_files/
 *.csv
-.env
+.env*
 
 *.log
 *.pid
