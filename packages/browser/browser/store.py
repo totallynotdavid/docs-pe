@@ -19,33 +19,33 @@ CREATE TABLE IF NOT EXISTS observations (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id        TEXT NOT NULL,
     site          TEXT NOT NULL,
-    ruc           TEXT NOT NULL,
+    subject       TEXT NOT NULL,
     status        TEXT NOT NULL CHECK (status IN ('ok', 'rejected', 'failed')),
     payload       TEXT NOT NULL DEFAULT '{}',
     error_detail  TEXT NOT NULL DEFAULT '',
     observed_at   TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS observations_site_ruc_id
-    ON observations (site, ruc, id DESC);
+CREATE INDEX IF NOT EXISTS observations_site_subject_id
+    ON observations (site, subject, id DESC);
 """
 
 LATEST_SUCCESS = """
-SELECT observation.ruc, observation.payload, observation.observed_at
+SELECT observation.subject, observation.payload, observation.observed_at
 FROM observations AS observation
 JOIN (
-    SELECT ruc, MAX(id) AS id
+    SELECT subject, MAX(id) AS id
     FROM observations
     WHERE status = 'ok' AND site = :site
-    GROUP BY ruc
+    GROUP BY subject
 ) AS latest ON latest.id = observation.id
-ORDER BY observation.ruc
+ORDER BY observation.subject
 """
 
 
 class ObservationStore:
-    """One row per lookup attempt, keyed by (site, ruc). Columns are opaque here:
-    the store persists a site's stringified column dict as JSON and projects it
-    back out at export time, so it stays site-agnostic."""
+    """One row per lookup attempt, keyed by (site, subject). Columns are opaque
+    here: the store persists a site's stringified column dict as JSON and projects
+    it back out at export time, so it stays site-agnostic."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -64,19 +64,19 @@ class ObservationStore:
         self._connection.close()
 
     def record_success(
-        self, *, run_id: str, site: str, ruc: str, columns: dict[str, str]
+        self, *, run_id: str, site: str, subject: str, columns: dict[str, str]
     ) -> None:
         with self._transaction():
             self._connection.execute(
                 """
                 INSERT INTO observations
-                    (run_id, site, ruc, status, payload, observed_at)
-                VALUES (:run_id, :site, :ruc, 'ok', :payload, :observed_at)
+                    (run_id, site, subject, status, payload, observed_at)
+                VALUES (:run_id, :site, :subject, 'ok', :payload, :observed_at)
                 """,
                 {
                     "run_id": run_id,
                     "site": site,
-                    "ruc": ruc,
+                    "subject": subject,
                     "payload": json.dumps(
                         columns, ensure_ascii=False, separators=(",", ":")
                     ),
@@ -85,7 +85,7 @@ class ObservationStore:
             )
 
     def record_failure(
-        self, *, run_id: str, site: str, ruc: str, status: str, error_detail: str
+        self, *, run_id: str, site: str, subject: str, status: str, error_detail: str
     ) -> None:
         if status not in {"rejected", "failed"}:
             msg = f"invalid failure status: {status}"
@@ -94,27 +94,36 @@ class ObservationStore:
             self._connection.execute(
                 """
                 INSERT INTO observations
-                    (run_id, site, ruc, status, error_detail, observed_at)
-                VALUES (:run_id, :site, :ruc, :status, :error_detail, :observed_at)
+                    (run_id, site, subject, status, error_detail, observed_at)
+                VALUES (:run_id, :site, :subject, :status, :error_detail, :observed_at)
                 """,
                 {
                     "run_id": run_id,
                     "site": site,
-                    "ruc": ruc,
+                    "subject": subject,
                     "status": status,
                     "error_detail": error_detail,
                     "observed_at": _now(),
                 },
             )
 
-    def latest(self, site: str, ruc: str) -> dict[str, str] | None:
+    def done_subjects(self, site: str) -> set[str]:
+        # Subjects with at least one 'ok' observation for this site. The planner
+        # skips them so a resumed run never redoes settled work.
+        rows = self._connection.execute(
+            "SELECT DISTINCT subject FROM observations WHERE site = :site AND status = 'ok'",
+            {"site": site},
+        ).fetchall()
+        return {row["subject"] for row in rows}
+
+    def latest(self, site: str, subject: str) -> dict[str, str] | None:
         row = self._connection.execute(
             """
             SELECT payload FROM observations
-            WHERE site = :site AND ruc = :ruc AND status = 'ok'
+            WHERE site = :site AND subject = :subject AND status = 'ok'
             ORDER BY id DESC LIMIT 1
             """,
-            {"site": site, "ruc": ruc},
+            {"site": site, "subject": subject},
         ).fetchone()
         if row is None:
             return None
@@ -136,7 +145,7 @@ class ObservationStore:
             writer.writerow(header)
             for row in self._connection.execute(LATEST_SUCCESS, {"site": site}):
                 columns: dict[str, str] = json.loads(row["payload"])
-                writer.writerow(project(row["ruc"], columns, row["observed_at"]))
+                writer.writerow(project(row["subject"], columns, row["observed_at"]))
         temporary.replace(path)
 
     def observation_count(self) -> int:

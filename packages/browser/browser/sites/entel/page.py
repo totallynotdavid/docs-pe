@@ -9,15 +9,29 @@ from typing import TYPE_CHECKING, NoReturn
 
 from browser.errors import BrowserError, RejectedError
 from browser.sites.entel.parse import parse_lookup_result
+from browser.subject import Subject, SubjectKind
 
 
 if TYPE_CHECKING:
-    from browser.controller import PageController
     from browser.diagnostics import DiagnosticLog
     from browser.result import LookupResult
+    from browser.session import Session
+
+
+# The debt DataAction reads DocumentType as a plain string from the request
+# body, so a template captured with any one kind serves both: we override
+# DocumentType per lookup instead of re-driving the dropdown. These are the
+# dropdown's own labels for the kinds Entel serves.
+_DOCUMENT_TYPE: dict[SubjectKind, str] = {
+    SubjectKind.RUC: "RUC",
+    SubjectKind.DNI: "DNI",
+}
 
 
 URL = "https://miperfil.entel.pe/PE_Web_Cobro_Online_EU/"
+# Warm-up identifier used to capture the request template and health-check the
+# session when the run supplies no --control.
+DEFAULT_CONTROL = "20610448187"
 MIN_LOOKUP_INTERVAL_S = 0.5
 ENDPOINT = (
     f"{URL}screenservices/PE_Web_Cobro_Online_CW/OnlinePayment/"
@@ -53,14 +67,16 @@ BLOCK_STEP2_JS = r"""
 INSTALL_LOOKUP_JS = r"""
 (() => {
   window.__entelOutput = null;
-  window.__entelRuc = null;
-  window.__entelLookup = async function (ruc) {
+  window.__entelDocument = null;
+  window.__entelDocType = null;
+  window.__entelLookup = async function (docType, documentNumber) {
     const started = performance.now();
     const tokenStarted = performance.now();
     const token = await grecaptcha.execute("0", {action: "SearchDebt"});
     const mintMs = Math.round(performance.now() - tokenStarted);
     const body = JSON.parse(JSON.stringify(window.__entelTemplate));
-    body.screenData.variables.DocumentNumber = ruc;
+    body.screenData.variables.DocumentType = docType;
+    body.screenData.variables.DocumentNumber = documentNumber;
     body.clientVariables.TokenCaptchaV3 = token;
     const match = decodeURIComponent(document.cookie).match(/crf=([^;]+)/);
     const response = await fetch(%s, {
@@ -78,7 +94,7 @@ INSTALL_LOOKUP_JS = r"""
     const resource = performance.getEntriesByName(%s).slice(-1)[0];
     const diagnostic = window.__entelCaptureDiagnostics
       ? await window.__entelCaptureDiagnostics("lookup", {
-          ruc,
+          document: documentNumber,
           transaction: {
             requestBodyBytes: JSON.stringify(body).length,
             csrfLength: match ? match[1].length : 0,
@@ -101,7 +117,7 @@ INSTALL_LOOKUP_JS = r"""
         })
       : null;
     return {
-      ruc,
+      document: documentNumber,
       hasError: data.HasErrorDebt,
       debt: data.Debt || null,
       httpStatus: response.status,
@@ -121,7 +137,8 @@ INSTALL_LOOKUP_JS = r"""
     button.onclick = async () => {
       window.__entelOutput = null;
       try {
-        window.__entelOutput = await window.__entelLookup(window.__entelRuc);
+        window.__entelOutput = await window.__entelLookup(
+          window.__entelDocType, window.__entelDocument);
       } catch (error) {
         window.__entelOutput = {exception: String(error && error.message || error)};
       }
@@ -143,13 +160,13 @@ class EntelPage:
     def __init__(
         self,
         *,
-        controller: PageController,
-        control_ruc: str,
+        session: Session,
+        control: str | None,
         reset_cookies: bool = True,
         diagnostic_log: DiagnosticLog | None = None,
     ) -> None:
-        self._controller = controller
-        self._control_ruc = control_ruc
+        self._session = session
+        self._control = control or DEFAULT_CONTROL
         self._reset_cookies = reset_cookies
         self._diagnostic_log = diagnostic_log
         self._last_lookup_at = 0.0
@@ -157,24 +174,24 @@ class EntelPage:
     def prepare(self) -> None:
         self._wait_for_form()
         if self._reset_cookies:
-            self._controller.clear_cookies()
-        self._controller.open(URL)
+            self._session.clear_cookies()
+        self._session.goto(URL)
         self._wait_for_form()
-        installed = self._controller.evaluate(PAGE_DIAGNOSTICS_JS)
+        installed = self._session.evaluate(PAGE_DIAGNOSTICS_JS)
         if installed not in {"installed", "already-installed"}:
             msg = f"could not install Entel diagnostics: {installed!r}"
             raise BrowserError(msg)
         self._capture_stage("page-ready")
-        result = self._controller.evaluate(BLOCK_STEP2_JS)
+        result = self._session.evaluate(BLOCK_STEP2_JS)
         if result not in {"blocking", "already"}:
             msg = f"could not install Entel Step2 block: {result!r}"
             raise BrowserError(msg)
-        self._drive_form(self._control_ruc)
-        if self._controller.evaluate("!!window.__entelTemplate") is not True:
+        self._drive_form(self._control)
+        if self._session.evaluate("!!window.__entelTemplate") is not True:
             msg = "Entel form did not produce a Step2 request template"
             raise BrowserError(msg)
         self._capture_stage("template-captured")
-        installed = self._controller.evaluate(
+        installed = self._session.evaluate(
             INSTALL_LOOKUP_JS % (json.dumps(ENDPOINT), json.dumps(ENDPOINT))
         )
         if installed != "installed":
@@ -185,25 +202,27 @@ class EntelPage:
         # single control mint clears only about half the time; only a real
         # transport error here means the loop failed to install.
         with contextlib.suppress(RejectedError):
-            self.lookup(self._control_ruc)
+            self.lookup(self._control)
 
-    def lookup(self, ruc: str, *, timeout_s: float = 45.0) -> LookupResult:
+    def lookup(self, subject: str, *, timeout_s: float = 45.0) -> LookupResult:
         remaining = MIN_LOOKUP_INTERVAL_S - (time.monotonic() - self._last_lookup_at)
         if remaining > 0:
             time.sleep(remaining)
-        self._controller.evaluate("window.__entelOutput = null")
-        self._controller.evaluate(f"window.__entelRuc = {json.dumps(ruc)}")
+        doc_type = _DOCUMENT_TYPE[Subject(subject).kind]
+        self._session.evaluate("window.__entelOutput = null")
+        self._session.evaluate(f"window.__entelDocType = {json.dumps(doc_type)}")
+        self._session.evaluate(f"window.__entelDocument = {json.dumps(subject)}")
         self._gui_click("#entel-collector-go")
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
-            raw = self._controller.evaluate("JSON.stringify(window.__entelOutput)")
+            raw = self._session.evaluate("JSON.stringify(window.__entelOutput)")
             if raw and raw != "null":
                 payload = json.loads(raw)
                 self._last_lookup_at = time.monotonic()
                 self._record_lookup_diagnostic(payload)
-                return parse_lookup_result(payload, expected_ruc=ruc)
+                return parse_lookup_result(payload, expected_document=subject)
             time.sleep(0.25)
-        msg = f"Entel lookup timed out for RUC {ruc}"
+        msg = f"Entel lookup timed out for document {subject}"
         raise BrowserError(msg)
 
     def check_health(self) -> bool:
@@ -211,7 +230,7 @@ class EntelPage:
         # A reject is a valid response (fluctuating v3 score), not ill health;
         # only transport, timeout, or WAF errors mean the session is dead.
         try:
-            self.lookup(self._control_ruc)
+            self.lookup(self._control)
         except RejectedError:
             return True
         except BrowserError:
@@ -221,7 +240,7 @@ class EntelPage:
     def _wait_for_form(self, *, timeout_s: float = 45.0) -> None:
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
-            ready = self._controller.evaluate(
+            ready = self._session.evaluate(
                 "!!document.querySelector('#b9-b1-Dropdown_DocumentType')"
             )
             if ready is True:
@@ -229,11 +248,15 @@ class EntelPage:
             time.sleep(0.5)
         _fail("Entel form did not render")
 
-    def _drive_form(self, ruc: str) -> None:
+    def _drive_form(self, document: str) -> None:
+        # The form is driven once, with the RUC control, only to capture the
+        # Step2 request template. That template serves every kind: lookup()
+        # overrides DocumentType in the request body per call (RUC or DNI), so
+        # the dropdown choice here is fixed and does not gate DNI lookups.
         for _ in range(3):
             self._gui_click("#b9-b1-Dropdown_DocumentType")
             time.sleep(1.2)
-            tagged = self._controller.evaluate(
+            tagged = self._session.evaluate(
                 "(() => { const option = [...document.querySelectorAll("
                 "'#b9-b1-Dropdown_DocumentType *')].find(element => "
                 "element.children.length === 0 && element.innerText.trim() === 'RUC');"
@@ -243,7 +266,7 @@ class EntelPage:
             if tagged is True:
                 self._gui_click("#entel-ruc-option")
                 time.sleep(1.2)
-            selected = self._controller.evaluate(
+            selected = self._session.evaluate(
                 "document.querySelector('#b9-b1-Dropdown_DocumentType')"
                 ".innerText.trim().split('\\n').pop()"
             )
@@ -252,24 +275,24 @@ class EntelPage:
         else:
             _fail("could not select RUC document type")
 
-        inputs = json.loads(self._controller.evaluate(VISIBLE_INPUTS_JS))
+        inputs = json.loads(self._session.evaluate(VISIBLE_INPUTS_JS))
         if not inputs:
             _fail("Entel RUC input was not found")
         selector = f"#{inputs[0]['id']}"
         self._gui_click(selector)
         time.sleep(0.4)
-        self._controller.gui_press_keys(list(ruc))
+        self._session.gui_write(document)
         time.sleep(1.2)
-        inputs = json.loads(self._controller.evaluate(VISIBLE_INPUTS_JS))
+        inputs = json.loads(self._session.evaluate(VISIBLE_INPUTS_JS))
         entered = inputs[0]["value"] if inputs else None
-        if entered != ruc:
+        if entered != document:
             msg = f"OS input did not reach Entel form: got {entered!r}"
             raise BrowserError(msg)
 
         for selector in ("#b9-b1-Checkbox1", "#b9-b1-Checkbox2"):
             self._gui_click(selector)
             time.sleep(0.4)
-        button_state = self._controller.evaluate(
+        button_state = self._session.evaluate(
             "(() => { const button = [...document.querySelectorAll('button')]"
             ".find(element => /Continuar/i.test(element.innerText));"
             " if (!button) return 'missing'; button.id = 'entel-continue';"
@@ -282,18 +305,18 @@ class EntelPage:
         time.sleep(3.0)
 
     def _gui_click(self, selector: str) -> None:
-        self._controller.evaluate(
+        self._session.evaluate(
             "(() => { const element = document.querySelector("
             + json.dumps(selector)
             + "); if (element) element.scrollIntoView({block: 'center'}); })()"
         )
         time.sleep(0.4)
-        self._controller.gui_click_element(selector)
+        self._session.gui_click_element(selector)
 
     def _capture_stage(self, stage: str, *, timeout_s: float = 10.0) -> None:
         if self._diagnostic_log is None:
             return
-        self._controller.evaluate(
+        self._session.evaluate(
             "window.__entelDiagnosticOutput = null;"
             "window.__entelCaptureDiagnostics("
             + json.dumps(stage)
@@ -305,7 +328,7 @@ class EntelPage:
         )
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
-            raw = self._controller.evaluate(
+            raw = self._session.evaluate(
                 "JSON.stringify(window.__entelDiagnosticOutput)"
             )
             if raw and raw != "null":

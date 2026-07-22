@@ -7,27 +7,27 @@ from browser.errors import BrowserError, RejectedError
 from browser.result import LookupResult
 
 
-def parse_lookup_result(payload: object, *, expected_ruc: str) -> LookupResult:
+def parse_lookup_result(payload: object, *, expected_document: str) -> LookupResult:
     if not isinstance(payload, dict):
         _fail("Entel lookup returned an unsupported payload")
     if payload.get("exception"):
         msg = f"Entel lookup script failed: {payload['exception']}"
         raise BrowserError(msg)
-    if payload.get("ruc") != expected_ruc:
-        _fail("Entel lookup returned a response for another RUC")
+    if payload.get("document") != expected_document:
+        _fail("Entel lookup returned a response for another document")
     if payload.get("hasError") is True:
-        msg = f"Entel rejected lookup for RUC {expected_ruc}"
+        msg = f"Entel rejected lookup for document {expected_document}"
         raise RejectedError(msg)
     if payload.get("hasError") is not False:
         _fail("Entel lookup omitted HasErrorDebt")
     debt = payload.get("debt")
     if not isinstance(debt, dict):
         _fail("Entel lookup omitted debt data")
-    if debt.get("DocumentNumber") != expected_ruc:
+    if debt.get("DocumentNumber") != expected_document:
         _fail("Entel debt data contains another document number")
     total, has_punishment = _parse_debt_fields(debt)
     return LookupResult(
-        ruc=expected_ruc,
+        subject=expected_document,
         columns={
             "debt_total": f"{total:.2f}",
             "has_punishment": str(has_punishment),

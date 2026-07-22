@@ -1,1 +1,1 @@
-"""Browser backends: launch a Chrome and yield a PageController."""
+"""Browser backends: launch a Chrome and yield a Session."""

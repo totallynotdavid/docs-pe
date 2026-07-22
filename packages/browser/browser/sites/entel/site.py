@@ -4,23 +4,27 @@ from typing import TYPE_CHECKING
 
 from browser.sites.base import BrowserSite
 from browser.sites.entel.page import URL, EntelPage
+from browser.subject import SubjectKind
 
 
 if TYPE_CHECKING:
-    from browser.controller import PageController
     from browser.diagnostics import DiagnosticLog
+    from browser.session import Session
+
+
+_ACCEPTS = frozenset({SubjectKind.DNI, SubjectKind.RUC})
 
 
 def _open_page(
-    controller: PageController,
+    session: Session,
     *,
-    control_ruc: str,
+    control: str | None,
     reset_cookies: bool,
     diagnostic_log: DiagnosticLog | None,
 ) -> EntelPage:
     page = EntelPage(
-        controller=controller,
-        control_ruc=control_ruc,
+        session=session,
+        control=control,
         reset_cookies=reset_cookies,
         diagnostic_log=diagnostic_log,
     )
@@ -28,14 +32,15 @@ def _open_page(
     return page
 
 
-def _row(ruc: str, columns: dict[str, str], observed_at: str) -> list[str]:
-    return [ruc, columns["debt_total"], columns["has_punishment"], observed_at]
+def _row(subject: str, columns: dict[str, str], observed_at: str) -> list[str]:
+    return [subject, columns["debt_total"], columns["has_punishment"], observed_at]
 
 
 ENTEL = BrowserSite(
     name="entel",
     url=URL,
-    export_header=("ruc", "debt_total", "has_punishment", "observed_at"),
+    export_header=("subject", "debt_total", "has_punishment", "observed_at"),
+    accepts=lambda subject: subject.kind in _ACCEPTS,
     open_page=_open_page,
     row=_row,
 )

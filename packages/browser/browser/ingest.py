@@ -6,7 +6,7 @@ import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from browser.ruc import RUC
+from browser.subject import Subject
 
 
 if TYPE_CHECKING:
@@ -25,10 +25,10 @@ class PlanCounts:
     duplicates: int
 
 
-def read_rucs(input_csv: Path, *, dedupe: bool) -> tuple[list[RUC], PlanCounts]:
+def read_subjects(input_csv: Path, *, dedupe: bool) -> tuple[list[Subject], PlanCounts]:
     rows_read = valid = ignored = duplicates = 0
     seen: set[str] = set()
-    rucs: list[RUC] = []
+    subjects: list[Subject] = []
 
     with input_csv.open(newline="", encoding="utf-8-sig") as file_obj:
         for row in csv.reader(file_obj):
@@ -37,19 +37,19 @@ def read_rucs(input_csv: Path, *, dedupe: bool) -> tuple[list[RUC], PlanCounts]:
                 ignored += 1
                 continue
             try:
-                ruc = RUC(row[0])
+                subject = Subject(row[0])
             except ValueError:
                 ignored += 1
                 continue
 
-            normalized = str(ruc)
+            normalized = str(subject)
             if dedupe and normalized in seen:
                 duplicates += 1
                 continue
             seen.add(normalized)
             valid += 1
-            rucs.append(ruc)
+            subjects.append(subject)
 
-    return rucs, PlanCounts(
+    return subjects, PlanCounts(
         rows_read=rows_read, valid=valid, ignored=ignored, duplicates=duplicates
     )

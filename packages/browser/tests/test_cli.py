@@ -11,55 +11,67 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def test_parses_paths_and_derives_private_state_and_profile(tmp_path: Path) -> None:
-    source = tmp_path / "clients.csv"
+def test_parses_paths_and_derives_private_state(tmp_path: Path) -> None:
+    source = tmp_path / "numbers.csv"
     source.touch()
-    binary = tmp_path / "chrome"
-    binary.touch()
-    output = tmp_path / "debts.csv"
+    output = tmp_path / "carriers.csv"
     config = parse_args(
-        ["--input", str(source), "--output", str(output), "--binary", str(binary)]
+        ["--input", str(source), "--output", str(output), "--site", "portabilidad"]
     )
-    assert config.site == "entel"
-    assert config.state_db == tmp_path / "debts.state.sqlite3"
-    # The direct runner always derives a persistent, per-site profile path.
-    assert config.profile == tmp_path / ".debts.entel-chrome"
+    assert config.site == "portabilidad"
+    assert config.state_db == tmp_path / "carriers.state.sqlite3"
+    assert config.control is None
+    # Proxy is on by default so bulk runs never hammer a site from one IP.
+    assert config.use_proxy is True
+    assert config.env_file == ".env"
 
 
-def test_rejects_invalid_control_ruc(tmp_path: Path) -> None:
-    source = tmp_path / "clients.csv"
+def test_no_proxy_flag_disables_the_proxy(tmp_path: Path) -> None:
+    source = tmp_path / "numbers.csv"
     source.touch()
-    binary = tmp_path / "chrome"
-    binary.touch()
+    config = parse_args(
+        [
+            "--input",
+            str(source),
+            "--output",
+            str(tmp_path / "carriers.csv"),
+            "--site",
+            "portabilidad",
+            "--no-proxy",
+        ]
+    )
+    assert config.use_proxy is False
+
+
+def test_rejects_control_not_served_by_site(tmp_path: Path) -> None:
+    source = tmp_path / "numbers.csv"
+    source.touch()
     with pytest.raises(SystemExit):
+        # A DNI is not a phone, so portabilidad cannot use it as a control.
         parse_args(
             [
                 "--input",
                 str(source),
                 "--output",
-                str(tmp_path / "debts.csv"),
-                "--binary",
-                str(binary),
-                "--control-ruc",
-                "invalid",
+                str(tmp_path / "carriers.csv"),
+                "--site",
+                "portabilidad",
+                "--control",
+                "12345678",
             ]
         )
 
 
 def test_rejects_unknown_site(tmp_path: Path) -> None:
-    source = tmp_path / "clients.csv"
+    source = tmp_path / "numbers.csv"
     source.touch()
-    binary = tmp_path / "chrome"
-    binary.touch()
     with pytest.raises(SystemExit):
         parse_args(
             [
                 "--input",
                 str(source),
                 "--output",
-                str(tmp_path / "debts.csv"),
-                "--binary",
-                str(binary),
+                str(tmp_path / "carriers.csv"),
                 "--site",
                 "nope",
             ]
