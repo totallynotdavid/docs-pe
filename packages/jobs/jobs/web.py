@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import json
 import os
+import secrets
 
 from collections.abc import Callable
 from typing import Any
@@ -14,6 +15,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fetch.sites.registry import SITES
 
 from jobs.service import (
+    MAX_INPUT_BYTES,
     Cancelled,
     Conflict,
     JobsError,
@@ -24,14 +26,63 @@ from jobs.service import (
 from jobs.settings import Settings
 
 
+MAX_JSON_BODY_BYTES = 128 * 1024
+CSRF_COOKIE = "jobs_csrf"
+
+
 def create_app(settings: Settings) -> FastAPI:
     service = JobsService(settings)
     service.bootstrap_admin()
     app = FastAPI(title="OSIPTEL Jobs", version="0.1.0")
     app.state.service = service
 
+    @app.middleware("http")
+    async def csrf_protection(
+        request: Request, call_next: Callable[..., Any]
+    ) -> Response:
+        if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
+            return await call_next(request)
+        content_type = request.headers.get("content-type", "")
+        if content_type.startswith("multipart/form-data"):
+            content_length = request.headers.get("content-length")
+            if (
+                content_length
+                and content_length.isdigit()
+                and int(content_length) > MAX_INPUT_BYTES + 128 * 1024
+            ):
+                return JSONResponse(
+                    {"detail": "request body is too large"}, status_code=413
+                )
+        if request.cookies.get("jobs_session"):
+            cookie_token = request.cookies.get(CSRF_COOKIE, "")
+            supplied_token = request.headers.get("x-csrf-token", "")
+            if not supplied_token and content_type.startswith(
+                ("application/x-www-form-urlencoded", "multipart/form-data")
+            ):
+                form_limit = (
+                    MAX_INPUT_BYTES + 128 * 1024
+                    if content_type.startswith("multipart/form-data")
+                    else MAX_JSON_BODY_BYTES
+                )
+                raw_form = await request.body()
+                if len(raw_form) > form_limit:
+                    return JSONResponse(
+                        {"detail": "request body is too large"}, status_code=413
+                    )
+                form = await request.form()
+                supplied_token = str(form.get("csrf_token", ""))
+            if (
+                not cookie_token
+                or not supplied_token
+                or not secrets.compare_digest(cookie_token, supplied_token)
+            ):
+                return JSONResponse(
+                    {"detail": "CSRF validation failed"}, status_code=403
+                )
+        return await call_next(request)
+
     @app.exception_handler(JobsError)
-    def jobs_error(_: Request, exc: JobsError) -> JSONResponse:
+    def jobs_error(request: Request, exc: JobsError) -> Response:
         status = (
             403
             if isinstance(exc, PermissionDenied)
@@ -41,6 +92,10 @@ def create_app(settings: Settings) -> FastAPI:
         )
         if isinstance(exc, Cancelled):
             status = 409
+        if isinstance(exc, PermissionDenied) and not request.url.path.startswith(
+            "/api/"
+        ):
+            return RedirectResponse("/login", status_code=303)
         return JSONResponse({"detail": str(exc)}, status_code=status)
 
     @app.get("/healthz")
@@ -59,7 +114,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.post("/api/auth/login")
     async def api_login(request: Request) -> JSONResponse:
-        body = await request.json()
+        body = await _json_body(request)
         user = service.authenticate(
             str(body.get("email", "")), str(body.get("password", ""))
         )
@@ -70,6 +125,7 @@ def create_app(settings: Settings) -> FastAPI:
         session_id = service.create_session(str(user["id"]))
         response = JSONResponse({"user": user})
         _set_session_cookie(response, session_id, secure=settings.cookie_secure)
+        _set_csrf_cookie(response, secure=settings.cookie_secure)
         return response
 
     @app.post("/api/auth/logout")
@@ -78,7 +134,8 @@ def create_app(settings: Settings) -> FastAPI:
         if session_id:
             service.destroy_session(session_id)
         response = Response(status_code=204)
-        response.delete_cookie("jobs_session")
+        response.delete_cookie("jobs_session", secure=settings.cookie_secure)
+        response.delete_cookie(CSRF_COOKIE, secure=settings.cookie_secure)
         return response
 
     @app.get("/api/me")
@@ -93,7 +150,7 @@ def create_app(settings: Settings) -> FastAPI:
     @app.post("/api/admin/users")
     async def api_create_user(request: Request) -> dict[str, Any]:
         user = _current_user(request, service)
-        body = await request.json()
+        body = await _json_body(request)
         return service.create_user(
             str(user["id"]),
             email=str(body.get("email", "")),
@@ -109,7 +166,7 @@ def create_app(settings: Settings) -> FastAPI:
     @app.post("/api/admin/teams")
     async def api_create_team(request: Request) -> dict[str, str]:
         user = _current_user(request, service)
-        body = await request.json()
+        body = await _json_body(request)
         return service.create_team(str(user["id"]), name=str(body.get("name", "")))
 
     @app.get("/api/teams/{team_id}/members")
@@ -120,7 +177,7 @@ def create_app(settings: Settings) -> FastAPI:
     @app.put("/api/admin/teams/{team_id}/members/{user_id}")
     async def api_add_member(request: Request, team_id: str, user_id: str) -> Response:
         user = _current_user(request, service)
-        body = await request.json()
+        body = await _json_body(request)
         service.add_membership(
             str(user["id"]),
             team_id=team_id,
@@ -138,7 +195,7 @@ def create_app(settings: Settings) -> FastAPI:
     @app.put("/api/admin/teams/{team_id}/credentials/{provider}")
     async def api_credential(request: Request, team_id: str, provider: str) -> Response:
         user = _current_user(request, service)
-        body = await request.json()
+        body = await _json_body(request)
         service.store_team_credential(
             str(user["id"]),
             team_id=team_id,
@@ -168,7 +225,7 @@ def create_app(settings: Settings) -> FastAPI:
             team_id=team_id,
             sources=[value.strip() for value in sources.split(",")],
             provider=provider,
-            input_bytes=await input_file.read(),
+            input_bytes=await _read_upload(input_file),
             idempotency_key=idempotency_key,
         )
         return {"id": submitted.id, "reused": submitted.reused}
@@ -195,11 +252,21 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.get("/api/teams/{team_id}/results")
     def api_results(
-        request: Request, team_id: str, document: str = "", source: str = ""
-    ) -> list[dict[str, Any]]:
+        request: Request,
+        team_id: str,
+        document: str = "",
+        source: str = "",
+        cursor: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
         user = _current_user(request, service)
         return service.search_results(
-            str(user["id"]), team_id=team_id, document=document, source=source
+            str(user["id"]),
+            team_id=team_id,
+            document=document,
+            source=source,
+            cursor=cursor,
+            limit=limit,
         )
 
     @app.post("/api/jobs/{job_id}/exports")
@@ -224,7 +291,7 @@ def create_app(settings: Settings) -> FastAPI:
     # Worker routes use a separate bootstrap credential and never use browser sessions.
     @app.post("/api/worker/register")
     async def worker_register(request: Request) -> Response:
-        body = await request.json()
+        body = await _json_body(request)
         service.register_worker(
             worker_id=str(body.get("worker_id", "")),
             bootstrap_token=str(body.get("token", "")),
@@ -235,7 +302,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.post("/api/worker/claim")
     async def worker_claim(request: Request) -> list[dict[str, Any]]:
-        body = await request.json()
+        body = await _json_body(request)
         return service.claim_work(
             worker_id=str(body.get("worker_id", "")),
             worker_token=str(body.get("token", "")),
@@ -245,7 +312,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.post("/api/worker/leases/{lease_id}/renew")
     async def worker_renew(request: Request, lease_id: str) -> dict[str, str]:
-        body = await request.json()
+        body = await _json_body(request)
         return {
             "expires_at": service.renew_lease(
                 worker_id=str(body.get("worker_id", "")),
@@ -258,7 +325,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.post("/api/worker/leases/{lease_id}/cancelled")
     async def worker_cancelled(request: Request, lease_id: str) -> dict[str, bool]:
-        body = await request.json()
+        body = await _json_body(request)
         return {
             "cancelled": service.lease_cancelled(
                 worker_id=str(body.get("worker_id", "")),
@@ -269,7 +336,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.post("/api/worker/leases/{lease_id}/credential")
     async def worker_credential(request: Request, lease_id: str) -> dict[str, Any]:
-        body = await request.json()
+        body = await _json_body(request)
         return service.lease_credential(
             worker_id=str(body.get("worker_id", "")),
             worker_token=str(body.get("token", "")),
@@ -278,7 +345,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.post("/api/worker/checkpoints")
     async def worker_checkpoint(request: Request) -> dict[str, Any]:
-        body = await request.json()
+        body = await _json_body(request)
         payload = body.get("payload")
         if payload is not None and not isinstance(payload, dict):
             raise Conflict("checkpoint payload must be an object")
@@ -324,6 +391,7 @@ def create_app(settings: Settings) -> FastAPI:
             service.create_session(str(user["id"])),
             secure=settings.cookie_secure,
         )
+        _set_csrf_cookie(response, secure=settings.cookie_secure)
         return response
 
     @app.post("/logout")
@@ -332,13 +400,19 @@ def create_app(settings: Settings) -> FastAPI:
         if session_id:
             service.destroy_session(session_id)
         response = RedirectResponse("/login", status_code=303)
-        response.delete_cookie("jobs_session")
+        response.delete_cookie("jobs_session", secure=settings.cookie_secure)
+        response.delete_cookie(CSRF_COOKIE, secure=settings.cookie_secure)
         return response
 
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request) -> str:
         user = _current_user(request, service)
-        return _layout("OSIPTEL Jobs", _dashboard(service, user), user=user)
+        return _layout(
+            "OSIPTEL Jobs",
+            _dashboard(service, user, request.cookies.get(CSRF_COOKIE, "")),
+            user=user,
+            csrf_token=request.cookies.get(CSRF_COOKIE, ""),
+        )
 
     @app.post("/ui/admin/team")
     async def ui_create_team(request: Request, name: str = Form()) -> RedirectResponse:
@@ -407,7 +481,7 @@ def create_app(settings: Settings) -> FastAPI:
             team_id=team_id,
             sources=[value.strip() for value in sources.split(",")],
             provider=provider,
-            input_bytes=await input_file.read(),
+            input_bytes=await _read_upload(input_file),
             idempotency_key=os.urandom(16).hex(),
         )
         return RedirectResponse(f"/jobs/{submitted.id}", status_code=303)
@@ -420,28 +494,44 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.get("/search", response_class=HTMLResponse)
     def search_page(
-        request: Request, team_id: str, document: str = "", source: str = ""
+        request: Request,
+        team_id: str,
+        document: str = "",
+        source: str = "",
+        cursor: str | None = None,
+        limit: int = 50,
     ) -> str:
         user = _current_user(request, service)
-        results = service.search_results(
-            str(user["id"]), team_id=team_id, document=document, source=source
+        result_page = service.search_results(
+            str(user["id"]),
+            team_id=team_id,
+            document=document,
+            source=source,
+            cursor=cursor,
+            limit=limit,
         )
         rows = "".join(
             f"<tr><td>{html.escape(item['source'])}</td><td>{html.escape(item['document'])}</td><td>{_status_badge(str(item['status']))}</td><td><code>{html.escape(json_string(item['payload']))}</code></td></tr>"
-            for item in results
+            for item in result_page["items"]
         )
         return _layout(
             "Published results",
             _search_workspace(team_id, document, source, rows),
             user=user,
+            csrf_token=request.cookies.get(CSRF_COOKIE, ""),
         )
 
     @app.get("/jobs/{job_id}", response_class=HTMLResponse)
     def job_page(request: Request, job_id: str) -> str:
         user = _current_user(request, service)
         job = service.job_view(str(user["id"]), job_id)
-        body = _job_workspace(job_id, job)
-        return _layout(f"Job {job_id}", body, user=user)
+        body = _job_workspace(job_id, job, request.cookies.get(CSRF_COOKIE, ""))
+        return _layout(
+            f"Job {job_id}",
+            body,
+            user=user,
+            csrf_token=request.cookies.get(CSRF_COOKIE, ""),
+        )
 
     return app
 
@@ -467,11 +557,54 @@ def _set_session_cookie(response: Response, session_id: str, *, secure: bool) ->
     )
 
 
+def _set_csrf_cookie(response: Response, *, secure: bool) -> None:
+    response.set_cookie(
+        CSRF_COOKIE,
+        secrets.token_urlsafe(32),
+        httponly=False,
+        samesite="strict",
+        secure=secure,
+        max_age=43_200,
+    )
+
+
+def _csrf_field(token: str) -> str:
+    return f"<input type='hidden' name='csrf_token' value='{html.escape(token)}'>"
+
+
+async def _json_body(request: Request) -> dict[str, Any]:
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > MAX_JSON_BODY_BYTES:
+            raise Conflict("JSON request body is too large")
+    try:
+        body = json.loads(bytes(raw))
+    except json.JSONDecodeError as exc:
+        raise Conflict("request body must be valid JSON") from exc
+    if not isinstance(body, dict):
+        raise Conflict("request body must be a JSON object")
+    return body
+
+
+async def _read_upload(upload: UploadFile) -> bytes:
+    content = await upload.read(MAX_INPUT_BYTES + 1)
+    if len(content) > MAX_INPUT_BYTES:
+        raise Conflict("input file is too large")
+    return content
+
+
 def json_string(value: object) -> str:
     return json.dumps(value, separators=(",", ":"))
 
 
-def _layout(title: str, body: str, *, user: dict[str, Any] | None = None) -> str:
+def _layout(
+    title: str,
+    body: str,
+    *,
+    user: dict[str, Any] | None = None,
+    csrf_token: str = "",
+) -> str:
     """Render a small, self-contained internal-tool shell.
 
     This stays server-rendered on purpose: the visual hierarchy is inspired by
@@ -491,6 +624,7 @@ def _layout(title: str, body: str, *, user: dict[str, Any] | None = None) -> str
 </body></html>"""
 
     email = html.escape(str(user["email"]))
+    csrf_field = _csrf_field(csrf_token)
     initials = html.escape(
         "".join(part[:1] for part in email.split("@", 1)[0].split("."))[:2].upper()
         or "U"
@@ -514,7 +648,7 @@ def _layout(title: str, body: str, *, user: dict[str, Any] | None = None) -> str
   <div class='drawer-footer'><span class='environment-dot'></span><span>Control plane online</span></div>
 </aside>
 <main class='app-main'><header class='topbar'><div class='breadcrumb'><span>Operations</span><span aria-hidden='true'>/</span><strong>{page_title}</strong></div>
-  <div class='account'><span class='avatar'>{initials}</span><span class='account-email'>{email}</span><form method='post' action='/logout'><button class='icon-button' aria-label='Sign out' title='Sign out' type='submit'>↗</button></form></div></header>
+  <div class='account'><span class='avatar'>{initials}</span><span class='account-email'>{email}</span><form method='post' action='/logout'>{csrf_field}<button class='icon-button' aria-label='Sign out' title='Sign out' type='submit'>↗</button></form></div></header>
   <div class='page-content'>{body}</div>
 </main></div></body></html>"""
 
@@ -528,8 +662,9 @@ def _login_form() -> str:
 </form><p class='helper-text'>The first site administrator is configured at deployment. There is no default account.</p>"""
 
 
-def _dashboard(service: JobsService, user: dict[str, Any]) -> str:
+def _dashboard(service: JobsService, user: dict[str, Any], csrf_token: str) -> str:
     actor_id = str(user["id"])
+    csrf_field = _csrf_field(csrf_token)
     teams = service.list_teams(actor_id)
     team_options = "".join(
         f"<option value='{html.escape(team['id'])}'>{html.escape(team['name'])}</option>"
@@ -556,11 +691,11 @@ def _dashboard(service: JobsService, user: dict[str, Any]) -> str:
         )
         admin = f"""<details class='settings-panel' id='administration'><summary><span><span class='eyebrow'>Site administration</span><strong>Teams, people, and protected credentials</strong></span><span class='summary-action'>Manage <span aria-hidden='true'>⌄</span></span></summary>
 <div class='admin-grid'>
-  <section class='mini-panel'><h3>Create local user</h3><p>Provision a local sign-in for a member or leader.</p><form class='stack-form' method='post' action='/ui/admin/user'><label>Email<input name='email' type='email' required></label><label>Temporary password<input name='password' type='password' minlength='12' required></label><button class='button button--secondary'>Create user</button></form></section>
-  <section class='mini-panel'><h3>Create team</h3><p>Teams are the access boundary for jobs and published data.</p><form class='stack-form' method='post' action='/ui/admin/team'><label>Team name<input name='name' required></label><button class='button button--secondary'>Create team</button></form></section>
-  <section class='mini-panel'><h3>Membership</h3><p>Choose who can submit work or search the team's results.</p><form class='stack-form' method='post' action='/ui/admin/member'><label>Team<select name='team_id'>{team_options}</select></label><label>User<select name='user_id'>{user_options}</select></label><label>Role<select name='role'><option value='leader'>Team leader</option><option value='member'>Team member</option></select></label><button class='button button--secondary'>Save membership</button></form></section>
-  <section class='mini-panel'><h3>Revoke membership</h3><p>Access is revoked immediately, including result search.</p><form class='stack-form' method='post' action='/ui/admin/remove-member'><label>Team<select name='team_id'>{team_options}</select></label><label>User<select name='user_id'>{user_options}</select></label><button class='button button--danger'>Revoke access</button></form></section>
-  <section class='mini-panel mini-panel--wide'><h3>Team proxy credential</h3><p>Configuration is encrypted when saved and is never returned in this workspace.</p><form class='form-grid' method='post' action='/ui/admin/credential'><label>Team<select name='team_id'>{team_options}</select></label><label>Provider<select name='provider'><option value='geonode'>GeoNode</option><option value='dataimpulse'>DataImpulse</option></select></label><label>Secret reference<input name='secret_ref' placeholder='production/team-a/proxy' required></label><label class='field-span-2'>Credential configuration<textarea name='secret_json' placeholder='JSON configuration' required></textarea></label><div class='form-actions field-span-2'><button class='button button--secondary'>Encrypt and save credential</button></div></form></section>
+  <section class='mini-panel'><h3>Create local user</h3><p>Provision a local sign-in for a member or leader.</p><form class='stack-form' method='post' action='/ui/admin/user'>{csrf_field}<label>Email<input name='email' type='email' required></label><label>Temporary password<input name='password' type='password' minlength='12' required></label><button class='button button--secondary'>Create user</button></form></section>
+  <section class='mini-panel'><h3>Create team</h3><p>Teams are the access boundary for jobs and published data.</p><form class='stack-form' method='post' action='/ui/admin/team'>{csrf_field}<label>Team name<input name='name' required></label><button class='button button--secondary'>Create team</button></form></section>
+  <section class='mini-panel'><h3>Membership</h3><p>Choose who can submit work or search the team's results.</p><form class='stack-form' method='post' action='/ui/admin/member'>{csrf_field}<label>Team<select name='team_id'>{team_options}</select></label><label>User<select name='user_id'>{user_options}</select></label><label>Role<select name='role'><option value='leader'>Team leader</option><option value='member'>Team member</option></select></label><button class='button button--secondary'>Save membership</button></form></section>
+  <section class='mini-panel'><h3>Revoke membership</h3><p>Access is revoked immediately, including result search.</p><form class='stack-form' method='post' action='/ui/admin/remove-member'>{csrf_field}<label>Team<select name='team_id'>{team_options}</select></label><label>User<select name='user_id'>{user_options}</select></label><button class='button button--danger'>Revoke access</button></form></section>
+  <section class='mini-panel mini-panel--wide'><h3>Team proxy credential</h3><p>Configuration is encrypted when saved and is never returned in this workspace.</p><form class='form-grid' method='post' action='/ui/admin/credential'>{csrf_field}<label>Team<select name='team_id'>{team_options}</select></label><label>Provider<select name='provider'><option value='geonode'>GeoNode</option><option value='dataimpulse'>DataImpulse</option></select></label><label>Secret reference<input name='secret_ref' placeholder='production/team-a/proxy' required></label><label class='field-span-2'>Credential configuration<textarea name='secret_json' placeholder='JSON configuration' required></textarea></label><div class='form-actions field-span-2'><button class='button button--secondary'>Encrypt and save credential</button></div></form></section>
 </div></details>"""
 
     rows: list[str] = []
@@ -582,7 +717,7 @@ def _dashboard(service: JobsService, user: dict[str, Any]) -> str:
 </section>
 <section class='work-grid'>
   <section class='panel' id='submit-job'><header class='panel-header'><div><p class='eyebrow'>New work</p><h2>Submit a lookup job</h2></div><span class='panel-icon' aria-hidden='true'>↑</span></header><p class='panel-copy'>Every physical CSV row is accepted or recorded as an explicit exclusion. Nothing disappears silently.</p>
-  <form class='form-grid' method='post' action='/ui/jobs' enctype='multipart/form-data'><label>Team<select name='team_id'>{team_options}</select></label><label>Stable sources<input name='sources' value='osiptel' required><span class='field-hint'>Comma-separated: osiptel, sunat, sunat_reps</span></label><label>Proxy provider<select name='provider'><option value='geonode'>GeoNode</option><option value='dataimpulse'>DataImpulse</option></select></label><label>CSV input<input name='input_file' type='file' accept='.csv,text/csv' required></label><div class='form-actions field-span-2'><button class='button button--primary' type='submit'>Submit durable job <span aria-hidden='true'>→</span></button></div></form></section>
+  <form class='form-grid' method='post' action='/ui/jobs' enctype='multipart/form-data'>{csrf_field}<label>Team<select name='team_id'>{team_options}</select></label><label>Stable sources<input name='sources' value='osiptel' required><span class='field-hint'>Comma-separated: osiptel, sunat, sunat_reps</span></label><label>Proxy provider<select name='provider'><option value='geonode'>GeoNode</option><option value='dataimpulse'>DataImpulse</option></select></label><label>CSV input<input name='input_file' type='file' accept='.csv,text/csv' required></label><div class='form-actions field-span-2'><button class='button button--primary' type='submit'>Submit durable job <span aria-hidden='true'>→</span></button></div></form></section>
   <section class='panel' id='search'><header class='panel-header'><div><p class='eyebrow'>Published data</p><h2>Search your team's results</h2></div><span class='panel-icon' aria-hidden='true'>⌕</span></header><p class='panel-copy'>Membership is evaluated at read time. Removed members cannot search prior team data.</p>
   <form class='stack-form' method='get' action='/search'><label>Team<select name='team_id'>{team_options}</select></label><label>Document prefix<input name='document' placeholder='DNI or RUC'></label><label>Source<input name='source' placeholder='Optional: osiptel'></label><button class='button button--secondary' type='submit'>Search published data</button></form></section>
 </section>
@@ -599,7 +734,7 @@ def _search_workspace(team_id: str, document: str, source: str, rows: str) -> st
 <section class='panel table-panel'><header class='panel-header'><div><p class='eyebrow'>Results</p><h2>Published records</h2></div><span class='panel-meta'>Team scope active</span></header><div class='table-wrap'><table><thead><tr><th>Source</th><th>Document</th><th>Status</th><th>Data</th></tr></thead><tbody>{table_rows}</tbody></table></div></section>"""
 
 
-def _job_workspace(job_id: str, job: dict[str, Any]) -> str:
+def _job_workspace(job_id: str, job: dict[str, Any], csrf_token: str) -> str:
     state = str(job["state"])
     summary_cards = "".join(
         _metric(key.replace("_", " ").title(), str(value), "Terminal summary")
@@ -607,7 +742,7 @@ def _job_workspace(job_id: str, job: dict[str, Any]) -> str:
     )
     cancel = ""
     if state not in {"cancelled", "succeeded", "failed", "exhausted"}:
-        cancel = f"<form method='post' action='/ui/jobs/{html.escape(job_id)}/cancel'><button class='button button--danger'>Cancel job</button></form>"
+        cancel = f"<form method='post' action='/ui/jobs/{html.escape(job_id)}/cancel'>{_csrf_field(csrf_token)}<button class='button button--danger'>Cancel job</button></form>"
     return f"""<section class='page-heading page-heading--compact'><div><p class='eyebrow'>Job detail</p><h1>Job <span class='mono'>{html.escape(job_id)}</span></h1><p class='lede'>Server checkpoints are authoritative. Late worker writes are fenced after cancellation or lease changes.</p></div><div class='heading-actions'><a class='button button--secondary' href='/'>Back to workspace</a>{cancel}</div></section>
 <section class='job-state'><div><span class='eyebrow'>Current state</span><div class='state-line'>{_status_badge(state)}<span>Live state from the durable control plane</span></div></div><span class='panel-icon' aria-hidden='true'>◫</span></section>
 <section class='metric-grid metric-grid--summary'>{summary_cards}</section>"""

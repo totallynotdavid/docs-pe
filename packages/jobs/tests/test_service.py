@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
@@ -220,16 +221,14 @@ def test_result_search_is_team_scoped_and_membership_revocation_is_immediate(
         team.admin_id, team_id=second_team, user_id=team.member_id, role="member"
     )
 
-    assert (
-        len(
-            team.service.search_results(
-                team.member_id, team_id=team.team_id, document="123"
-            )
-        )
-        == 1
+    page = team.service.search_results(
+        team.member_id, team_id=team.team_id, document="123"
     )
+    assert len(page["items"]) == 1
     assert (
-        team.service.search_results(team.member_id, team_id=second_team, document="123")
+        team.service.search_results(
+            team.member_id, team_id=second_team, document="123"
+        )["items"]
         == []
     )
     team.service.remove_membership(
@@ -239,6 +238,163 @@ def test_result_search_is_team_scoped_and_membership_revocation_is_immediate(
         team.service.search_results(team.member_id, team_id=team.team_id)
     with pytest.raises(PermissionDenied):
         team.service.job_view(team.member_id, job_id)
+
+
+def test_worker_capacity_rejects_malicious_max_items(team: Any) -> None:
+    submit_one(team)
+    team.service.register_worker(
+        worker_id="capacity-worker",
+        bootstrap_token=team.worker_token,
+        sources=["osiptel"],
+        capacity=1,
+    )
+    with pytest.raises(Conflict, match="exceeds registered worker capacity"):
+        team.service.claim_work(
+            worker_id="capacity-worker",
+            worker_token=team.worker_token,
+            max_items=2,
+        )
+    lease = team.service.claim_work(
+        worker_id="capacity-worker",
+        worker_token=team.worker_token,
+        max_items=1,
+    )[0]
+    assert lease["lease_id"]
+    assert (
+        team.service.claim_work(
+            worker_id="capacity-worker",
+            worker_token=team.worker_token,
+            max_items=1,
+        )
+        == []
+    )
+    with pytest.raises(Conflict, match="lease_seconds"):
+        team.service.renew_lease(
+            worker_id="capacity-worker",
+            worker_token=team.worker_token,
+            lease_id=str(lease["lease_id"]),
+            fence=int(lease["fence"]),
+            lease_seconds=301,
+        )
+
+
+def test_worker_identity_is_validated_and_active_duplicates_are_rejected(
+    team: Any,
+) -> None:
+    with pytest.raises(Conflict, match="worker_id"):
+        team.service.register_worker(
+            worker_id="../impersonated",
+            bootstrap_token=team.worker_token,
+            sources=["osiptel"],
+            capacity=1,
+        )
+    submit_one(team)
+    team.service.register_worker(
+        worker_id="duplicate-worker",
+        bootstrap_token=team.worker_token,
+        sources=["osiptel"],
+        capacity=1,
+    )
+    team.service.claim_work(
+        worker_id="duplicate-worker",
+        worker_token=team.worker_token,
+        max_items=1,
+    )
+    with pytest.raises(Conflict, match="active leases"):
+        team.service.register_worker(
+            worker_id="duplicate-worker",
+            bootstrap_token=team.worker_token,
+            sources=["osiptel"],
+            capacity=1,
+        )
+    team.service.sweep_expired_leases(now=utcnow() + timedelta(minutes=2))
+    with pytest.raises(Conflict, match="different capabilities"):
+        team.service.register_worker(
+            worker_id="duplicate-worker",
+            bootstrap_token=team.worker_token,
+            sources=["sunat"],
+            capacity=1,
+        )
+
+
+def test_concurrent_workers_claim_distinct_items(team: Any) -> None:
+    submit_one(team, b"12345678\n")
+    submit_one(team, b"12345679\n")
+    for worker_id in ("worker-a", "worker-b"):
+        team.service.register_worker(
+            worker_id=worker_id,
+            bootstrap_token=team.worker_token,
+            sources=["osiptel"],
+            capacity=1,
+        )
+
+    def claim(worker_id: str) -> list[dict[str, Any]]:
+        return team.service.claim_work(
+            worker_id=worker_id,
+            worker_token=team.worker_token,
+            max_items=1,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        claimed = list(executor.map(claim, ("worker-a", "worker-b")))
+    assert len({str(item["work_item_id"]) for items in claimed for item in items}) == 2
+
+
+def test_expired_lease_cannot_release_a_credential(team: Any) -> None:
+    submit_one(team)
+    lease = claim_one(team)
+    with pytest.raises(PermissionDenied, match="active credential"):
+        team.service.lease_credential(
+            worker_id="test-worker",
+            worker_token=team.worker_token,
+            lease_id=str(lease["lease_id"]),
+            now=utcnow() + timedelta(minutes=2),
+        )
+
+
+def test_result_search_uses_cursor_pagination_and_keeps_team_scope(team: Any) -> None:
+    submit_one(team, b"12345678\n")
+    checkpoint_success(team, claim_one(team))
+    submit_one(team, b"12345679\n")
+    checkpoint_success(team, claim_one(team))
+
+    first_page = team.service.search_results(
+        team.member_id, team_id=team.team_id, limit=1
+    )
+    assert len(first_page["items"]) == 1
+    assert first_page["next_cursor"]
+    second_page = team.service.search_results(
+        team.member_id,
+        team_id=team.team_id,
+        cursor=first_page["next_cursor"],
+        limit=1,
+    )
+    assert len(second_page["items"]) == 1
+    assert second_page["items"][0]["job_id"] != first_page["items"][0]["job_id"]
+
+    other_team = team.service.create_team(team.admin_id, name="South")
+    with pytest.raises(PermissionDenied):
+        team.service.search_results(team.member_id, team_id=other_team["id"], limit=1)
+
+
+def test_input_and_checkpoint_payload_limits(team: Any) -> None:
+    with pytest.raises(Conflict, match="input file is too large"):
+        submit_one(team, b"1" * (1_048_576 + 1))
+    submit_one(team)
+    lease = claim_one(team)
+    with pytest.raises(Conflict, match="payload is too large"):
+        team.service.checkpoint(
+            worker_id="test-worker",
+            worker_token=team.worker_token,
+            lease_id=str(lease["lease_id"]),
+            work_item_id=str(lease["work_item_id"]),
+            fence=int(lease["fence"]),
+            version=int(lease["version"]),
+            attempt_id=uuid.uuid4().hex,
+            sequence=1,
+            outcome="succeeded",
+            payload={"oversized": "x" * (64 * 1024)},
+        )
 
 
 def test_only_leaders_can_submit_and_credential_metadata_never_returns_ciphertext(
