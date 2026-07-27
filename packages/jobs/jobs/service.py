@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import secrets
@@ -52,6 +53,7 @@ class Cancelled(JobsError):
 TERMINAL_ITEM_STATES = ("succeeded", "not_found", "exhausted", "cancelled")
 PROXY_PROVIDERS = ("geonode", "dataimpulse")
 MAX_HEALTHY_CONTACTS = 12
+MAX_LEASE_EXPIRIES = 3
 
 
 @dataclass(frozen=True)
@@ -154,6 +156,10 @@ class JobsService:
     def create_user(
         self, actor_id: str, *, email: str, password: str, site_admin: bool = False
     ) -> dict[str, Any]:
+        try:
+            password_hash = hash_password(password)
+        except ValueError as exc:
+            raise Conflict(str(exc)) from exc
         with self.database.transaction() as connection:
             self._require_site_admin(connection, actor_id)
             user_id = new_id("usr")
@@ -164,7 +170,7 @@ class JobsService:
                     (
                         user_id,
                         email.lower().strip(),
-                        hash_password(password),
+                        password_hash,
                         int(site_admin),
                         now,
                     ),
@@ -977,7 +983,7 @@ class JobsService:
             )
             connection.execute(
                 """UPDATE work_items SET state=?,version=version+1,healthy_contacts=?,attempt_count=attempt_count+1,
-                next_attempt_at=?,lease_id=NULL,lease_expires_at=NULL,error_code=?,updated_at=? WHERE id=?""",
+                lease_expiry_count=0,next_attempt_at=?,lease_id=NULL,lease_expires_at=NULL,error_code=?,updated_at=? WHERE id=?""",
                 (
                     new_state,
                     contacts,
@@ -1258,16 +1264,33 @@ class JobsService:
 
     def _sweep_expired(self, connection: sqlite3.Connection, now: datetime) -> int:
         leases = connection.execute(
-            """SELECT l.id,l.work_item_id,l.job_id,j.state AS job_state FROM leases l
-            JOIN jobs j ON j.id=l.job_id WHERE l.state='active' AND l.expires_at <= ?""",
+            """SELECT l.id,l.work_item_id,l.job_id,j.state AS job_state,w.lease_expiry_count
+            FROM leases l JOIN jobs j ON j.id=l.job_id JOIN work_items w ON w.id=l.work_item_id
+            WHERE l.state='active' AND l.expires_at <= ?""",
             (as_time(now),),
         ).fetchall()
         for lease in leases:
-            state = "cancelled" if str(lease["job_state"]) == "cancelling" else "ready"
+            expiry_count = int(lease["lease_expiry_count"]) + 1
+            is_cancelling = str(lease["job_state"]) == "cancelling"
+            is_exhausted = not is_cancelling and expiry_count >= MAX_LEASE_EXPIRIES
+            state = (
+                "cancelled"
+                if is_cancelling
+                else "exhausted"
+                if is_exhausted
+                else "ready"
+            )
             connection.execute(
-                """UPDATE work_items SET state=?,version=version+1,lease_id=NULL,lease_expires_at=NULL,updated_at=?
+                """UPDATE work_items SET state=?,version=version+1,lease_expiry_count=?,lease_id=NULL,lease_expires_at=NULL,error_code=?,updated_at=?
                 WHERE id=? AND lease_id=?""",
-                (state, as_time(now), lease["work_item_id"], lease["id"]),
+                (
+                    state,
+                    expiry_count,
+                    "worker_lease_expired" if is_exhausted else None,
+                    as_time(now),
+                    lease["work_item_id"],
+                    lease["id"],
+                ),
             )
             connection.execute(
                 "UPDATE leases SET state=?,updated_at=? WHERE id=?",
@@ -1354,8 +1377,6 @@ def _partition_key(document: str) -> int:
 
 
 def _sha256(value: bytes) -> str:
-    import hashlib
-
     return hashlib.sha256(value).hexdigest()
 
 

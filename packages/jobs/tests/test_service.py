@@ -182,6 +182,34 @@ def test_expired_lease_recovers_work_and_old_fence_cannot_write(team: Any) -> No
     assert checkpoint_success(team, replacement)["state"] == "succeeded"
 
 
+def test_repeated_lease_expiry_exhausts_the_item(team: Any) -> None:
+    job_id = submit_one(team)
+    claim_one(team)
+    now = utcnow()
+
+    for recovery in range(3):
+        now += timedelta(minutes=2)
+        assert team.service.sweep_expired_leases(now=now) == 1
+        if recovery < 2:
+            team.service.claim_work(
+                worker_id="test-worker",
+                worker_token=team.worker_token,
+                max_items=1,
+                now=now,
+            )[0]
+
+    view = team.service.job_view(team.leader_id, job_id)
+    assert view["state"] == "completed"
+    assert view["summary"]["exhausted_or_failed"] == 1
+
+
+def test_short_local_password_is_a_product_conflict(team: Any) -> None:
+    with pytest.raises(Conflict, match="at least 12"):
+        team.service.create_user(
+            team.admin_id, email="short@example.test", password="short"
+        )
+
+
 def test_result_search_is_team_scoped_and_membership_revocation_is_immediate(
     team: Any,
 ) -> None:

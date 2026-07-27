@@ -62,6 +62,9 @@ control is part of the product control plane. The service permits at most five
 running/cancelling jobs globally; additional jobs stay queued. A cancelled job
 stops claims immediately, fences checkpoints from old leases, and keeps prior
 server checkpoints while outstanding leases are cancelled or expire.
+An item that expires three consecutive leases before a checkpoint becomes
+`exhausted` with `worker_lease_expired`; this is a separate worker-recovery cap
+and does not consume the source's healthy-contact retry budget.
 
 The worker reuses `fetch_one`, so source warm-up, proxy-session rotation, retry
 classification, and local per-provider circuit breaking remain source-owned.

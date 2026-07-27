@@ -162,28 +162,29 @@ class OutboundWorker:
                     },
                 )
             outcome = await task
+            await self._post(
+                client,
+                "/api/worker/checkpoints",
+                {
+                    **self._identity(),
+                    "lease_id": lease_id,
+                    "work_item_id": lease["work_item_id"],
+                    "fence": lease["fence"],
+                    "version": lease["version"],
+                    "attempt_id": str(
+                        uuid.uuid5(
+                            uuid.NAMESPACE_URL,
+                            f"{lease_id}:{lease['work_item_id']}:1",
+                        )
+                    ),
+                    "sequence": 1,
+                    **outcome,
+                },
+            )
         except httpx.HTTPStatusError:
             # A cancellation or stale-fence response has already made the server
             # authoritative. Do not retry it locally or write a local outcome file.
             return
-        await self._post(
-            client,
-            "/api/worker/checkpoints",
-            {
-                **self._identity(),
-                "lease_id": lease_id,
-                "work_item_id": lease["work_item_id"],
-                "fence": lease["fence"],
-                "version": lease["version"],
-                "attempt_id": str(
-                    uuid.uuid5(
-                        uuid.NAMESPACE_URL, f"{lease_id}:{lease['work_item_id']}:1"
-                    )
-                ),
-                "sequence": 1,
-                **outcome,
-            },
-        )
 
     async def _ack_cancelled(
         self, client: httpx.AsyncClient, lease: dict[str, Any]

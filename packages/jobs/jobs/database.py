@@ -196,7 +196,11 @@ CREATE TABLE notification_outbox (
 );
 """
 
-_MIGRATIONS = ((1, _MIGRATION_001),)
+_MIGRATION_002 = """
+ALTER TABLE work_items ADD COLUMN lease_expiry_count INTEGER NOT NULL DEFAULT 0;
+"""
+
+_MIGRATIONS = ((1, _MIGRATION_001), (2, _MIGRATION_002))
 
 
 class Database:

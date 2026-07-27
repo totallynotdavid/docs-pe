@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import json
 import os
 
 from collections.abc import Callable
@@ -10,6 +11,7 @@ import uvicorn
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fetch.sites.registry import SITES
 
 from jobs.service import (
     Cancelled,
@@ -50,9 +52,7 @@ def create_app(settings: Settings) -> FastAPI:
         return {
             "sources": [
                 {"name": name, "columns": list(site.columns)}
-                for name, site in sorted(
-                    __import__("fetch.sites.registry", fromlist=["SITES"]).SITES.items()
-                )
+                for name, site in sorted(SITES.items())
             ],
             "proxy_providers": ["geonode", "dataimpulse"],
         }
@@ -473,8 +473,6 @@ def _set_session_cookie(response: Response, session_id: str, *, secure: bool) ->
 
 
 def json_string(value: object) -> str:
-    import json
-
     return json.dumps(value, separators=(",", ":"))
 
 
