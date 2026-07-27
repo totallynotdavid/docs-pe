@@ -158,6 +158,60 @@ def test_workspace_ui_uses_the_internal_tool_shell(tmp_path: Path) -> None:
 
     assert page.status_code == 200
     assert "app-shell" in page.text
-    assert "Jobs workspace" in page.text
+    assert "Panel de trabajos" in page.text
+    assert "lang='es'" in page.text
     assert "settings-panel" in page.text
     assert bootstrap_password not in page.text
+
+
+def test_ui_routes_render_spanish_workspace_views(tmp_path: Path) -> None:
+    password = uuid.uuid4().hex
+    app = create_app(
+        Settings(
+            database_path=tmp_path / "jobs.sqlite3",
+            object_root=tmp_path / "objects",
+            session_secret=uuid.uuid4().hex,
+            bootstrap_admin_email="admin@example.test",
+            bootstrap_admin_password=password,
+        )
+    )
+    with TestClient(app) as client:
+        assert "Iniciar sesión" in client.get("/login").text
+        invalid = client.post(
+            "/login",
+            data={"email": "admin@example.test", "password": "bad"},
+            follow_redirects=False,
+        )
+        assert invalid.status_code == 303
+        assert "error=invalid" in invalid.headers["location"]
+        client.post(
+            "/api/auth/login",
+            json={"email": "admin@example.test", "password": password},
+        )
+        pages = {
+            "/": "Panel de trabajos",
+            "/search": "Buscar resultados",
+            "/notifications": "Notificaciones",
+            "/admin": "Administración",
+        }
+        for path, copy in pages.items():
+            response = client.get(path)
+            assert response.status_code == 200
+            assert copy in response.text
+            assert "lang='es'" in response.text
+        assert "Sign in" not in client.get("/login").text
+
+
+def test_ui_routes_keep_anonymous_boundary(tmp_path: Path) -> None:
+    app = create_app(
+        Settings(
+            database_path=tmp_path / "jobs.sqlite3",
+            object_root=tmp_path / "objects",
+            session_secret=uuid.uuid4().hex,
+        )
+    )
+    with TestClient(app) as client:
+        for path in ("/search", "/notifications", "/admin", "/jobs/job-unknown"):
+            response = client.get(path, follow_redirects=False)
+            assert response.status_code == 303
+            assert response.headers["location"] == "/login"
