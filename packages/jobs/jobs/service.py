@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import base64
 import csv
 import hashlib
 import io
 import json
+import re
 import secrets
 import sqlite3
 import uuid
@@ -54,6 +56,17 @@ TERMINAL_ITEM_STATES = ("succeeded", "not_found", "exhausted", "cancelled")
 PROXY_PROVIDERS = ("geonode", "dataimpulse")
 MAX_HEALTHY_CONTACTS = 12
 MAX_LEASE_EXPIRIES = 3
+MAX_WORKER_CAPACITY = 16
+MIN_LEASE_SECONDS = 5
+MAX_LEASE_SECONDS = 300
+MAX_INPUT_BYTES = 1_048_576
+MAX_INPUT_ROWS = 10_000
+MAX_INPUT_FIELD_LENGTH = 256
+MAX_PAYLOAD_BYTES = 64 * 1024
+MAX_SEARCH_LIMIT = 100
+MAX_CURSOR_LENGTH = 256
+MAX_SECRET_JSON_BYTES = 16 * 1024
+_WORKER_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 @dataclass(frozen=True)
@@ -278,6 +291,10 @@ class JobsService:
     ) -> None:
         if provider not in PROXY_PROVIDERS:
             raise Conflict("unsupported proxy provider")
+        if len(secret_ref.encode("utf-8")) > MAX_INPUT_FIELD_LENGTH:
+            raise Conflict("secret reference is too long")
+        if len(secret_json.encode("utf-8")) > MAX_SECRET_JSON_BYTES:
+            raise Conflict("credential configuration is too large")
         try:
             parsed = json.loads(secret_json)
         except json.JSONDecodeError as exc:
@@ -345,8 +362,12 @@ class JobsService:
     ) -> SubmittedJob:
         if not input_bytes:
             raise Conflict("input file is empty")
+        if len(input_bytes) > MAX_INPUT_BYTES:
+            raise Conflict("input file is too large")
         if not idempotency_key.strip():
             raise Conflict("idempotency key is required")
+        if len(idempotency_key.encode("utf-8")) > MAX_INPUT_FIELD_LENGTH:
+            raise Conflict("idempotency key is too long")
         if provider not in PROXY_PROVIDERS:
             raise Conflict("unsupported proxy provider")
         selected = _selected_sources(sources)
@@ -376,10 +397,10 @@ class JobsService:
                     "team has no configured credential for the selected provider"
                 )
 
+        rows = _parse_input(input_bytes)
         object_key, checksum = self.objects.put_immutable(
             namespace="restricted-inputs", content=input_bytes
         )
-        rows = _parse_input(input_bytes)
         job_id = new_id("job")
         object_id = new_id("obj")
         with self.database.transaction() as connection:
@@ -552,11 +573,18 @@ class JobsService:
         team_id: str,
         document: str = "",
         source: str = "",
-    ) -> list[dict[str, Any]]:
+        cursor: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        if limit < 1 or limit > MAX_SEARCH_LIMIT:
+            raise Conflict(f"limit must be between 1 and {MAX_SEARCH_LIMIT}")
+        if len(document.encode("utf-8")) > MAX_INPUT_FIELD_LENGTH:
+            raise Conflict("document filter is too long")
         with self.database.transaction() as connection:
             self._require_team_access(connection, actor_id, team_id)
+            decoded_cursor = _decode_cursor(cursor)
             clauses = ["team_id=?"]
-            values: list[str] = [team_id]
+            values: list[Any] = [team_id]
             if document.strip():
                 clauses.append("document LIKE ?")
                 values.append(f"{document.strip()}%")
@@ -565,26 +593,41 @@ class JobsService:
                     raise Conflict("unknown source")
                 clauses.append("source=?")
                 values.append(source)
+            if decoded_cursor is not None:
+                clauses.append("(published_at < ? OR (published_at = ? AND id < ?))")
+                values.extend((decoded_cursor[0], decoded_cursor[0], decoded_cursor[1]))
             rows = connection.execute(
                 f"""SELECT id,job_id,source,document,status,payload_json,published_at
-                FROM results WHERE {" AND ".join(clauses)} ORDER BY published_at DESC LIMIT 200""",
-                values,
+                FROM results WHERE {" AND ".join(clauses)}
+                ORDER BY published_at DESC,id DESC LIMIT ?""",
+                [*values, limit + 1],
             ).fetchall()
             self._audit(
                 connection, "user", actor_id, "search_results", "team", team_id, "ok"
             )
-        return [
-            {
-                "id": str(row["id"]),
-                "job_id": str(row["job_id"]),
-                "source": str(row["source"]),
-                "document": str(row["document"]),
-                "status": str(row["status"]),
-                "payload": json.loads(str(row["payload_json"])),
-                "published_at": str(row["published_at"]),
-            }
-            for row in rows
-        ]
+        has_more = len(rows) > limit
+        page_rows = rows[:limit]
+        next_cursor = (
+            _encode_cursor(str(page_rows[-1]["published_at"]), str(page_rows[-1]["id"]))
+            if has_more
+            else None
+        )
+        return {
+            "items": [
+                {
+                    "id": str(row["id"]),
+                    "job_id": str(row["job_id"]),
+                    "source": str(row["source"]),
+                    "document": str(row["document"]),
+                    "status": str(row["status"]),
+                    "payload": json.loads(str(row["payload_json"])),
+                    "published_at": str(row["published_at"]),
+                }
+                for row in page_rows
+            ],
+            "limit": limit,
+            "next_cursor": next_cursor,
+        }
 
     def create_export(self, actor_id: str, job_id: str) -> dict[str, str]:
         with self.database.transaction() as connection:
@@ -708,12 +751,36 @@ class JobsService:
             bootstrap_token, self.settings.worker_bootstrap_token
         ):
             raise PermissionDenied("invalid worker credential")
+        if not _WORKER_ID_RE.fullmatch(worker_id):
+            raise Conflict(
+                "worker_id must start with a letter or number and contain only letters, numbers, '.', '_' or '-'"
+            )
         selected = _selected_sources(sources)
-        if capacity < 1:
-            raise Conflict("worker capacity must be at least one")
+        if capacity < 1 or capacity > MAX_WORKER_CAPACITY:
+            raise Conflict(
+                f"worker capacity must be between 1 and {MAX_WORKER_CAPACITY}"
+            )
         now = as_time(utcnow())
         token_hash = _sha256(bootstrap_token.encode())
         with self.database.transaction() as connection:
+            existing = connection.execute(
+                "SELECT revoked_at,capabilities_json,capacity FROM workers WHERE id=?",
+                (worker_id,),
+            ).fetchone()
+            if existing is not None:
+                active_leases = connection.execute(
+                    "SELECT COUNT(*) AS count FROM leases WHERE worker_id=? AND state='active'",
+                    (worker_id,),
+                ).fetchone()
+                if int(active_leases["count"]) > 0:
+                    raise Conflict("worker identity already has active leases")
+                if existing["revoked_at"] is None and (
+                    int(existing["capacity"]) != capacity
+                    or json.loads(str(existing["capabilities_json"])) != selected
+                ):
+                    raise Conflict(
+                        "worker identity is already registered with different capabilities"
+                    )
             connection.execute(
                 """INSERT INTO workers(id,token_hash,capabilities_json,capacity,last_seen_at,created_at)
                 VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET token_hash=excluded.token_hash,
@@ -736,11 +803,21 @@ class JobsService:
     ) -> list[dict[str, Any]]:
         if max_items < 1 or max_items > 100:
             raise Conflict("max_items must be between 1 and 100")
+        _validate_lease_seconds(lease_seconds)
         now = now or utcnow()
-        expiry = now + timedelta(seconds=lease_seconds)
         with self.database.transaction() as connection:
             worker = self._require_worker(connection, worker_id, worker_token)
             self._sweep_expired(connection, now)
+            if max_items > int(worker["capacity"]):
+                raise Conflict("max_items exceeds registered worker capacity")
+            active = connection.execute(
+                "SELECT COUNT(*) AS count FROM leases WHERE worker_id=? AND state='active'",
+                (worker_id,),
+            ).fetchone()
+            available = int(worker["capacity"]) - int(active["count"])
+            if available <= 0:
+                return []
+            expiry = now + timedelta(seconds=lease_seconds)
             connection.execute(
                 """UPDATE work_items SET state='ready',version=version+1,updated_at=?
                 WHERE state='retry_wait' AND next_attempt_at <= ?
@@ -756,7 +833,7 @@ class JobsService:
                 WHERE j.state='running' AND w.state='ready' AND w.next_attempt_at <= ?
                 AND w.source IN ({placeholders})
                 ORDER BY j.created_at,w.partition_key,w.created_at LIMIT ?""",
-                [as_time(now), *capabilities, max_items],
+                [as_time(now), *capabilities, min(max_items, available)],
             ).fetchall()
             claimed: list[dict[str, Any]] = []
             for row in rows:
@@ -828,6 +905,7 @@ class JobsService:
         now: datetime | None = None,
     ) -> str:
         now = now or utcnow()
+        _validate_lease_seconds(lease_seconds)
         expiry = now + timedelta(seconds=lease_seconds)
         with self.database.transaction() as connection:
             self._require_worker(connection, worker_id, worker_token)
@@ -857,36 +935,54 @@ class JobsService:
         return as_time(expiry)
 
     def lease_cancelled(
-        self, *, worker_id: str, worker_token: str, lease_id: str
+        self,
+        *,
+        worker_id: str,
+        worker_token: str,
+        lease_id: str,
+        now: datetime | None = None,
     ) -> bool:
+        now = now or utcnow()
         with self.database.transaction() as connection:
             self._require_worker(connection, worker_id, worker_token)
             row = connection.execute(
-                """SELECT j.state FROM leases l JOIN jobs j ON j.id=l.job_id
+                """SELECT l.state,l.expires_at,j.state AS job_state FROM leases l JOIN jobs j ON j.id=l.job_id
                 WHERE l.id=? AND l.worker_id=?""",
                 (lease_id, worker_id),
             ).fetchone()
             if row is None:
                 raise NotFound("lease not found")
-            return str(row["state"]) != "running"
+            return (
+                str(row["job_state"]) != "running"
+                or str(row["state"]) != "active"
+                or str(row["expires_at"]) <= as_time(now)
+            )
 
     def lease_credential(
-        self, *, worker_id: str, worker_token: str, lease_id: str
+        self,
+        *,
+        worker_id: str,
+        worker_token: str,
+        lease_id: str,
+        now: datetime | None = None,
     ) -> dict[str, Any]:
         """Return a team's decrypted proxy configuration only to its active worker.
 
         This narrow endpoint is deliberately absent from human UI/API read models.
         Workers should hold it in memory only and use TLS in deployment.
         """
+        now = now or utcnow()
         with self.database.transaction() as connection:
             self._require_worker(connection, worker_id, worker_token)
             row = connection.execute(
                 """SELECT c.provider,c.secret_ref,c.secret_ciphertext FROM leases l
                 JOIN work_items w ON w.id=l.work_item_id
+                JOIN jobs j ON j.id=l.job_id
                 JOIN job_sources js ON js.job_id=w.job_id AND js.source=w.source
                 JOIN team_proxy_credentials c ON c.team_id=w.team_id AND c.provider=js.provider
-                WHERE l.id=? AND l.worker_id=? AND l.state='active'""",
-                (lease_id, worker_id),
+                WHERE l.id=? AND l.worker_id=? AND l.state='active'
+                AND j.state='running' AND l.expires_at > ?""",
+                (lease_id, worker_id, as_time(now)),
             ).fetchone()
             if row is None:
                 raise PermissionDenied("no active credential grant for lease")
@@ -927,6 +1023,10 @@ class JobsService:
             raise Conflict("healthy contact delta must be between 0 and 4")
         if sequence < 1:
             raise Conflict("attempt sequence must be positive")
+        if retry_after_s < 0 or retry_after_s > 3600:
+            raise Conflict("retry_after_s must be between 0 and 3600")
+        if payload is not None:
+            _validate_payload(payload)
         now = now or utcnow()
         with self.database.transaction() as connection:
             self._require_worker(connection, worker_id, worker_token)
@@ -1358,15 +1458,25 @@ def _selected_sources(sources: Iterable[str]) -> list[str]:
 
 
 def _parse_input(content: bytes) -> list[str]:
+    if len(content) > MAX_INPUT_BYTES:
+        raise Conflict("input file is too large")
     try:
         decoded = content.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise Conflict("input must be UTF-8 CSV") from exc
     rows: list[str] = []
-    for row in csv.reader(io.StringIO(decoded)):
-        # A non-single-column row is handled as an explicit invalid value, rather
-        # than silently accepting only its first field.
-        rows.append(row[0].strip() if len(row) == 1 else "")
+    try:
+        reader = csv.reader(io.StringIO(decoded), strict=True)
+        for ordinal, row in enumerate(reader, start=1):
+            if ordinal > MAX_INPUT_ROWS:
+                raise Conflict("input contains too many rows")
+            if any(len(value) > MAX_INPUT_FIELD_LENGTH for value in row):
+                raise Conflict("input contains an overlong field")
+            # A non-single-column row is handled as an explicit invalid value, rather
+            # than silently accepting only its first field.
+            rows.append(row[0].strip() if len(row) == 1 else "")
+    except csv.Error as exc:
+        raise Conflict("input must be valid CSV") from exc
     if not rows:
         raise Conflict("input contains no rows")
     return rows
@@ -1378,6 +1488,44 @@ def _partition_key(document: str) -> int:
 
 def _sha256(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def _validate_lease_seconds(value: int) -> None:
+    if value < MIN_LEASE_SECONDS or value > MAX_LEASE_SECONDS:
+        raise Conflict(
+            f"lease_seconds must be between {MIN_LEASE_SECONDS} and {MAX_LEASE_SECONDS}"
+        )
+
+
+def _validate_payload(payload: dict[str, Any]) -> None:
+    try:
+        encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise Conflict("checkpoint payload must be valid JSON") from exc
+    if len(encoded) > MAX_PAYLOAD_BYTES:
+        raise Conflict("checkpoint payload is too large")
+
+
+def _encode_cursor(published_at: str, result_id: str) -> str:
+    value = f"{published_at}\0{result_id}".encode()
+    return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
+
+
+def _decode_cursor(cursor: str | None) -> tuple[str, str] | None:
+    if not cursor:
+        return None
+    if len(cursor) > MAX_CURSOR_LENGTH:
+        raise Conflict("cursor is too long")
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        published_at, result_id = (
+            base64.urlsafe_b64decode(padded).decode("utf-8").split("\0", 1)
+        )
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise Conflict("cursor is invalid") from exc
+    if not published_at or not result_id:
+        raise Conflict("cursor is invalid")
+    return published_at, result_id
 
 
 def _safe_error_code(value: str) -> str:

@@ -18,9 +18,18 @@ class Settings:
     worker_bootstrap_token: str | None = None
     encryption_key: str | None = None
     active_job_limit: int = 5
+    environment: str = "development"
     cookie_secure: bool = False
     external_email_enabled: bool = False
     external_whatsapp_enabled: bool = False
+
+    def __post_init__(self) -> None:
+        if self.environment not in {"development", "test", "production"}:
+            raise RuntimeError("JOBS_ENV must be development, test, or production")
+        if self.environment == "production" and not self.cookie_secure:
+            raise RuntimeError(
+                "JOBS_COOKIE_SECURE=true is required when JOBS_ENV=production"
+            )
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -34,6 +43,7 @@ class Settings:
             raise RuntimeError(msg)
         email_enabled = _enabled("JOBS_EMAIL_ENABLED")
         whatsapp_enabled = _enabled("JOBS_KAPSO_WHATSAPP_ENABLED")
+        environment = environ.get("JOBS_ENV", "development").strip().lower()
         if email_enabled and not _blank_to_none(environ.get("JOBS_EMAIL_DSN", "")):
             msg = "JOBS_EMAIL_DSN is required when JOBS_EMAIL_ENABLED=true"
             raise RuntimeError(msg)
@@ -59,6 +69,7 @@ class Settings:
                 environ.get("JOBS_SECRET_ENCRYPTION_KEY", "")
             ),
             active_job_limit=limit,
+            environment=environment,
             cookie_secure=_enabled("JOBS_COOKIE_SECURE"),
             external_email_enabled=email_enabled,
             external_whatsapp_enabled=whatsapp_enabled,

@@ -46,6 +46,9 @@ Set `JOBS_COOKIE_SECURE=true` behind HTTPS. A deployment cannot enable email or
 Kapso WhatsApp delivery without the corresponding `JOBS_EMAIL_DSN` or
 `JOBS_KAPSO_API_KEY`; this slice deliberately contains no sender, so configured
 external events remain durable outbox work until a delivery deployment is added.
+Set `JOBS_ENV=production` for a production process; startup fails unless secure
+cookies are enabled. Development and tests use the explicit values in
+`packages/jobs/.env.example`.
 
 Start one or more outbound workers on any hosts that can reach the service:
 
@@ -65,6 +68,11 @@ server checkpoints while outstanding leases are cancelled or expire.
 An item that expires three consecutive leases before a checkpoint becomes
 `exhausted` with `worker_lease_expired`; this is a separate worker-recovery cap
 and does not consume the source's healthy-contact retry budget.
+Each registered worker declares a capacity of 1–16 concurrent leases, and the
+server rejects claims above that capacity or leases outside the 5–300 second
+bound. Worker IDs are restricted to stable path-safe identities; the current
+bootstrap-token protocol cannot distinguish two hosts that deliberately reuse
+the same valid identity, so deployment must assign one ID per worker.
 
 The worker reuses `fetch_one`, so source warm-up, proxy-session rotation, retry
 classification, and local per-provider circuit breaking remain source-owned.
@@ -78,6 +86,10 @@ Canonical results and immutable exports are retained. Restricted uploaded input
 and any future raw diagnostics live in separate object namespaces and are not
 normal search results. Search is always team-scoped and membership is checked at
 read time, so removing membership revokes access immediately.
+Uploads are bounded UTF-8 CSV inputs, and result search exposes bounded
+`limit` pages with an opaque `next_cursor`; each page is authorized against the
+team before rows are read. Partial validation exclusions and partial worker
+results remain visible within that team scope.
 
 Terminal jobs atomically create in-app, email, and Kapso WhatsApp outbox events.
 In-app events are available in the service; external email and WhatsApp events
