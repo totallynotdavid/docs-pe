@@ -11,6 +11,24 @@ from jobs.settings import Settings
 from jobs.web import create_app
 
 
+def test_anonymous_ui_redirects_to_login_and_api_stays_json(tmp_path: Path) -> None:
+    app = create_app(
+        Settings(
+            database_path=tmp_path / "jobs.sqlite3",
+            object_root=tmp_path / "objects",
+            session_secret=uuid.uuid4().hex,
+        )
+    )
+    with TestClient(app) as client:
+        ui_response = client.get("/", follow_redirects=False)
+        api_response = client.get("/api/me")
+
+    assert ui_response.status_code == 303
+    assert ui_response.headers["location"] == "/login"
+    assert api_response.status_code == 403
+    assert api_response.json() == {"detail": "authentication required"}
+
+
 def test_login_bootstrap_and_source_contract(tmp_path: Path) -> None:
     session_secret = uuid.uuid4().hex
     bootstrap_password = uuid.uuid4().hex

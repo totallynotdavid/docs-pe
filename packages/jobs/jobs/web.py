@@ -82,7 +82,7 @@ def create_app(settings: Settings) -> FastAPI:
         return await call_next(request)
 
     @app.exception_handler(JobsError)
-    def jobs_error(_: Request, exc: JobsError) -> JSONResponse:
+    def jobs_error(request: Request, exc: JobsError) -> Response:
         status = (
             403
             if isinstance(exc, PermissionDenied)
@@ -92,6 +92,10 @@ def create_app(settings: Settings) -> FastAPI:
         )
         if isinstance(exc, Cancelled):
             status = 409
+        if isinstance(exc, PermissionDenied) and not request.url.path.startswith(
+            "/api/"
+        ):
+            return RedirectResponse("/login", status_code=303)
         return JSONResponse({"detail": str(exc)}, status_code=status)
 
     @app.get("/healthz")
