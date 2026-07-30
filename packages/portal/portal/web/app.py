@@ -136,7 +136,7 @@ def create_app(
             if pool is not None:
                 await pool.close()
 
-    app = FastAPI(title="Portal OSIPTEL", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="Worker", version="0.2.0", lifespan=lifespan)
     app.state.settings = settings
     app.mount(
         "/estatico",

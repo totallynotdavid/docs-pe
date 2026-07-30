@@ -146,8 +146,8 @@ async def test_roles_cross_team_isolation_submission_and_terminal_rendering() ->
         )
         detail = leader_client.get(f"/equipos/{team_id}/procesos/{excluded_job}")
         assert detail.status_code == 200
-        assert "todos los registros fueron excluidos" in detail.text
-        assert "Proceso" in detail.text
+        assert "sin registros válidos" in detail.text
+        assert "Tarea" in detail.text
         stream = leader_client.get(
             f"/equipos/{team_id}/procesos/{excluded_job}/progreso",
             headers={"Last-Event-ID": "0"},
@@ -210,7 +210,7 @@ async def test_htmx_search_notifications_partial_results_and_pagination() -> Non
         partial = client.get(
             f"/equipos/{team_id}/buscar/fragmento?q=999", headers={"HX-Request": "true"}
         )
-        assert "No se encontraron resultados publicados" in partial.text
+        assert "No hay resultados" in partial.text
         for number in range(20):
             _submit_job(client, team_id, credential_id, f"inválido-{number}")
         first_page = client.get(
@@ -226,4 +226,4 @@ async def test_htmx_search_notifications_partial_results_and_pagination() -> Non
             "/notificaciones/fragmento", headers={"HX-Request": "true"}
         )
         assert notifications.status_code == 200
-        assert "Proceso: completed" in notifications.text
+        assert "Tarea completada" in notifications.text

@@ -14,6 +14,7 @@ def template_environment() -> Environment:
     )
     environment.filters["estado"] = _state_label
     environment.filters["rol"] = _role_label
+    environment.filters["notificacion"] = _notification_label
     environment.globals["es_terminal"] = lambda job: (
         job.state
         in {
@@ -48,5 +49,13 @@ def _role_label(role: TeamRole | None) -> str:
 
 def _job_summary(job: Job) -> str:
     if job.terminal_reason == "todos_los_registros_excluidos":
-        return "El proceso terminó: todos los registros fueron excluidos."
-    return f"Proceso {job.filename}: {job.state.value}."
+        return "La tarea terminó sin registros válidos."
+    return f"Tarea {job.filename}: {_state_label(job.state)}."
+
+
+def _notification_label(event_type: str) -> str:
+    return {
+        "proceso.completed": "Tarea completada",
+        "proceso.failed": "Tarea con error",
+        "proceso.cancelled": "Tarea cancelada",
+    }.get(event_type, "Actualización de tarea")

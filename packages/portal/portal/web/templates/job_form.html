@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Nuevo proceso · {{ team.name }}{% endblock %}
+{% block title %}Nueva tarea · {{ team.name }} · Worker{% endblock %}
 {% block content %}
 <section class="panel" aria-labelledby="titulo-proceso">
   <p class="ceja">{{ team.name }}</p>
-  <h1 id="titulo-proceso">Nuevo proceso</h1>
-  <p>Ingrese un documento por línea. Los registros no válidos quedan visibles como excluidos.</p>
+  <h1 id="titulo-proceso">Nueva tarea</h1>
+  <p>Ingresa un documento por línea.</p>
   {% if error %}<p class="mensaje mensaje--error" role="alert">{{ error }}</p>{% endif %}
   <form action="/equipos/{{ team.id }}/procesos" method="post" class="formulario">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -18,7 +18,7 @@
         {% for credential in credentials %}<option value="{{ credential.id }}">{{ credential.label }} · versión {{ credential.version }}</option>{% endfor %}
       </select>
     </label>
-    <button type="submit">Crear proceso</button>
+    <button type="submit">Crear tarea</button>
   </form>
 </section>
 {% endblock %}

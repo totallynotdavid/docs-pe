@@ -1,9 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Administración · Portal OSIPTEL{% endblock %}
+{% block title %}Administración · Worker{% endblock %}
 {% block content %}
 <section class="panel" aria-labelledby="titulo-admin">
-  <h1 id="titulo-admin">Administración del sitio</h1>
-  <p>Solo la administración puede crear usuarios, equipos y asignaciones.</p>
+  <h1 id="titulo-admin">Administración</h1>
   <form action="/administracion/usuarios" method="post" class="formulario">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <h2>Crear usuario</h2>

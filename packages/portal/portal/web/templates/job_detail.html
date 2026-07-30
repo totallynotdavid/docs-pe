@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Proceso {{ job.filename }} · Portal OSIPTEL{% endblock %}
+{% block title %}Tarea {{ job.filename }} · Worker{% endblock %}
 {% block content %}
 <section class="panel" aria-labelledby="titulo-detalle">
   <p class="ceja">{{ team.name }}</p>
@@ -10,7 +10,7 @@
   {% if team.role.value in ['site_admin', 'team_leader'] and not es_terminal(job) %}
   <form action="/equipos/{{ team.id }}/procesos/{{ job.id }}/cancelar" method="post" class="acciones">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button class="boton-peligro" type="submit">Cancelar proceso</button>
+    <button class="boton-peligro" type="submit">Cancelar tarea</button>
   </form>
   {% endif %}
 </section>
