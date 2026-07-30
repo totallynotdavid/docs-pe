@@ -1,0 +1,13 @@
+:root {
+  color-scheme: light;
+  --portal-color-canvas: #f7f8fa;
+  --portal-color-surface: #ffffff;
+  --portal-color-text: #172033;
+  --portal-color-muted: #5f6b7a;
+  --portal-color-accent: #0759b8;
+  --portal-color-danger: #b42318;
+  --portal-border-subtle: #d8dee8;
+  --portal-radius-control: 0.5rem;
+}
+
+/* Future themes replace only tokens; this foundation intentionally ships light. */

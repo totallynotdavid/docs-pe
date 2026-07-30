@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=83.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "osiptel-portal"
+version = "0.1.0"
+requires-python = ">=3.11"
+description = "Team-scoped OSIPTEL portal control plane backed only by PostgreSQL."
+dependencies = [
+    "asyncpg>=0.30.0",
+    "fastapi>=0.135.0",
+    "fetch",
+    "jinja2>=3.1.0",
+    "uvicorn>=0.41.0",
+]
+
+[project.scripts]
+osiptel-portal = "portal.web.app:main"
+osiptel-portal-worker = "portal.worker.service:main"
+
+[tool.uv.sources]
+fetch = { workspace = true }
+
+[tool.setuptools.packages.find]
+include = ["portal*"]
+
+[tool.setuptools.package-data]
+portal = ["migrations/*.sql", "web/static/*.css"]

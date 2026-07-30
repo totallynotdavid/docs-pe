@@ -68,9 +68,10 @@ section-order = ["future", "standard-library", "third-party", "first-party", "lo
 # intentionally enforced elsewhere in the workspace but make this integration
 # layer less readable without increasing safety.
 "packages/jobs/**/*.py" = ["B008", "C901", "EM101", "EM102", "FURB189", "N818", "PERF401", "TC001", "TC003", "TRY003"]
+"packages/portal/**/*.py" = ["EM101", "EM102", "N818", "TC001", "TC002", "TC003", "TRY003"]
 
 [[tool.mypy.overrides]]
-module = ["fetch.*"]
+module = ["asyncpg", "fetch.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -86,6 +87,7 @@ testpaths = [
     "packages/browser/tests",
     "packages/capture/tests",
     "packages/jobs/tests",
+    "packages/portal/tests",
 ]
 
 [dependency-groups]

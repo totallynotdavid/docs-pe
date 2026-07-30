@@ -8,6 +8,9 @@ This file is the project's committed home for project-intrinsic agent knowledge:
   service, its required environment configuration, and the outbound-worker
   protocol. Its test suite is `uv run pytest packages/jobs/tests`.
 
+- `packages/portal/readme.md` is the authoritative guide to the separate
+  team-scoped portal package, its PostgreSQL-only queue contract, and focused checks.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
