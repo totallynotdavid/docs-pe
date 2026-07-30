@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 
+from datetime import UTC, datetime
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
@@ -108,6 +109,29 @@ async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results
             assert (
                 await pool.fetchval("SELECT count(*) FROM portal_notification_outbox")
                 == 6
+            )
+        finally:
+            await pool.close()
+    finally:
+        maintenance = await asyncpg.connect(maintenance_dsn)
+        await maintenance.execute(f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)')
+        await maintenance.close()
+
+
+async def test_postgresql_login_limit_uses_a_timestamp_window() -> None:
+    database = f"portal_login_{uuid4().hex}"
+    maintenance_dsn, test_dsn = _database_dsns(POSTGRES_DSN, database)
+    maintenance = await asyncpg.connect(maintenance_dsn)
+    await maintenance.execute(f'CREATE DATABASE "{database}"')
+    await maintenance.close()
+    try:
+        pool = await asyncpg.create_pool(test_dsn)
+        try:
+            await apply_migrations(pool)
+            repository = PostgresPortalRepository(pool)
+            now = datetime.now(UTC)
+            assert await repository.login_allowed(
+                "persona@example.test", "127.0.0.1", now
             )
         finally:
             await pool.close()

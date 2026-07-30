@@ -422,7 +422,7 @@ class PostgresPortalRepository:
                 """
                 SELECT count(*) FROM portal_login_failures
                  WHERE email = $1 AND client_ip = $2
-                   AND attempted_at > $3 - interval '5 minutes'
+                   AND attempted_at > $3::timestamptz - interval '5 minutes'
                 """,
                 email.lower().strip(),
                 client_ip,
