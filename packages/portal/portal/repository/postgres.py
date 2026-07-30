@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
@@ -7,14 +8,22 @@ from portal.domain.errors import SourceValidationError
 from portal.domain.models import (
     MAX_ACTIVE_JOBS,
     STABLE_SOURCES,
+    BrowserSession,
     ClaimedWork,
     CredentialVersion,
+    ExcludedInput,
+    ItemState,
     Job,
+    JobEvent,
+    JobItem,
     JobState,
+    PortalUser,
     SubmissionPlan,
     SubmitJob,
+    Team,
     TeamRole,
 )
+from portal.storage.port import ObjectReference
 
 
 if TYPE_CHECKING:
@@ -289,6 +298,425 @@ class PostgresPortalRepository:
             )
         return tuple(self._job(row) for row in rows)
 
+    async def user_by_email(self, email: str) -> tuple[PortalUser, str] | None:
+        async with self._pool.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                SELECT id, email, is_site_admin, password_hash
+                  FROM portal_users WHERE email = $1
+                """,
+                email.lower().strip(),
+            )
+        if row is None:
+            return None
+        return self._user(row), str(row["password_hash"])
+
+    async def user_by_id(self, user_id: UUID) -> PortalUser | None:
+        async with self._pool.acquire() as connection:
+            row = await connection.fetchrow(
+                "SELECT id, email, is_site_admin FROM portal_users WHERE id = $1",
+                user_id,
+            )
+        return self._user(row) if row else None
+
+    async def create_user(
+        self, email: str, password_hash: str, *, is_site_admin: bool = False
+    ) -> PortalUser:
+        user = PortalUser(uuid4(), email.lower().strip(), is_site_admin)
+        async with self._pool.acquire() as connection:
+            await connection.execute(
+                """
+                INSERT INTO portal_users (id, email, password_hash, is_site_admin)
+                VALUES ($1, $2, $3, $4)
+                """,
+                user.id,
+                user.email,
+                password_hash,
+                user.is_site_admin,
+            )
+        return user
+
+    async def bootstrap_site_admin(self, email: str, password_hash: str) -> PortalUser:
+        existing = await self.user_by_email(email)
+        if existing is not None:
+            return existing[0]
+        return await self.create_user(email, password_hash, is_site_admin=True)
+
+    async def create_session(
+        self, user_id: UUID, token_hash: str, csrf_token: str, expires_at: datetime
+    ) -> None:
+        async with self._pool.acquire() as connection:
+            await connection.execute(
+                """
+                INSERT INTO portal_sessions (id, user_id, token_hash, csrf_token, expires_at)
+                VALUES ($1, $2, $3, $4, $5)
+                """,
+                uuid4(),
+                user_id,
+                token_hash,
+                csrf_token,
+                expires_at,
+            )
+
+    async def session_user(self, token_hash: str, now: datetime) -> PortalUser | None:
+        session = await self.browser_session(token_hash, now)
+        return session.user if session else None
+
+    async def browser_session(
+        self, token_hash: str, now: datetime
+    ) -> BrowserSession | None:
+        async with self._pool.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                SELECT user_account.id, user_account.email, user_account.is_site_admin,
+                       session.csrf_token
+                  FROM portal_sessions AS session
+                  JOIN portal_users AS user_account ON user_account.id = session.user_id
+                 WHERE session.token_hash = $1
+                   AND session.expires_at > $2
+                   AND session.csrf_token IS NOT NULL
+                """,
+                token_hash,
+                now,
+            )
+            await connection.execute(
+                "DELETE FROM portal_sessions WHERE expires_at <= $1", now
+            )
+        if row is None:
+            return None
+        return BrowserSession(self._user(row), str(row["csrf_token"]))
+
+    async def destroy_session(self, token_hash: str) -> None:
+        async with self._pool.acquire() as connection:
+            await connection.execute(
+                "DELETE FROM portal_sessions WHERE token_hash = $1", token_hash
+            )
+
+    async def issue_login_csrf(self, token: str, expires_at: datetime) -> None:
+        async with self._pool.acquire() as connection:
+            await connection.execute(
+                "INSERT INTO portal_login_csrf_tokens (token, expires_at) VALUES ($1, $2)",
+                token,
+                expires_at,
+            )
+
+    async def consume_login_csrf(self, token: str, now: datetime) -> bool:
+        async with self._pool.acquire() as connection:
+            consumed = await connection.fetchval(
+                """
+                DELETE FROM portal_login_csrf_tokens
+                 WHERE token = $1 AND expires_at > $2
+                RETURNING token
+                """,
+                token,
+                now,
+            )
+            await connection.execute(
+                "DELETE FROM portal_login_csrf_tokens WHERE expires_at <= $1", now
+            )
+        return consumed is not None
+
+    async def login_allowed(self, email: str, client_ip: str, now: datetime) -> bool:
+        async with self._pool.acquire() as connection:
+            failures = await connection.fetchval(
+                """
+                SELECT count(*) FROM portal_login_failures
+                 WHERE email = $1 AND client_ip = $2
+                   AND attempted_at > $3 - interval '5 minutes'
+                """,
+                email.lower().strip(),
+                client_ip,
+                now,
+            )
+        return int(failures) < 5
+
+    async def record_login_failure(
+        self, email: str, client_ip: str, now: datetime
+    ) -> None:
+        async with self._pool.acquire() as connection:
+            await connection.execute(
+                """
+                INSERT INTO portal_login_failures (email, client_ip, attempted_at)
+                VALUES ($1, $2, $3)
+                """,
+                email.lower().strip(),
+                client_ip,
+                now,
+            )
+
+    async def clear_login_failures(self, email: str, client_ip: str) -> None:
+        async with self._pool.acquire() as connection:
+            await connection.execute(
+                "DELETE FROM portal_login_failures WHERE email = $1 AND client_ip = $2",
+                email.lower().strip(),
+                client_ip,
+            )
+
+    async def teams_for_user(self, actor_id: UUID) -> tuple[Team, ...]:
+        async with self._pool.acquire() as connection:
+            is_admin = await connection.fetchval(
+                "SELECT is_site_admin FROM portal_users WHERE id = $1", actor_id
+            )
+            if is_admin:
+                rows = await connection.fetch(
+                    "SELECT id, slug, name FROM portal_teams ORDER BY name"
+                )
+                return tuple(
+                    Team(row["id"], row["slug"], row["name"], TeamRole.SITE_ADMIN)
+                    for row in rows
+                )
+            rows = await connection.fetch(
+                """
+                SELECT team.id, team.slug, team.name, membership.role
+                  FROM portal_teams AS team
+                  JOIN portal_team_memberships AS membership ON membership.team_id = team.id
+                 WHERE membership.user_id = $1
+                 ORDER BY team.name
+                """,
+                actor_id,
+            )
+        return tuple(
+            Team(row["id"], row["slug"], row["name"], TeamRole(row["role"]))
+            for row in rows
+        )
+
+    async def team(self, team_id: UUID) -> Team | None:
+        async with self._pool.acquire() as connection:
+            row = await connection.fetchrow(
+                "SELECT id, slug, name FROM portal_teams WHERE id = $1", team_id
+            )
+        return Team(row["id"], row["slug"], row["name"]) if row else None
+
+    async def create_team(
+        self, slug: str, name: str, created_by: UUID, leader_id: UUID
+    ) -> Team:
+        team = Team(uuid4(), slug, name)
+        async with self._pool.acquire() as connection, connection.transaction():
+            await connection.execute(
+                """
+                INSERT INTO portal_teams (id, slug, name, created_by)
+                VALUES ($1, $2, $3, $4)
+                """,
+                team.id,
+                team.slug,
+                team.name,
+                created_by,
+            )
+            await connection.execute(
+                """
+                INSERT INTO portal_team_memberships (team_id, user_id, role)
+                VALUES ($1, $2, 'team_leader')
+                """,
+                team.id,
+                leader_id,
+            )
+        return team
+
+    async def add_member(self, team_id: UUID, user_id: UUID, role: TeamRole) -> None:
+        if role not in {TeamRole.TEAM_LEADER, TeamRole.TEAM_MEMBER}:
+            msg = "el rol de equipo no es válido"
+            raise ValueError(msg)
+        async with self._pool.acquire() as connection:
+            await connection.execute(
+                """
+                INSERT INTO portal_team_memberships (team_id, user_id, role)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (team_id, user_id) DO UPDATE SET role = EXCLUDED.role
+                """,
+                team_id,
+                user_id,
+                role.value,
+            )
+
+    async def credentials_for_team(
+        self, team_id: UUID
+    ) -> tuple[CredentialVersion, ...]:
+        async with self._pool.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT version.id, version.team_id, credential.label,
+                       version.version, version.is_active
+                  FROM portal_team_proxy_credential_versions AS version
+                  JOIN portal_team_proxy_credentials AS credential
+                    ON credential.id = version.credential_id
+                 WHERE version.team_id = $1
+                 ORDER BY credential.label, version.version DESC
+                """,
+                team_id,
+            )
+        return tuple(self._credential(row) for row in rows)
+
+    async def create_credential(
+        self,
+        team_id: UUID,
+        label: str,
+        provider: str,
+        config_ciphertext: bytes,
+        key_id: str,
+        created_by: UUID,
+    ) -> CredentialVersion:
+        async with self._pool.acquire() as connection, connection.transaction():
+            credential_id = await connection.fetchval(
+                """
+                SELECT id FROM portal_team_proxy_credentials
+                 WHERE team_id = $1 AND label = $2 FOR UPDATE
+                """,
+                team_id,
+                label,
+            )
+            if credential_id is None:
+                credential_id = uuid4()
+                await connection.execute(
+                    """
+                    INSERT INTO portal_team_proxy_credentials (id, team_id, label, created_by)
+                    VALUES ($1, $2, $3, $4)
+                    """,
+                    credential_id,
+                    team_id,
+                    label,
+                    created_by,
+                )
+            else:
+                await connection.execute(
+                    """
+                    UPDATE portal_team_proxy_credential_versions
+                       SET is_active = false
+                     WHERE credential_id = $1 AND is_active
+                    """,
+                    credential_id,
+                )
+            version = int(
+                await connection.fetchval(
+                    """
+                    SELECT COALESCE(max(version), 0) + 1
+                      FROM portal_team_proxy_credential_versions
+                     WHERE credential_id = $1
+                    """,
+                    credential_id,
+                )
+            )
+            credential = CredentialVersion(uuid4(), team_id, label, version)
+            await connection.execute(
+                """
+                INSERT INTO portal_team_proxy_credential_versions
+                    (id, credential_id, team_id, version, provider, config_ciphertext,
+                     key_id, created_by)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                """,
+                credential.id,
+                credential_id,
+                team_id,
+                credential.version,
+                provider,
+                config_ciphertext,
+                key_id,
+                created_by,
+            )
+        return credential
+
+    async def add_object_reference(self, reference: ObjectReference) -> None:
+        async with self._pool.acquire() as connection:
+            await connection.execute(
+                """
+                INSERT INTO portal_object_references
+                    (id, team_id, provider, container, object_key, sha256, size_bytes,
+                     content_type)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                """,
+                reference.id,
+                reference.team_id,
+                reference.provider,
+                reference.container,
+                reference.object_key,
+                reference.sha256,
+                reference.size_bytes,
+                reference.content_type,
+            )
+
+    async def jobs_for_team(
+        self, team_id: UUID, *, page: int, page_size: int
+    ) -> tuple[tuple[Job, ...], int]:
+        offset = (page - 1) * page_size
+        async with self._pool.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT * FROM portal_jobs WHERE team_id = $1
+                 ORDER BY queue_sequence DESC LIMIT $2 OFFSET $3
+                """,
+                team_id,
+                page_size,
+                offset,
+            )
+            total = await connection.fetchval(
+                "SELECT count(*) FROM portal_jobs WHERE team_id = $1", team_id
+            )
+        return tuple(self._job(row) for row in rows), int(total)
+
+    async def job(self, job_id: UUID, team_id: UUID) -> Job | None:
+        async with self._pool.acquire() as connection:
+            row = await connection.fetchrow(
+                "SELECT * FROM portal_jobs WHERE id = $1 AND team_id = $2",
+                job_id,
+                team_id,
+            )
+            if row is None:
+                return None
+            item_rows = await connection.fetch(
+                """
+                SELECT id, ordinal, document, source, state, lease_fence, result_object_id, reason
+                  FROM portal_job_items WHERE job_id = $1 ORDER BY ordinal, source
+                """,
+                job_id,
+            )
+        job = self._job(row)
+        for item in item_rows:
+            if item["state"] == "excluded":
+                job.exclusions.append(
+                    ExcludedInput(
+                        int(item["ordinal"]), item["document"], item["reason"]
+                    )
+                )
+            else:
+                job.items.append(
+                    JobItem(
+                        id=item["id"],
+                        ordinal=int(item["ordinal"]),
+                        document=item["document"],
+                        source=item["source"],
+                        state=ItemState(item["state"]),
+                        lease_fence=int(item["lease_fence"]),
+                        result_object_id=item["result_object_id"],
+                    )
+                )
+        return job
+
+    async def job_events_after(
+        self, job_id: UUID, team_id: UUID, sequence: int
+    ) -> tuple[JobEvent, ...]:
+        async with self._pool.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT event.id, event.job_id, event.event_type, event.sequence, event.created_at
+                  FROM portal_job_events AS event
+                  JOIN portal_jobs AS job ON job.id = event.job_id
+                 WHERE event.job_id = $1 AND job.team_id = $2 AND event.sequence > $3
+                 ORDER BY event.sequence
+                """,
+                job_id,
+                team_id,
+                sequence,
+            )
+        return tuple(
+            JobEvent(
+                row["id"],
+                row["job_id"],
+                row["event_type"],
+                int(row["sequence"]),
+                row["created_at"],
+            )
+            for row in rows
+        )
+
     async def claim(
         self, worker_id: str, sources: tuple[str, ...]
     ) -> ClaimedWork | None:
@@ -411,4 +839,24 @@ class PostgresPortalRepository:
             queue_sequence=int(row["queue_sequence"]),  # type: ignore[index]
             state=JobState(row["state"]),  # type: ignore[index]
             lease_fence=int(row["lease_fence"]),  # type: ignore[index]
+            terminal_reason=row["terminal_reason"],  # type: ignore[index]
+            created_at=row["created_at"],  # type: ignore[index]
+        )
+
+    @staticmethod
+    def _user(row: object) -> PortalUser:
+        return PortalUser(
+            id=row["id"],  # type: ignore[index]
+            email=row["email"],  # type: ignore[index]
+            is_site_admin=bool(row["is_site_admin"]),  # type: ignore[index]
+        )
+
+    @staticmethod
+    def _credential(row: object) -> CredentialVersion:
+        return CredentialVersion(
+            id=row["id"],  # type: ignore[index]
+            team_id=row["team_id"],  # type: ignore[index]
+            label=row["label"],  # type: ignore[index]
+            version=int(row["version"]),  # type: ignore[index]
+            is_active=bool(row["is_active"]),  # type: ignore[index]
         )

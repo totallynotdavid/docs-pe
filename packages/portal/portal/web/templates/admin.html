@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Administración · Portal OSIPTEL{% endblock %}
+{% block content %}
+<section class="panel" aria-labelledby="titulo-admin">
+  <h1 id="titulo-admin">Administración del sitio</h1>
+  <p>Solo la administración puede crear usuarios, equipos y asignaciones.</p>
+  <form action="/administracion/usuarios" method="post" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <h2>Crear usuario</h2>
+    <label>Correo <input type="email" name="email" required></label>
+    <label>Contraseña <input type="password" name="password" minlength="12" required></label>
+    <button type="submit">Crear usuario</button>
+  </form>
+  <form action="/administracion/equipos" method="post" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <h2>Crear equipo</h2>
+    <label>Identificador <input name="slug" pattern="[a-z0-9][a-z0-9-]{1,62}" required></label>
+    <label>Nombre <input name="name" required></label>
+    <label>ID de la persona líder <input name="leader_id" required></label>
+    <button type="submit">Crear equipo</button>
+  </form>
+  <form action="/administracion/miembros" method="post" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <h2>Asignar miembro</h2>
+    <label>ID del equipo <input name="team_id" required></label>
+    <label>ID de la persona <input name="user_id" required></label>
+    <label>Rol <select name="role"><option value="team_member">Miembro</option><option value="team_leader">Liderazgo</option></select></label>
+    <button type="submit">Asignar</button>
+  </form>
+  {% if teams %}<h2>Equipos existentes</h2><ul class="lista-enlaces">{% for team in teams %}<li><span>{{ team.name }}</span><span>{{ team.slug }}</span></li>{% endfor %}</ul>{% endif %}
+</section>
+{% endblock %}

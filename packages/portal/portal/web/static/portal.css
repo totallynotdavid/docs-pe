@@ -1,0 +1,24 @@
+@import url("/estatico/tokens.css");
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--osip-canvas); color: var(--osip-ink); font: 1rem/1.55 system-ui, sans-serif; }
+a { color: var(--osip-primary); }
+a:hover { color: var(--osip-primary-strong); }
+button, input, textarea, select { font: inherit; }
+button, .acciones a { display: inline-block; border: 0; border-radius: .4rem; background: var(--osip-primary); color: white; cursor: pointer; padding: .6rem .9rem; text-decoration: none; }
+button:hover, .acciones a:hover { background: var(--osip-primary-strong); color: white; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: .2rem solid var(--osip-focus); outline-offset: .16rem; }
+.skip-link { position: absolute; left: -999rem; }
+.skip-link:focus { left: 1rem; top: 1rem; z-index: 2; background: var(--osip-surface); padding: .5rem; }
+.barra-superior { align-items: center; border-bottom: 1px solid var(--osip-border); display: flex; gap: 1rem; justify-content: space-between; min-height: 4.2rem; padding: .75rem clamp(1rem, 4vw, 4rem); }
+.marca { color: var(--osip-ink); font-weight: 750; text-decoration: none; }.marca span { color: var(--osip-muted); font-weight: 400; }
+nav { align-items: center; display: flex; flex-wrap: wrap; gap: .8rem; }.salida { display: inline; }.salida button { background: transparent; color: var(--osip-primary); padding: 0; }.salida button:hover { background: transparent; color: var(--osip-primary-strong); text-decoration: underline; }
+.contenido { margin: 0 auto; max-width: 70rem; padding: clamp(1rem, 4vw, 3rem); }
+.panel { background: var(--osip-surface); border: 1px solid var(--osip-border); border-radius: var(--osip-radius); box-shadow: var(--osip-shadow); margin: 0 0 1.25rem; padding: clamp(1.25rem, 3vw, 2.5rem); }
+.panel--estrecho { margin-inline: auto; max-width: 32rem; }
+.ceja { color: var(--osip-muted); font-size: .85rem; font-weight: 700; letter-spacing: .08em; margin: 0; text-transform: uppercase; }
+h1, h2 { line-height: 1.2; } h1 { margin-top: .3rem; } h2 { font-size: 1.15rem; margin-top: 1.8rem; }
+.formulario { display: grid; gap: 1rem; margin-top: 1.25rem; max-width: 42rem; }.formulario label { display: grid; font-weight: 650; gap: .35rem; }.formulario input, .formulario textarea, .formulario select { border: 1px solid var(--osip-border); border-radius: .4rem; color: var(--osip-ink); padding: .6rem; width: 100%; }.formulario fieldset { border: 1px solid var(--osip-border); border-radius: .4rem; }.opcion { display: inline-flex !important; font-weight: 400 !important; grid-template-columns: auto 1fr; margin-right: .8rem; }.opcion input { width: auto; }
+.lista-enlaces { list-style: none; margin: 1.25rem 0; padding: 0; }.lista-enlaces li { align-items: baseline; border-top: 1px solid var(--osip-border); display: flex; gap: 1rem; justify-content: space-between; padding: .75rem 0; }.lista-enlaces li:last-child { border-bottom: 1px solid var(--osip-border); }.lista-enlaces span { color: var(--osip-muted); text-align: right; }
+.acciones { display: flex; flex-wrap: wrap; gap: .7rem; margin: 1.25rem 0; }.boton-peligro { background: var(--osip-danger); }.mensaje { border-left: .3rem solid; padding: .7rem .9rem; }.mensaje--error { border-color: var(--osip-danger); color: var(--osip-danger); }.estado { font-weight: 750; }.estado--completed { color: var(--osip-success); }.estado--failed, .estado--cancelled { color: var(--osip-danger); }.metricas { display: flex; flex-wrap: wrap; gap: 1.5rem; }.metricas div { min-width: 9rem; }.metricas dt { color: var(--osip-muted); }.metricas dd { font-size: 1.4rem; font-weight: 700; margin: 0; }.paginacion { margin-top: 1rem; }.busqueda { display: flex; flex-wrap: wrap; gap: .6rem; }.busqueda label { flex-basis: 100%; font-weight: 650; }.busqueda input { border: 1px solid var(--osip-border); border-radius: .4rem; flex: 1 1 15rem; padding: .6rem; }
+@media (max-width: 42rem) { .barra-superior { align-items: flex-start; flex-direction: column; }.marca span { display: block; }.lista-enlaces li { align-items: flex-start; flex-direction: column; gap: .15rem; }.lista-enlaces span { text-align: left; }.acciones a, .acciones button, .formulario button { width: 100%; text-align: center; }.metricas { display: grid; grid-template-columns: 1fr 1fr; } }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
@@ -90,6 +91,38 @@ class CredentialVersion:
     is_active: bool = True
 
 
+@dataclass(frozen=True)
+class PortalUser:
+    """A browser identity. Password material never leaves the repository."""
+
+    id: UUID
+    email: str
+    is_site_admin: bool = False
+
+
+@dataclass(frozen=True)
+class BrowserSession:
+    """Authenticated server-side session data; only its opaque ID is a cookie."""
+
+    user: PortalUser
+    csrf_token: str
+
+
+@dataclass(frozen=True)
+class Team:
+    id: UUID
+    slug: str
+    name: str
+    role: TeamRole | None = None
+
+
+@dataclass(frozen=True)
+class SearchResult:
+    job_id: UUID
+    filename: str
+    document: str
+
+
 @dataclass
 class JobItem:
     id: UUID = field(default_factory=uuid4)
@@ -126,6 +159,8 @@ class Job:
     lease_fence: int = 0
     items: list[JobItem] = field(default_factory=list)
     exclusions: list[ExcludedInput] = field(default_factory=list)
+    terminal_reason: str | None = None
+    created_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -133,6 +168,8 @@ class JobEvent:
     id: UUID
     job_id: UUID
     event_type: str
+    sequence: int = 0
+    created_at: datetime | None = None
 
 
 @dataclass(frozen=True)

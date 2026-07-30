@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Buscar · {{ team.name }}{% endblock %}
+{% block content %}
+<section class="panel" aria-labelledby="titulo-busqueda">
+  <p class="ceja">{{ team.name }}</p>
+  <h1 id="titulo-busqueda">Buscar resultados publicados</h1>
+  <form method="get" action="/equipos/{{ team.id }}/buscar" class="busqueda" hx-get="/equipos/{{ team.id }}/buscar/fragmento" hx-target="#resultados-busqueda" hx-push-url="true">
+    <label for="consulta">Documento</label>
+    <input id="consulta" name="q" value="{{ query }}" autocomplete="off">
+    <button type="submit">Buscar</button>
+  </form>
+  <div id="resultados-busqueda">{% include "fragments/search_results.html" %}</div>
+</section>
+{% endblock %}

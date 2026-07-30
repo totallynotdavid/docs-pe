@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Equipos · Portal OSIPTEL{% endblock %}
+{% block content %}
+<section class="panel" aria-labelledby="titulo-equipos">
+  <p class="ceja">{{ user.email }}</p>
+  <h1 id="titulo-equipos">Sus equipos</h1>
+  {% if teams %}
+  <ul class="lista-enlaces">
+    {% for team in teams %}
+    <li><a href="/equipos/{{ team.id }}">{{ team.name }}</a><span>{{ team.role|rol }}</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}<p>No tiene equipos asignados.</p>{% endif %}
+</section>
+{% endblock %}

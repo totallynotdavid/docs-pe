@@ -1,5 +1,8 @@
 # Portal OSIPTEL
 
+La configuración y las garantías de la experiencia autenticada están en
+[security.md](security.md).
+
 `packages/portal` is the new team-scoped portal foundation. It is separate from
 `packages/jobs`, which remains deployed and unchanged during this stage. The CRM is
 a visual reference only; it is not a dependency or ownership model.

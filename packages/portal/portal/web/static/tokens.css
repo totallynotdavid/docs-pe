@@ -1,13 +1,15 @@
 :root {
   color-scheme: light;
-  --portal-color-canvas: #f7f8fa;
-  --portal-color-surface: #ffffff;
-  --portal-color-text: #172033;
-  --portal-color-muted: #5f6b7a;
-  --portal-color-accent: #0759b8;
-  --portal-color-danger: #b42318;
-  --portal-border-subtle: #d8dee8;
-  --portal-radius-control: 0.5rem;
+  --osip-ink: #12263a;
+  --osip-muted: #526779;
+  --osip-canvas: #f5f8fa;
+  --osip-surface: #ffffff;
+  --osip-border: #c7d3dd;
+  --osip-primary: #005a8b;
+  --osip-primary-strong: #00446a;
+  --osip-focus: #e68a00;
+  --osip-danger: #a52a2a;
+  --osip-success: #126b45;
+  --osip-radius: 0.75rem;
+  --osip-shadow: 0 0.5rem 1.5rem rgb(18 38 58 / 12%);
 }
-
-/* Future themes replace only tokens; this foundation intentionally ships light. */

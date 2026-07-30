@@ -12,6 +12,8 @@ dependencies = [
     "fastapi>=0.135.0",
     "fetch",
     "jinja2>=3.1.0",
+    "pwdlib[argon2]>=0.3.0",
+    "python-multipart>=0.0.20",
     "uvicorn>=0.41.0",
 ]
 
@@ -26,4 +28,4 @@ fetch = { workspace = true }
 include = ["portal*"]
 
 [tool.setuptools.package-data]
-portal = ["migrations/*.sql", "web/static/*.css"]
+portal = ["migrations/*.sql", "web/static/*.css", "web/templates/*.html", "web/templates/fragments/*.html"]

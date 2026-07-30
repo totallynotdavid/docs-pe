@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Portal OSIPTEL{% endblock %}</title>
+    <link rel="stylesheet" href="/estatico/portal.css">
+    <script defer src="https://unpkg.com/htmx.org@2.0.4"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#contenido">Saltar al contenido</a>
+    <header class="barra-superior">
+      <a class="marca" href="/">OSIPTEL <span>Portal de procesos</span></a>
+      {% if user %}
+      <nav aria-label="Navegación principal">
+        <a href="/">Equipos</a>
+        <a href="/notificaciones">Notificaciones</a>
+        {% if user.is_site_admin %}<a href="/administracion">Administración</a>{% endif %}
+        <form action="/logout" method="post" class="salida">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit">Salir</button>
+        </form>
+      </nav>
+      {% endif %}
+    </header>
+    <main id="contenido" class="contenido">
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

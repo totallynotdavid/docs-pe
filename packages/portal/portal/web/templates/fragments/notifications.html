@@ -1,0 +1,1 @@
+{% if notifications %}<ul class="lista-enlaces">{% for notification in notifications %}<li><span>{{ notification.event_type|replace('proceso.', 'Proceso: ') }}</span><span>Secuencia {{ notification.sequence }}</span></li>{% endfor %}</ul>{% else %}<p>No hay notificaciones nuevas.</p>{% endif %}

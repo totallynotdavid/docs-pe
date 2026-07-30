@@ -1,0 +1,4 @@
+<p class="estado estado--{{ job.state }}">{{ job.state|estado }}</p>
+<p>{{ resumen_proceso(job) }}</p>
+<dl class="metricas"><div><dt>Registros a procesar</dt><dd>{{ job.items|length }}</dd></div><div><dt>Excluidos</dt><dd>{{ job.exclusions|length }}</dd></div><div><dt>Publicados</dt><dd>{{ job.items|selectattr('state.value', 'equalto', 'published')|list|length }}</dd></div></dl>
+{% if job.exclusions %}<h2>Registros excluidos</h2><ul>{% for exclusion in job.exclusions %}<li>Línea {{ exclusion.ordinal }}: {{ exclusion.value }} ({{ exclusion.reason }})</li>{% endfor %}</ul>{% endif %}
