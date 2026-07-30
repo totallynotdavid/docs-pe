@@ -14,7 +14,7 @@ from portal.testing import command, leader
 async def test_team_member_cannot_submit_a_process(
     repository: InMemoryPortalRepository, service: PortalService
 ) -> None:
-    leader_id, team_id, credential_id = leader(repository)
+    _, team_id, credential_id = leader(repository)
     member_id = uuid4()
     repository.grant(member_id, team_id, TeamRole.TEAM_MEMBER)
 
@@ -22,7 +22,6 @@ async def test_team_member_cannot_submit_a_process(
         await service.submit(command(member_id, team_id, credential_id))
 
     assert repository.jobs == {}
-    assert leader_id != member_id
 
 
 async def test_credential_cannot_cross_team_boundary(

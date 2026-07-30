@@ -22,7 +22,6 @@ async def test_five_process_admission_is_exact_under_concurrent_submissions(
         key=lambda job: job.queue_sequence,
     )
     assert len(running) == 5
-    assert len(queued) == 5
     assert [job.queue_sequence for job in queued] == [6, 7, 8, 9, 10]
 
     await repository.complete(running[0].id)
