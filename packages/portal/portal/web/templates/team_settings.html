@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Ajustes · {{ team.name }} · Worker{% endblock %}
+{% block content %}
+<section class="panel" aria-labelledby="titulo-ajustes">
+  <p class="ceja">{{ team.name }}</p>
+  <h1 id="titulo-ajustes">Ajustes del equipo</h1>
+  {% if readiness.has_active_credential %}
+  <p>El proxy está listo para usar.</p>
+  {% else %}
+  <p class="estado-vacio">Falta una credencial proxy validada.</p>
+  {% endif %}
+  <nav class="acciones" aria-label="Ajustes del equipo">
+    <a class="boton" href="/equipos/{{ team.id }}/ajustes/proxy">Proxy</a>
+    <a class="boton boton--secundario" href="/equipos/{{ team.id }}/ajustes/miembros">Miembros</a>
+  </nav>
+</section>
+{% endblock %}

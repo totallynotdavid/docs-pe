@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Miembros · {{ team.name }} · Worker{% endblock %}
+{% block content %}
+<section class="panel" aria-labelledby="titulo-miembros">
+  <p class="ceja">{{ team.name }} · Ajustes</p>
+  <h1 id="titulo-miembros">Miembros</h1>
+  {% if error %}<p class="mensaje mensaje--error" role="alert">{{ error }}</p>{% endif %}
+  <form action="/equipos/{{ team.id }}/ajustes/miembros" method="post" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Persona
+      <select name="email" required>
+        <option value="" selected disabled>Selecciona un correo</option>
+        {% for candidate in candidates %}<option value="{{ candidate.email }}">{{ candidate.email }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Rol <select name="role"><option value="team_member">Miembro</option><option value="team_leader">Líder</option></select></label>
+    <button type="submit">Agregar o actualizar</button>
+  </form>
+  <h2>Equipo actual</h2>
+  <ul class="lista-enlaces">
+    {% for member, role in members %}
+    <li><span>{{ member.email }}</span><span>{{ role|rol }}</span>
+      {% if member.id != user.id %}
+      <form action="/equipos/{{ team.id }}/ajustes/miembros/quitar" method="post" class="salida">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="email" value="{{ member.email }}">
+        <button type="submit">Quitar</button>
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

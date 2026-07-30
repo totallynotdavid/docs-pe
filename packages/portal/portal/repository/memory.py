@@ -9,6 +9,7 @@ from portal.domain.models import (
     ACTIVE_JOB_STATES,
     MAX_ACTIVE_JOBS,
     BrowserSession,
+    CredentialState,
     CredentialVersion,
     DeliveryChannel,
     ItemState,
@@ -18,6 +19,7 @@ from portal.domain.models import (
     JobState,
     NotificationIntent,
     PortalUser,
+    ProxyProvider,
     SubmissionPlan,
     SubmitJob,
     Team,
@@ -32,13 +34,13 @@ class InMemoryPortalRepository:
     def __init__(self) -> None:
         self._gate = asyncio.Lock()
         self._roles: dict[tuple[UUID, UUID], TeamRole] = {}
-        self._site_admins: set[UUID] = set()
         self._credentials: dict[UUID, CredentialVersion] = {}
         self._users: dict[UUID, tuple[PortalUser, str]] = {}
         self._sessions: dict[str, tuple[UUID, str, datetime]] = {}
         self._login_csrf: dict[str, datetime] = {}
         self._login_failures: dict[tuple[str, str], list[datetime]] = {}
         self._teams: dict[UUID, Team] = {}
+        self._initial_team_id: UUID | None = None
         self._object_references: dict[UUID, ObjectReference] = {}
         self.jobs: dict[UUID, Job] = {}
         self.events: list[JobEvent] = []
@@ -50,15 +52,6 @@ class InMemoryPortalRepository:
         self._teams.setdefault(
             team_id, Team(team_id, f"equipo-{str(team_id)[:8]}", "Equipo")
         )
-        if role is TeamRole.SITE_ADMIN:
-            self._site_admins.add(actor_id)
-            user = self._users.get(actor_id)
-            if user is not None:
-                self._users[actor_id] = (
-                    PortalUser(actor_id, user[0].email, is_site_admin=True),
-                    user[1],
-                )
-            return
         self._roles[actor_id, team_id] = role
 
     def add_credential(self, credential: CredentialVersion) -> None:
@@ -74,13 +67,9 @@ class InMemoryPortalRepository:
     ) -> PortalUser:
         user = PortalUser(user_id or uuid4(), email.lower().strip(), is_site_admin)
         self._users[user.id] = (user, password_hash)
-        if is_site_admin:
-            self._site_admins.add(user.id)
         return user
 
     async def role_for(self, actor_id: UUID, team_id: UUID) -> TeamRole | None:
-        if actor_id in self._site_admins:
-            return TeamRole.SITE_ADMIN
         return self._roles.get((actor_id, team_id))
 
     async def credential(self, credential_version_id: UUID) -> CredentialVersion | None:
@@ -192,10 +181,14 @@ class InMemoryPortalRepository:
             raise ValueError(msg)
         return self.add_user(email, password_hash, is_site_admin=is_site_admin)
 
-    async def bootstrap_site_admin(self, email: str, password_hash: str) -> PortalUser:
+    async def provision_site_admin(self, email: str, password_hash: str) -> PortalUser:
         existing = await self.user_by_email(email)
         if existing:
-            return existing[0]
+            user, stored_hash = existing
+            if not user.is_site_admin:
+                user = PortalUser(user.id, user.email, is_site_admin=True)
+                self._users[user.id] = (user, stored_hash)
+            return user
         return self.add_user(email, password_hash, is_site_admin=True)
 
     async def create_session(
@@ -250,11 +243,6 @@ class InMemoryPortalRepository:
         self._login_failures.pop((email.lower().strip(), client_ip), None)
 
     async def teams_for_user(self, actor_id: UUID) -> tuple[Team, ...]:
-        if actor_id in self._site_admins:
-            return tuple(
-                Team(team.id, team.slug, team.name, TeamRole.SITE_ADMIN)
-                for team in sorted(self._teams.values(), key=lambda value: value.name)
-            )
         return tuple(
             Team(team.id, team.slug, team.name, self._roles[actor_id, team.id])
             for team in sorted(self._teams.values(), key=lambda value: value.name)
@@ -264,11 +252,44 @@ class InMemoryPortalRepository:
     async def team(self, team_id: UUID) -> Team | None:
         return self._teams.get(team_id)
 
+    async def team_by_slug(self, slug: str) -> Team | None:
+        return next((team for team in self._teams.values() if team.slug == slug), None)
+
+    async def all_teams(self) -> tuple[Team, ...]:
+        return tuple(sorted(self._teams.values(), key=lambda value: value.name))
+
+    async def users(self) -> tuple[PortalUser, ...]:
+        return tuple(
+            user
+            for user, _ in sorted(self._users.values(), key=lambda item: item[0].email)
+        )
+
+    async def installation_status(self) -> tuple[int, UUID | None]:
+        return len(self._teams), self._initial_team_id
+
+    async def create_first_team(self, slug: str, name: str, actor_id: UUID) -> Team:
+        async with self._gate:
+            if self._teams or self._initial_team_id is not None:
+                msg = "la instalación ya tiene un equipo inicial"
+                raise ValueError(msg)
+            team = self._create_team_locked(slug, name, actor_id, actor_id)
+            self._initial_team_id = team.id
+            return team
+
     async def create_team(
+        self, slug: str, name: str, created_by: UUID, leader_id: UUID
+    ) -> Team:
+        async with self._gate:
+            return self._create_team_locked(slug, name, created_by, leader_id)
+
+    def _create_team_locked(
         self, slug: str, name: str, created_by: UUID, leader_id: UUID
     ) -> Team:
         if any(team.slug == slug for team in self._teams.values()):
             msg = "el identificador del equipo ya existe"
+            raise ValueError(msg)
+        if leader_id not in self._users:
+            msg = "la persona líder no existe"
             raise ValueError(msg)
         team = Team(uuid4(), slug, name)
         self._teams[team.id] = team
@@ -280,7 +301,43 @@ class InMemoryPortalRepository:
         if role not in {TeamRole.TEAM_LEADER, TeamRole.TEAM_MEMBER}:
             msg = "el rol de equipo no es válido"
             raise ValueError(msg)
-        self._roles[user_id, team_id] = role
+        async with self._gate:
+            if team_id not in self._teams or user_id not in self._users:
+                msg = "el equipo o la persona no existe"
+                raise ValueError(msg)
+            current = self._roles.get((user_id, team_id))
+            if (
+                current is TeamRole.TEAM_LEADER
+                and role is not TeamRole.TEAM_LEADER
+                and self._leader_count(team_id) == 1
+            ):
+                msg = "el equipo debe conservar al menos una persona líder"
+                raise ValueError(msg)
+            self._roles[user_id, team_id] = role
+
+    async def remove_member(self, team_id: UUID, user_id: UUID) -> None:
+        async with self._gate:
+            current = self._roles.get((user_id, team_id))
+            if current is None:
+                return
+            if current is TeamRole.TEAM_LEADER and self._leader_count(team_id) == 1:
+                msg = "el equipo debe conservar al menos una persona líder"
+                raise ValueError(msg)
+            del self._roles[user_id, team_id]
+
+    async def members_for_team(
+        self, team_id: UUID
+    ) -> tuple[tuple[PortalUser, TeamRole], ...]:
+        return tuple(
+            sorted(
+                (
+                    (self._users[user_id][0], role)
+                    for (member_team_id, user_id), role in self._roles.items()
+                    if member_team_id == team_id
+                ),
+                key=lambda value: value[0].email,
+            )
+        )
 
     async def credentials_for_team(
         self, team_id: UUID
@@ -291,7 +348,7 @@ class InMemoryPortalRepository:
             if credential.team_id == team_id
         )
 
-    async def create_credential(
+    async def start_credential_validation(
         self,
         team_id: UUID,
         label: str,
@@ -300,17 +357,74 @@ class InMemoryPortalRepository:
         key_id: str,
         created_by: UUID,
     ) -> CredentialVersion:
-        del provider, config_ciphertext, key_id, created_by
-        versions = [
-            credential.version
-            for credential in self._credentials.values()
-            if credential.team_id == team_id and credential.label == label
-        ]
-        credential = CredentialVersion(
-            uuid4(), team_id, label, max(versions, default=0) + 1
-        )
-        self.add_credential(credential)
-        return credential
+        del config_ciphertext, key_id, created_by
+        try:
+            selected_provider = ProxyProvider(provider)
+        except ValueError as error:
+            msg = "el proveedor seleccionado no está disponible"
+            raise ValueError(msg) from error
+        async with self._gate:
+            versions = [
+                credential.version
+                for credential in self._credentials.values()
+                if credential.team_id == team_id and credential.label == label
+            ]
+            credential = CredentialVersion(
+                uuid4(),
+                team_id,
+                label,
+                max(versions, default=0) + 1,
+                is_active=False,
+                state=CredentialState.VALIDATING,
+                provider=selected_provider,
+            )
+            self.add_credential(credential)
+            return credential
+
+    async def finish_credential_validation(
+        self,
+        credential_version_id: UUID,
+        *,
+        state: CredentialState,
+        detail: str | None,
+        actor_id: UUID,
+    ) -> CredentialVersion:
+        del detail, actor_id
+        if state not in {CredentialState.ACTIVE, CredentialState.FAILED}:
+            msg = "el estado final de la credencial no es válido"
+            raise ValueError(msg)
+        async with self._gate:
+            credential = self._credentials.get(credential_version_id)
+            if credential is None or credential.state is not CredentialState.VALIDATING:
+                msg = "la credencial no está pendiente de validación"
+                raise ValueError(msg)
+            if state is CredentialState.ACTIVE:
+                for version_id, current in tuple(self._credentials.items()):
+                    if (
+                        current.team_id == credential.team_id
+                        and current.label == credential.label
+                        and current.is_active
+                    ):
+                        self._credentials[version_id] = CredentialVersion(
+                            current.id,
+                            current.team_id,
+                            current.label,
+                            current.version,
+                            is_active=False,
+                            state=CredentialState.RETIRED,
+                            provider=current.provider,
+                        )
+            completed = CredentialVersion(
+                credential.id,
+                credential.team_id,
+                credential.label,
+                credential.version,
+                is_active=state is CredentialState.ACTIVE,
+                state=state,
+                provider=credential.provider,
+            )
+            self._credentials[credential.id] = completed
+            return completed
 
     async def add_object_reference(self, reference: ObjectReference) -> None:
         self._object_references[reference.id] = reference
@@ -375,4 +489,11 @@ class InMemoryPortalRepository:
         self.outbox.extend(
             NotificationIntent(uuid4(), event.id, channel, job.team_id)
             for channel in DeliveryChannel
+        )
+
+    def _leader_count(self, team_id: UUID) -> int:
+        return sum(
+            role is TeamRole.TEAM_LEADER
+            for (member_team_id, _), role in self._roles.items()
+            if member_team_id == team_id
         )

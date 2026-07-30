@@ -10,6 +10,7 @@ from portal.domain.models import (
     STABLE_SOURCES,
     BrowserSession,
     ClaimedWork,
+    CredentialState,
     CredentialVersion,
     ExcludedInput,
     ItemState,
@@ -18,6 +19,7 @@ from portal.domain.models import (
     JobItem,
     JobState,
     PortalUser,
+    ProxyProvider,
     SubmissionPlan,
     SubmitJob,
     Team,
@@ -108,11 +110,6 @@ class PostgresPortalRepository:
 
     async def role_for(self, actor_id: UUID, team_id: UUID) -> TeamRole | None:
         async with self._pool.acquire() as connection:
-            admin = await connection.fetchval(
-                "SELECT is_site_admin FROM portal_users WHERE id = $1", actor_id
-            )
-            if admin:
-                return TeamRole.SITE_ADMIN
             role = await connection.fetchval(
                 """
                 SELECT role FROM portal_team_memberships
@@ -128,7 +125,8 @@ class PostgresPortalRepository:
             row = await connection.fetchrow(
                 """
                 SELECT version.id, version.team_id, credential.label,
-                       version.version, version.is_active
+                       version.version, version.is_active, version.lifecycle,
+                       version.provider
                   FROM portal_team_proxy_credential_versions AS version
                   JOIN portal_team_proxy_credentials AS credential
                     ON credential.id = version.credential_id
@@ -336,11 +334,22 @@ class PostgresPortalRepository:
             )
         return user
 
-    async def bootstrap_site_admin(self, email: str, password_hash: str) -> PortalUser:
-        existing = await self.user_by_email(email)
-        if existing is not None:
-            return existing[0]
-        return await self.create_user(email, password_hash, is_site_admin=True)
+    async def provision_site_admin(self, email: str, password_hash: str) -> PortalUser:
+        """Create/find the declared initial administrator without changing a password."""
+        async with self._pool.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                INSERT INTO portal_users (id, email, password_hash, is_site_admin)
+                VALUES ($1, $2, $3, true)
+                ON CONFLICT (email) DO UPDATE
+                    SET is_site_admin = true
+                RETURNING id, email, is_site_admin
+                """,
+                uuid4(),
+                email.lower().strip(),
+                password_hash,
+            )
+        return self._user(row)
 
     async def create_session(
         self, user_id: UUID, token_hash: str, csrf_token: str, expires_at: datetime
@@ -454,17 +463,6 @@ class PostgresPortalRepository:
 
     async def teams_for_user(self, actor_id: UUID) -> tuple[Team, ...]:
         async with self._pool.acquire() as connection:
-            is_admin = await connection.fetchval(
-                "SELECT is_site_admin FROM portal_users WHERE id = $1", actor_id
-            )
-            if is_admin:
-                rows = await connection.fetch(
-                    "SELECT id, slug, name FROM portal_teams ORDER BY name"
-                )
-                return tuple(
-                    Team(row["id"], row["slug"], row["name"], TeamRole.SITE_ADMIN)
-                    for row in rows
-                )
             rows = await connection.fetch(
                 """
                 SELECT team.id, team.slug, team.name, membership.role
@@ -487,36 +485,88 @@ class PostgresPortalRepository:
             )
         return Team(row["id"], row["slug"], row["name"]) if row else None
 
+    async def team_by_slug(self, slug: str) -> Team | None:
+        async with self._pool.acquire() as connection:
+            row = await connection.fetchrow(
+                "SELECT id, slug, name FROM portal_teams WHERE slug = $1", slug
+            )
+        return Team(row["id"], row["slug"], row["name"]) if row else None
+
+    async def all_teams(self) -> tuple[Team, ...]:
+        async with self._pool.acquire() as connection:
+            rows = await connection.fetch(
+                "SELECT id, slug, name FROM portal_teams ORDER BY name"
+            )
+        return tuple(Team(row["id"], row["slug"], row["name"]) for row in rows)
+
+    async def users(self) -> tuple[PortalUser, ...]:
+        async with self._pool.acquire() as connection:
+            rows = await connection.fetch(
+                "SELECT id, email, is_site_admin FROM portal_users ORDER BY email"
+            )
+        return tuple(self._user(row) for row in rows)
+
+    async def installation_status(self) -> tuple[int, UUID | None]:
+        async with self._pool.acquire() as connection:
+            row = await connection.fetchrow(
+                "SELECT initial_team_id FROM portal_installation_state WHERE singleton = true"
+            )
+            count = await connection.fetchval("SELECT count(*) FROM portal_teams")
+        return int(count), row["initial_team_id"] if row else None
+
+    async def create_first_team(self, slug: str, name: str, actor_id: UUID) -> Team:
+        team = Team(uuid4(), slug, name)
+        async with self._pool.acquire() as connection, connection.transaction():
+            state = await connection.fetchrow(
+                """
+                SELECT initial_team_id FROM portal_installation_state
+                 WHERE singleton = true FOR UPDATE
+                """
+            )
+            count = await connection.fetchval("SELECT count(*) FROM portal_teams")
+            if state is None or state["initial_team_id"] is not None or int(count):
+                msg = "la instalación ya tiene un equipo inicial"
+                raise ValueError(msg)
+            await self._insert_team_and_leader(connection, team, actor_id, actor_id)
+            await connection.execute(
+                """
+                UPDATE portal_installation_state
+                   SET initial_team_id = $1, completed_by = $2,
+                       completed_at = now(), updated_at = now()
+                 WHERE singleton = true
+                """,
+                team.id,
+                actor_id,
+            )
+        return team
+
     async def create_team(
         self, slug: str, name: str, created_by: UUID, leader_id: UUID
     ) -> Team:
         team = Team(uuid4(), slug, name)
         async with self._pool.acquire() as connection, connection.transaction():
-            await connection.execute(
-                """
-                INSERT INTO portal_teams (id, slug, name, created_by)
-                VALUES ($1, $2, $3, $4)
-                """,
-                team.id,
-                team.slug,
-                team.name,
-                created_by,
-            )
-            await connection.execute(
-                """
-                INSERT INTO portal_team_memberships (team_id, user_id, role)
-                VALUES ($1, $2, 'team_leader')
-                """,
-                team.id,
-                leader_id,
-            )
+            await self._insert_team_and_leader(connection, team, created_by, leader_id)
         return team
 
     async def add_member(self, team_id: UUID, user_id: UUID, role: TeamRole) -> None:
         if role not in {TeamRole.TEAM_LEADER, TeamRole.TEAM_MEMBER}:
             msg = "el rol de equipo no es válido"
             raise ValueError(msg)
-        async with self._pool.acquire() as connection:
+        async with self._pool.acquire() as connection, connection.transaction():
+            await self._lock_team_memberships(connection, team_id)
+            current = await connection.fetchval(
+                """
+                SELECT role FROM portal_team_memberships
+                 WHERE team_id = $1 AND user_id = $2 FOR UPDATE
+                """,
+                team_id,
+                user_id,
+            )
+            if (
+                current == TeamRole.TEAM_LEADER.value
+                and role is not TeamRole.TEAM_LEADER
+            ):
+                await self._ensure_not_last_leader(connection, team_id)
             await connection.execute(
                 """
                 INSERT INTO portal_team_memberships (team_id, user_id, role)
@@ -528,6 +578,42 @@ class PostgresPortalRepository:
                 role.value,
             )
 
+    async def remove_member(self, team_id: UUID, user_id: UUID) -> None:
+        async with self._pool.acquire() as connection, connection.transaction():
+            await self._lock_team_memberships(connection, team_id)
+            current = await connection.fetchval(
+                """
+                SELECT role FROM portal_team_memberships
+                 WHERE team_id = $1 AND user_id = $2 FOR UPDATE
+                """,
+                team_id,
+                user_id,
+            )
+            if current == TeamRole.TEAM_LEADER.value:
+                await self._ensure_not_last_leader(connection, team_id)
+            await connection.execute(
+                "DELETE FROM portal_team_memberships WHERE team_id = $1 AND user_id = $2",
+                team_id,
+                user_id,
+            )
+
+    async def members_for_team(
+        self, team_id: UUID
+    ) -> tuple[tuple[PortalUser, TeamRole], ...]:
+        async with self._pool.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT user_account.id, user_account.email, user_account.is_site_admin,
+                       membership.role
+                  FROM portal_team_memberships AS membership
+                  JOIN portal_users AS user_account ON user_account.id = membership.user_id
+                 WHERE membership.team_id = $1
+                 ORDER BY user_account.email
+                """,
+                team_id,
+            )
+        return tuple((self._user(row), TeamRole(row["role"])) for row in rows)
+
     async def credentials_for_team(
         self, team_id: UUID
     ) -> tuple[CredentialVersion, ...]:
@@ -535,7 +621,8 @@ class PostgresPortalRepository:
             rows = await connection.fetch(
                 """
                 SELECT version.id, version.team_id, credential.label,
-                       version.version, version.is_active
+                       version.version, version.is_active, version.lifecycle,
+                       version.provider
                   FROM portal_team_proxy_credential_versions AS version
                   JOIN portal_team_proxy_credentials AS credential
                     ON credential.id = version.credential_id
@@ -546,7 +633,7 @@ class PostgresPortalRepository:
             )
         return tuple(self._credential(row) for row in rows)
 
-    async def create_credential(
+    async def start_credential_validation(
         self,
         team_id: UUID,
         label: str,
@@ -556,6 +643,7 @@ class PostgresPortalRepository:
         created_by: UUID,
     ) -> CredentialVersion:
         async with self._pool.acquire() as connection, connection.transaction():
+            await self._lock_team_memberships(connection, team_id)
             credential_id = await connection.fetchval(
                 """
                 SELECT id FROM portal_team_proxy_credentials
@@ -576,15 +664,6 @@ class PostgresPortalRepository:
                     label,
                     created_by,
                 )
-            else:
-                await connection.execute(
-                    """
-                    UPDATE portal_team_proxy_credential_versions
-                       SET is_active = false
-                     WHERE credential_id = $1 AND is_active
-                    """,
-                    credential_id,
-                )
             version = int(
                 await connection.fetchval(
                     """
@@ -595,13 +674,21 @@ class PostgresPortalRepository:
                     credential_id,
                 )
             )
-            credential = CredentialVersion(uuid4(), team_id, label, version)
+            credential = CredentialVersion(
+                uuid4(),
+                team_id,
+                label,
+                version,
+                is_active=False,
+                state=CredentialState.VALIDATING,
+                provider=ProxyProvider(provider),
+            )
             await connection.execute(
                 """
                 INSERT INTO portal_team_proxy_credential_versions
                     (id, credential_id, team_id, version, provider, config_ciphertext,
-                     key_id, created_by)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                     key_id, lifecycle, is_active, created_by)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, 'validating', false, $8)
                 """,
                 credential.id,
                 credential_id,
@@ -612,7 +699,99 @@ class PostgresPortalRepository:
                 key_id,
                 created_by,
             )
+            await connection.execute(
+                """
+                INSERT INTO portal_proxy_credential_events
+                    (id, credential_version_id, from_lifecycle, to_lifecycle, detail, actor_id)
+                VALUES ($1, $2, 'draft', 'validating', 'validación iniciada', $3)
+                """,
+                uuid4(),
+                credential.id,
+                created_by,
+            )
         return credential
+
+    async def finish_credential_validation(
+        self,
+        credential_version_id: UUID,
+        *,
+        state: CredentialState,
+        detail: str | None,
+        actor_id: UUID,
+    ) -> CredentialVersion:
+        if state not in {CredentialState.ACTIVE, CredentialState.FAILED}:
+            msg = "el estado final de la credencial no es válido"
+            raise ValueError(msg)
+        async with self._pool.acquire() as connection, connection.transaction():
+            row = await connection.fetchrow(
+                """
+                SELECT version.id, version.team_id, credential.id AS credential_id,
+                       credential.label, version.version, version.is_active,
+                       version.lifecycle, version.provider
+                  FROM portal_team_proxy_credential_versions AS version
+                  JOIN portal_team_proxy_credentials AS credential
+                    ON credential.id = version.credential_id
+                   AND credential.team_id = version.team_id
+                 WHERE version.id = $1
+                 FOR UPDATE OF credential, version
+                """,
+                credential_version_id,
+            )
+            if row is None or row["lifecycle"] != CredentialState.VALIDATING.value:
+                msg = "la credencial no está pendiente de validación"
+                raise ValueError(msg)
+            if state is CredentialState.ACTIVE:
+                retired = await connection.fetch(
+                    """
+                    UPDATE portal_team_proxy_credential_versions
+                       SET lifecycle = 'retired', is_active = false
+                     WHERE credential_id = $1 AND lifecycle = 'active'
+                    RETURNING id
+                    """,
+                    row["credential_id"],
+                )
+                await connection.executemany(
+                    """
+                    INSERT INTO portal_proxy_credential_events
+                        (id, credential_version_id, from_lifecycle, to_lifecycle, detail, actor_id)
+                    VALUES ($1, $2, 'active', 'retired', 'reemplazada por una nueva versión', $3)
+                    """,
+                    [(uuid4(), retired_row["id"], actor_id) for retired_row in retired],
+                )
+            await connection.execute(
+                """
+                UPDATE portal_team_proxy_credential_versions
+                   SET lifecycle = $2, is_active = $3,
+                       validated_at = CASE WHEN $2 = 'active' THEN now() ELSE validated_at END,
+                       failure_detail = CASE WHEN $2 = 'failed' THEN $4 ELSE NULL END
+                 WHERE id = $1
+                """,
+                credential_version_id,
+                state.value,
+                state is CredentialState.ACTIVE,
+                detail,
+            )
+            await connection.execute(
+                """
+                INSERT INTO portal_proxy_credential_events
+                    (id, credential_version_id, from_lifecycle, to_lifecycle, detail, actor_id)
+                VALUES ($1, $2, 'validating', $3, $4, $5)
+                """,
+                uuid4(),
+                credential_version_id,
+                state.value,
+                detail,
+                actor_id,
+            )
+        return CredentialVersion(
+            id=row["id"],
+            team_id=row["team_id"],
+            label=row["label"],
+            version=int(row["version"]),
+            is_active=state is CredentialState.ACTIVE,
+            state=state,
+            provider=ProxyProvider(row["provider"]),
+        )
 
     async def add_object_reference(self, reference: ObjectReference) -> None:
         async with self._pool.acquire() as connection:
@@ -755,6 +934,54 @@ class PostgresPortalRepository:
             await self._finish_if_drained_locked(connection, job_id)
         return True
 
+    async def _insert_team_and_leader(
+        self, connection: Connection, team: Team, created_by: UUID, leader_id: UUID
+    ) -> None:
+        """Keep the initial leader insertion in the same transaction as the team."""
+        await connection.execute(
+            """
+            INSERT INTO portal_teams (id, slug, name, created_by)
+            VALUES ($1, $2, $3, $4)
+            """,
+            team.id,
+            team.slug,
+            team.name,
+            created_by,
+        )
+        await connection.execute(
+            """
+            INSERT INTO portal_team_memberships (team_id, user_id, role)
+            VALUES ($1, $2, 'team_leader')
+            """,
+            team.id,
+            leader_id,
+        )
+
+    async def _lock_team_memberships(
+        self, connection: Connection, team_id: UUID
+    ) -> None:
+        """Serialize leader changes per team; the deferred SQL trigger is the backstop."""
+        found = await connection.fetchval(
+            "SELECT id FROM portal_teams WHERE id = $1 FOR UPDATE", team_id
+        )
+        if found is None:
+            msg = "el equipo no existe"
+            raise ValueError(msg)
+
+    async def _ensure_not_last_leader(
+        self, connection: Connection, team_id: UUID
+    ) -> None:
+        leaders = await connection.fetchval(
+            """
+            SELECT count(*) FROM portal_team_memberships
+             WHERE team_id = $1 AND role = 'team_leader'
+            """,
+            team_id,
+        )
+        if int(leaders) <= 1:
+            msg = "el equipo debe conservar al menos una persona líder"
+            raise ValueError(msg)
+
     async def _lock_queue_gate(self, connection: Connection) -> int:
         maximum = await connection.fetchval(_LOCK_QUEUE_GATE)
         if maximum != MAX_ACTIVE_JOBS:
@@ -859,4 +1086,6 @@ class PostgresPortalRepository:
             label=row["label"],  # type: ignore[index]
             version=int(row["version"]),  # type: ignore[index]
             is_active=bool(row["is_active"]),  # type: ignore[index]
+            state=CredentialState(row["lifecycle"]),  # type: ignore[index]
+            provider=ProxyProvider(row["provider"]),  # type: ignore[index]
         )

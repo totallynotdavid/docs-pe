@@ -4,7 +4,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from portal.domain.models import Job, JobState, TeamRole
+from portal.domain.models import CredentialState, Job, JobState, TeamRole
 
 
 def template_environment() -> Environment:
@@ -15,6 +15,7 @@ def template_environment() -> Environment:
     environment.filters["estado"] = _state_label
     environment.filters["rol"] = _role_label
     environment.filters["notificacion"] = _notification_label
+    environment.filters["estado_credencial"] = _credential_state_label
     environment.globals["es_terminal"] = lambda job: (
         job.state
         in {
@@ -40,7 +41,6 @@ def _state_label(state: JobState) -> str:
 
 def _role_label(role: TeamRole | None) -> str:
     return {
-        TeamRole.SITE_ADMIN: "Administración del sitio",
         TeamRole.TEAM_LEADER: "Liderazgo del equipo",
         TeamRole.TEAM_MEMBER: "Miembro del equipo",
         None: "",
@@ -59,3 +59,13 @@ def _notification_label(event_type: str) -> str:
         "proceso.failed": "Tarea con error",
         "proceso.cancelled": "Tarea cancelada",
     }.get(event_type, "Actualización de tarea")
+
+
+def _credential_state_label(state: CredentialState) -> str:
+    return {
+        CredentialState.DRAFT: "Borrador",
+        CredentialState.VALIDATING: "Validando",
+        CredentialState.ACTIVE: "Activa",
+        CredentialState.FAILED: "No validada",
+        CredentialState.RETIRED: "Retirada",
+    }[state]

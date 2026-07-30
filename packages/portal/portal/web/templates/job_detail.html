@@ -7,7 +7,7 @@
   <div id="progreso-proceso" aria-live="polite" aria-atomic="true" data-progreso-url="/equipos/{{ team.id }}/procesos/{{ job.id }}/progreso">
     {% include "fragments/job_progress.html" %}
   </div>
-  {% if team.role.value in ['site_admin', 'team_leader'] and not es_terminal(job) %}
+  {% if team.role.value == 'team_leader' and not es_terminal(job) %}
   <form action="/equipos/{{ team.id }}/procesos/{{ job.id }}/cancelar" method="post" class="acciones">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button class="boton-peligro" type="submit">Cancelar tarea</button>

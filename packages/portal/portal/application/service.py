@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from portal.domain.errors import NotFound, PermissionDenied
 from portal.domain.models import (
+    CredentialState,
     InputLine,
     PortalUser,
     SearchResult,
@@ -18,7 +19,6 @@ from portal.domain.models import (
 from portal.domain.planning import plan_submission
 from portal.storage.port import ObjectReference
 from portal.web.security import (
-    hash_password,
     new_csrf_token,
     new_session_token,
     token_hash,
@@ -47,8 +47,8 @@ class PortalService:
         credential = await self._repository.credential(command.credential_version_id)
         if credential is None or credential.team_id != command.team_id:
             raise PermissionDenied("la credencial debe pertenecer al mismo equipo")
-        if not credential.is_active:
-            raise PermissionDenied("la versión de credencial ya no está activa")
+        if not credential.is_active or credential.state is not CredentialState.ACTIVE:
+            raise PermissionDenied("el equipo necesita una credencial proxy activa")
         return await self._repository.admit_submission(
             command, plan_submission(command.lines, command.sources)
         )
@@ -86,14 +86,6 @@ class PortalService:
             return None
         await self._repository.clear_login_failures(email, client_ip)
         return user, await self.create_session(user.id)
-
-    async def bootstrap_site_admin(self, email: str, password: str) -> PortalUser:
-        if not email or not password:
-            msg = "el administrador inicial requiere correo y contraseña"
-            raise ValueError(msg)
-        return await self._repository.bootstrap_site_admin(
-            email, hash_password(password)
-        )
 
     async def create_session(self, user_id: UUID) -> str:
         token = new_session_token()
@@ -232,6 +224,15 @@ class PortalService:
     ) -> Job:
         """Persist the submitted input through the immutable storage port, then admit it."""
         await self.require_leader(actor_id, team_id)
+        credential = await self._repository.credential(credential_version_id)
+        if (
+            credential is None
+            or credential.team_id != team_id
+            or not credential.is_active
+            or credential.state is not CredentialState.ACTIVE
+        ):
+            msg = "el equipo necesita una credencial proxy activa"
+            raise PermissionDenied(msg)
         content = documents.encode("utf-8")
         reference = ObjectReference(
             id=uuid4(),
@@ -268,42 +269,6 @@ class PortalService:
         await self.require_leader(actor_id, team_id)
         return await self._repository.credentials_for_team(team_id)
 
-    async def create_credential(
-        self,
-        actor_id: UUID,
-        team_id: UUID,
-        *,
-        label: str,
-        provider: str,
-        config_ciphertext: bytes,
-        key_id: str,
-    ) -> CredentialVersion:
-        await self.require_leader(actor_id, team_id)
-        return await self._repository.create_credential(
-            team_id, label, provider, config_ciphertext, key_id, actor_id
-        )
-
-    async def create_user(
-        self, actor_id: UUID, email: str, password: str
-    ) -> PortalUser:
-        await self.require_site_admin(actor_id)
-        if len(password) < 12:
-            msg = "la contraseña debe tener al menos 12 caracteres"
-            raise ValueError(msg)
-        return await self._repository.create_user(email, hash_password(password))
-
-    async def create_team(
-        self, actor_id: UUID, slug: str, name: str, leader_id: UUID
-    ) -> Team:
-        await self.require_site_admin(actor_id)
-        return await self._repository.create_team(slug, name, actor_id, leader_id)
-
-    async def add_member(
-        self, actor_id: UUID, team_id: UUID, user_id: UUID, role: TeamRole
-    ) -> None:
-        await self.require_site_admin(actor_id)
-        await self._repository.add_member(team_id, user_id, role)
-
     async def require_reader(self, actor_id: UUID, team_id: UUID) -> TeamRole:
         role = await self._repository.role_for(actor_id, team_id)
         if role is None:
@@ -312,12 +277,6 @@ class PortalService:
 
     async def require_leader(self, actor_id: UUID, team_id: UUID) -> TeamRole:
         role = await self.require_reader(actor_id, team_id)
-        if role not in {TeamRole.SITE_ADMIN, TeamRole.TEAM_LEADER}:
+        if role is not TeamRole.TEAM_LEADER:
             raise PermissionDenied("solo un líder del equipo puede gestionar procesos")
         return role
-
-    async def require_site_admin(self, actor_id: UUID) -> PortalUser:
-        user = await self._repository.user_by_id(actor_id)
-        if user is None or not user.is_site_admin:
-            raise PermissionDenied("solo el administrador del sitio puede continuar")
-        return user

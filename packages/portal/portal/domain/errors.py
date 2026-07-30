@@ -19,3 +19,11 @@ class SourceValidationError(PortalError):
 
 class FencedWrite(PortalError):
     """A worker attempted a result write after its job lease changed."""
+
+
+class ProvisioningError(PortalError):
+    """A durable installation or team setup command could not be completed."""
+
+
+class CredentialConfigurationError(PortalError):
+    """A proxy configuration is invalid or could not be validated safely."""

@@ -10,11 +10,31 @@ a visual reference only; it is not a dependency or ownership model.
 ## Desarrollo local
 
 Install the workspace dependencies with `mise run install`. Copy `.env.example` and
-set `PORTAL_DATABASE_DSN` to a PostgreSQL database. Apply migrations in lexical order
-with the `portal.migrations.apply_migrations` deployment bootstrap; it records each
-filename in `portal_schema_migrations`. A deployment must run migrations before web
-or worker processes. Foundation tests do not need a database; the migration remains
-executable PostgreSQL for integration environments.
+set `PORTAL_DATABASE_DSN` to a PostgreSQL database. Generate a local secret-protection
+key once, without committing it:
+
+```bash
+uv run python -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
+```
+
+Provisioning is explicit and idempotent; web-process startup never creates users,
+teams, credentials, or schema state. Use `uv` to inject the local environment file:
+
+```bash
+uv run --env-file packages/portal/.env python -m portal.provision \
+  --admin-email admin@example.org \
+  --admin-password-env PORTAL_PROVISION_ADMIN_PASSWORD \
+  --team-name "Equipo Lima" \
+  --team-slug equipo-lima
+```
+
+Add `--proxy-provider geonode` or `--proxy-provider dataimpulse` to configure a
+provider from the named `PORTAL_PROVISION_*` variables. The command applies and
+verifies migrations, creates or finds the administrator/team/leader relationship,
+and prints only names and status. It never prints record identifiers or credentials.
+For local development, `PORTAL_SECRET_PROTECTION_KEY` enables the AES-GCM adapter.
+Production must inject a deployment secret-protection/KMS adapter before optional
+proxy configuration is used; no cloud provider is selected here.
 
 Run the focused suite with `uv run pytest packages/portal/tests`, format with
 `uv run ruff format packages/portal`, lint with `uv run ruff check packages/portal`,
@@ -22,8 +42,9 @@ and type-check with `uv run mypy packages/portal`.
 
 ## Límites de proceso
 
-`portal.web` is a FastAPI operational boundary. Browser pages will use Jinja2, HTMX,
-and SSE, but this foundation deliberately exposes only `/salud` and `/listo`.
+`portal.web` is a FastAPI operational boundary. Browser pages use Jinja2, HTMX, and
+SSE. It opens dependencies and serves readiness only; deployment provisioning is the
+sole path that applies schema changes or creates initial data.
 `portal.application` holds team authorization and submission/cancellation use cases;
 `portal.domain` contains source planning and state policy; `portal.repository` owns
 PostgreSQL transactions; `portal.worker` consumes only that PostgreSQL queue.

@@ -12,15 +12,24 @@
     <header class="barra-superior">
       <a class="marca" href="/">Worker</a>
       {% if user %}
+      {% if setup %}
       <nav aria-label="Navegación principal">
-        <a class="nav-enlace" href="/">Equipos</a>
-        <a class="nav-enlace" href="/notificaciones">Notificaciones</a>
-        {% if user.is_site_admin %}<a class="nav-enlace" href="/administracion">Administración</a>{% endif %}
         <form action="/logout" method="post" class="salida">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button type="submit">Salir</button>
         </form>
       </nav>
+      {% else %}
+      <nav aria-label="Navegación principal">
+        <a class="nav-enlace" href="/">Equipos</a>
+        <a class="nav-enlace" href="/notificaciones">Notificaciones</a>
+        {% if user.is_site_admin %}<a class="nav-enlace" href="/administracion/equipos">Administración</a>{% endif %}
+        <form action="/logout" method="post" class="salida">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit">Salir</button>
+        </form>
+      </nav>
+      {% endif %}
       {% endif %}
     </header>
     <main id="contenido" class="contenido">

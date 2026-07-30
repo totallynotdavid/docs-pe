@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Primer equipo · Worker{% endblock %}
+{% block content %}
+<section class="panel" aria-labelledby="titulo-inicio">
+  <p class="ceja">Inicio</p>
+  <h1 id="titulo-inicio">Crea tu primer equipo</h1>
+  <p>El equipo permite organizar las consultas y configurar su proxy.</p>
+  {% if error %}<p class="mensaje mensaje--error" role="alert">{{ error }}</p>{% endif %}
+  <form action="/inicio" method="post" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Nombre del equipo <input name="name" maxlength="120" required autofocus></label>
+    <label>Identificador URL <input name="slug" pattern="[a-z0-9][a-z0-9-]{1,62}" required></label>
+    <button type="submit">Crear equipo</button>
+  </form>
+</section>
+{% endblock %}

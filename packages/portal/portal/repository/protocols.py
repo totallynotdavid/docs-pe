@@ -7,6 +7,7 @@ from uuid import UUID
 from portal.domain.models import (
     BrowserSession,
     ClaimedWork,
+    CredentialState,
     CredentialVersion,
     Job,
     JobEvent,
@@ -47,7 +48,7 @@ class PortalRepository(Protocol):
         self, email: str, password_hash: str, *, is_site_admin: bool = False
     ) -> PortalUser: ...
 
-    async def bootstrap_site_admin(
+    async def provision_site_admin(
         self, email: str, password_hash: str
     ) -> PortalUser: ...
 
@@ -81,7 +82,17 @@ class PortalRepository(Protocol):
 
     async def teams_for_user(self, actor_id: UUID) -> tuple[Team, ...]: ...
 
+    async def users(self) -> tuple[PortalUser, ...]: ...
+
     async def team(self, team_id: UUID) -> Team | None: ...
+
+    async def team_by_slug(self, slug: str) -> Team | None: ...
+
+    async def all_teams(self) -> tuple[Team, ...]: ...
+
+    async def installation_status(self) -> tuple[int, UUID | None]: ...
+
+    async def create_first_team(self, slug: str, name: str, actor_id: UUID) -> Team: ...
 
     async def create_team(
         self, slug: str, name: str, created_by: UUID, leader_id: UUID
@@ -91,11 +102,17 @@ class PortalRepository(Protocol):
         self, team_id: UUID, user_id: UUID, role: TeamRole
     ) -> None: ...
 
+    async def remove_member(self, team_id: UUID, user_id: UUID) -> None: ...
+
+    async def members_for_team(
+        self, team_id: UUID
+    ) -> tuple[tuple[PortalUser, TeamRole], ...]: ...
+
     async def credentials_for_team(
         self, team_id: UUID
     ) -> tuple[CredentialVersion, ...]: ...
 
-    async def create_credential(
+    async def start_credential_validation(
         self,
         team_id: UUID,
         label: str,
@@ -103,6 +120,15 @@ class PortalRepository(Protocol):
         config_ciphertext: bytes,
         key_id: str,
         created_by: UUID,
+    ) -> CredentialVersion: ...
+
+    async def finish_credential_validation(
+        self,
+        credential_version_id: UUID,
+        *,
+        state: CredentialState,
+        detail: str | None,
+        actor_id: UUID,
     ) -> CredentialVersion: ...
 
     async def add_object_reference(self, reference: ObjectReference) -> None: ...

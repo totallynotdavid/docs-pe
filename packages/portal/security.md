@@ -1,9 +1,9 @@
 # Seguridad del portal
 
 El portal es una aplicación de navegador con sesiones opacas del lado del servidor.
-No hay registro público: la primera cuenta administrativa procede únicamente de
-`PORTAL_BOOTSTRAP_ADMIN_EMAIL` y `PORTAL_BOOTSTRAP_ADMIN_PASSWORD`; las demás se
-crean desde Administración.
+No hay registro público: la primera cuenta administrativa y su primer equipo se
+crean únicamente con `python -m portal.provision`; las demás personas se gestionan
+desde Administración. El arranque web no crea cuentas, equipos ni credenciales.
 
 ## Controles aplicados
 
@@ -23,9 +23,15 @@ crean desde Administración.
 - El inicio de sesión responde de forma genérica, verifica una contraseña ficticia
   si la cuenta no existe y limita a cinco fallos por correo e IP en cinco minutos.
 - Las rutas leen la identidad desde la sesión y delegan todas las comprobaciones de
-  equipo/rol al servicio: miembros leen y buscan, líderes gestionan procesos y
-  credenciales, y administración del sitio gestiona todos los equipos. El SSE vuelve
-  a comprobar la sesión y la pertenencia antes de leer cada evento persistido.
+  equipo/rol al servicio: miembros solo leen y buscan; líderes gestionan miembros,
+  procesos y credenciales de su propio equipo; administración del sitio gestiona
+  personas y estructura sin obtener acceso implícito a datos de un equipo. El SSE
+  vuelve a comprobar la sesión y la pertenencia antes de leer cada evento persistido.
+- Los datos de GeoNode y DataImpulse se normalizan del lado del servidor, se protegen
+  antes de persistirse y no se muestran ni se registran. La interfaz nunca recibe
+  material cifrado ni claves. El adaptador local usa AES-GCM con una clave inyectada
+  por entorno; producción debe inyectar un adaptador de gestor de secretos/KMS antes
+  de configurar credenciales. Los errores de preflight son deliberadamente genéricos.
 
 ## Fuentes consultadas
 
@@ -38,5 +44,7 @@ crean desde Administración.
   [Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html),
   [CSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html),
   [Password Storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html),
-  [Authorization](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html)
+  [Authorization](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html),
+  [Cryptographic Storage](https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html)
+  y [Error Handling](https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html)
   y [ASVS](https://owasp.org/www-project-application-security-verification-standard/).

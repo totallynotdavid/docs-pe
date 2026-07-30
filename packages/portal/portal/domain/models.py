@@ -7,9 +7,23 @@ from uuid import UUID, uuid4
 
 
 class TeamRole(StrEnum):
-    SITE_ADMIN = "site_admin"
     TEAM_LEADER = "team_leader"
     TEAM_MEMBER = "team_member"
+
+
+class CredentialState(StrEnum):
+    """Durable lifecycle for a team-owned proxy credential version."""
+
+    DRAFT = "draft"
+    VALIDATING = "validating"
+    ACTIVE = "active"
+    FAILED = "failed"
+    RETIRED = "retired"
+
+
+class ProxyProvider(StrEnum):
+    GEONODE = "geonode"
+    DATAIMPULSE = "dataimpulse"
 
 
 class JobState(StrEnum):
@@ -89,6 +103,8 @@ class CredentialVersion:
     label: str
     version: int
     is_active: bool = True
+    state: CredentialState = CredentialState.ACTIVE
+    provider: ProxyProvider | None = None
 
 
 @dataclass(frozen=True)

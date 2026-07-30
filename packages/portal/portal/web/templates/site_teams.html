@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Equipos · Administración · Worker{% endblock %}
+{% block content %}
+<section class="panel" aria-labelledby="titulo-admin-equipos">
+  <p class="ceja">Administración del sitio</p>
+  <h1 id="titulo-admin-equipos">Equipos</h1>
+  <nav class="acciones" aria-label="Administración"><a class="boton boton--secundario" href="/administracion/usuarios">Personas</a></nav>
+  {% if error %}<p class="mensaje mensaje--error" role="alert">{{ error }}</p>{% endif %}
+  <form action="/administracion/equipos" method="post" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Nombre <input name="name" maxlength="120" required></label>
+    <label>Identificador URL <input name="slug" pattern="[a-z0-9][a-z0-9-]{1,62}" required></label>
+    <label>Persona líder
+      <select name="leader_email" required><option value="" selected disabled>Selecciona un correo</option>{% for person in users %}<option value="{{ person.email }}">{{ person.email }}</option>{% endfor %}</select>
+    </label>
+    <button type="submit">Crear equipo</button>
+  </form>
+  <ul class="lista-enlaces">{% for team in teams %}<li><span>{{ team.name }}</span><span>{{ team.slug }}</span></li>{% else %}<li class="estado-vacio">Aún no hay equipos.</li>{% endfor %}</ul>
+</section>
+{% endblock %}
