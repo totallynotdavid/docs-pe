@@ -14,4 +14,4 @@ RUN uv sync --locked --no-dev --package osiptel-portal
 
 EXPOSE 8000
 
-CMD ["sh", "-ec", "portal-migrate && portal-provision --admin-email \"$PORTAL_BOOTSTRAP_ADMIN_EMAIL\" --admin-password-env PORTAL_BOOTSTRAP_ADMIN_PASSWORD --team-name \"$PORTAL_BOOTSTRAP_TEAM_NAME\" --team-slug \"$PORTAL_BOOTSTRAP_TEAM_SLUG\" && exec osiptel-portal"]
+CMD ["sh", "-ec", "export PORTAL_TLS_TERMINATED_UPSTREAM=true && portal-migrate && portal-provision --admin-email \"$PORTAL_BOOTSTRAP_ADMIN_EMAIL\" --admin-password-env PORTAL_BOOTSTRAP_ADMIN_PASSWORD --team-name \"$PORTAL_BOOTSTRAP_TEAM_NAME\" --team-slug \"$PORTAL_BOOTSTRAP_TEAM_SLUG\" && exec osiptel-portal"]
