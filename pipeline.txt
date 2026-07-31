@@ -1,0 +1,98 @@
+PIPELINE — how to run a batch
+
+Servers (ssh dubu@<host>, repo ~/git/phone-numbers-by-carrier):
+  master, poseidon    - always up
+  zeus                - often unreachable, check first: ssh dubu@zeus 'echo ok'
+
+Toolchain on every box goes through mise, not bare uv/fetch:
+  ~/.local/bin/mise exec -- uv run fetch ...
+
+Sites (--sites flag, pick one):
+  osiptel      DNI or RUC -> phone line counts. accepts any doc. use for raw DNI/RUC files.
+  sunat        RUC-10 (persona natural) -> tipo_doc, num_doc, nombre.
+  sunat_reps   RUC-20 (empresa) -> legal reps (razon_social, doc_type, num_doc, nombre, cargo, fecha_desde).
+
+Env file: --env-file .env.geonode-only (proven, use by default for both osiptel and sunat).
+  GEONODE_COUNTRY=PE is mandatory for osiptel (foreign exits get WAF-blocked, status=500).
+
+1. VALIDATE INPUT
+   wc -l file.csv
+   grep -cvE '^[0-9]+$' file.csv      # non-digit rows, should be 0
+   sort file.csv | uniq -d | wc -l    # dupes, should be 0
+   Check digit length matches doc type (8 = DNI, 11 starting "10"/"20" = RUC).
+
+2. SPLIT for 2 servers (roughly even halves)
+   split -d -l <half_count> file.csv part_
+   mv part_00 <job>_a.csv
+   mv part_01 <job>_b.csv
+   comm -12 <(sort <job>_a.csv) <(sort <job>_b.csv) | wc -l   # confirm 0 overlap
+
+3. PUSH shards
+   scp <job>_a.csv dubu@master:~/git/phone-numbers-by-carrier/
+   scp <job>_b.csv dubu@poseidon:~/git/phone-numbers-by-carrier/
+
+4. LAUNCH (detached, survives ssh drop — setsid + < /dev/null is what detaches it)
+   ssh dubu@master 'cd ~/git/phone-numbers-by-carrier && setsid ~/.local/bin/mise exec -- uv run fetch --input <job>_a.csv --output <job>_a_out.csv --sites <site> --env-file .env.geonode-only > <job>_a_out.log 2>&1 < /dev/null & disown'
+   ssh dubu@poseidon '... same with _b ...'
+   ssh returns exit 255 or hangs ~120s on the backgrounding command itself — harmless, ignore it.
+
+5. CHECK ALIVE
+   ssh dubu@<host> 'pgrep -af "bin/fetch --input <job>_a" | grep -v pgrep'
+   Match on "bin/fetch", not "fetch --input <tag>" — the latter also matches your own ssh/pgrep command line and gives a false ALIVE.
+
+6. CHECK PROGRESS (DB is truth, not the CSV or the log tail)
+   ssh dubu@<host> 'cd ~/git/phone-numbers-by-carrier && ~/.local/bin/mise exec -- uv run python -c "
+   import sqlite3
+   from pathlib import Path
+   from fetch.store.outcomes import state_path_for_output
+   c = sqlite3.connect(str(state_path_for_output(Path(\"<job>_a_out.csv\"))))
+   print(c.execute(\"select status, count(*) from outcomes group by status\").fetchall())"'
+   status is ok / failed / not_found. A "failed" row is only permanent once attempt_count >= 12 (MAX_TOTAL_ATTEMPTS) — otherwise it's still retryable.
+
+   If there are failures, read them before retrying blind:
+   ... same python snippet, query: select doc, error_code, attempt_count, error_detail from outcomes where status="failed"
+   Transient (ProxyError 568/569, ConnectTimeout, ReadTimeout, upstream_not_ready) -> just relaunch, it'll retry them.
+   Deterministic (same error_code on the same doc every attempt, provider_schema_error) -> stop, investigate the site code, don't just retry.
+
+7. RELAUNCH (only needed if retryable failures remain; resumes from the DB automatically)
+   Same command as step 4, but append to the log instead of truncating:
+   ... > <job>_a_out.log ...   becomes   ... >> <job>_a_out.log ...
+   Do the relaunch in its own ssh call, never chained after a kill in the same command (chaining kills the relaunch with the session).
+
+8. STOP (if you need to kill a stuck/thrashing run)
+   ssh dubu@<host> 'pkill -TERM -f "fetch --input <job>_a"'
+   Safe: every result is committed per-doc, nothing is lost. Verify the kill with a fresh pgrep call, don't trust the ssh exit code (also unreliable, often 255).
+
+9. PULL outputs (once both shards show 0 retryable)
+   Per site, 4 files: <out>.<site>.csv, .counts.csv (osiptel only), .errors.csv, .not_found.csv
+   scp dubu@master:~/git/phone-numbers-by-carrier/<job>_a_out.<site>.csv   ./scratch/
+   scp dubu@master:~/git/phone-numbers-by-carrier/<job>_a_out.<site>.errors.csv ./scratch/
+   scp dubu@master:~/git/phone-numbers-by-carrier/<job>_a_out.<site>.not_found.csv ./scratch/
+   (+ .counts.csv for osiptel)
+   ... same 3-4 files from poseidon for _b ...
+
+10. VERIFY before merging
+    diff <(head -1 <job>_a_out.<site>.csv) <(head -1 <job>_b_out.<site>.csv)     # headers must match
+    comm -12 <(tail -n+2 a.csv|cut -d, -f1|sort -u) <(tail -n+2 b.csv|cut -d, -f1|sort -u) | wc -l   # doc overlap, must be 0
+
+11. MERGE (header once, both bodies)
+    { head -1 a.csv; tail -n+2 a.csv; tail -n+2 b.csv; } > <job>_out.<site>.csv
+    Do this per file type separately (csv, counts, errors, not_found).
+
+    Sanity check: unique docs in the merged file + terminal_failed count should equal total input rows.
+    Note: for osiptel, unique docs in the main csv can be LESS than total succeeded — a doc with 0 phone
+    lines is still a valid success but contributes 0 rows (allows_empty=True). Not a bug.
+
+12. FILE IT
+    mkdir -p results/<job>
+    mv <job>.csv results/<job>/                      # original input
+    cp <job>_out.<site>.csv results/<job>/            # + .counts/.errors/.not_found
+    Repo root should have zero loose *.csv when done.
+
+GOTCHAS
+- Servers share ONE GeoNode account and ONE DataImpulse account. A 407 on every lane = account
+  out of credits/suspended, not a per-server problem — test from one box to confirm it's account-wide.
+- After switching branches, always run on each server before launching:
+  ~/.local/bin/mise install && ~/.local/bin/mise exec -- uv sync --all-packages --all-groups
+- When pushing secret .env values, pipe over stdin, never put them in argv/ps:
+  printf '%s\n%s\n' "$USER" "$PASS" | ssh dubu@<host> '...'

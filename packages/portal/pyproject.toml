@@ -22,6 +22,8 @@ dependencies = [
 [project.scripts]
 osiptel-portal = "portal.web.app:main"
 osiptel-portal-worker = "portal.worker.service:main"
+portal-bootstrap = "portal.bootstrap:main"
+portal-migrate = "portal.migrate:main"
 portal-provision = "portal.provision:main"
 
 [tool.uv.sources]
@@ -31,4 +33,4 @@ fetch = { workspace = true }
 include = ["portal*"]
 
 [tool.setuptools.package-data]
-portal = ["migrations/*.sql", "web/static/*.css", "web/templates/*.html", "web/templates/fragments/*.html"]
+portal = ["migrations/*.sql", "web/static/*.css", "web/static/*.woff2", "web/templates/*.html", "web/templates/fragments/*.html"]

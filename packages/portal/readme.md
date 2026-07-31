@@ -10,8 +10,21 @@ a visual reference only; it is not a dependency or ownership model.
 ## Desarrollo local
 
 Install the workspace dependencies with `mise run install`. Copy `.env.example` and
-set `PORTAL_DATABASE_DSN` to a PostgreSQL database. Generate a local secret-protection
-key once, without committing it:
+set `PORTAL_DATABASE_DSN` to a PostgreSQL database. `mise run portal:dev` starts the
+repo-local PostgreSQL cluster in `var/postgres` when nothing is already listening on
+`127.0.0.1:5432`, applies pending schema migrations, idempotently provisions the
+local administrator and first team, then starts the portal. Set these local bootstrap
+variables in the root `.env` before using that command:
+
+```bash
+PORTAL_BOOTSTRAP_ADMIN_EMAIL=admin@example.org
+PORTAL_BOOTSTRAP_ADMIN_PASSWORD=choose-a-local-password
+PORTAL_BOOTSTRAP_TEAM_NAME="Equipo Lima"
+PORTAL_BOOTSTRAP_TEAM_SLUG=equipo-lima
+```
+
+The web process itself never creates schema, users, teams, or credentials. Generate a
+local secret-protection key once, without committing it:
 
 ```bash
 uv run python -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
@@ -26,6 +39,15 @@ uv run --env-file packages/portal/.env python -m portal.provision \
   --admin-password-env PORTAL_PROVISION_ADMIN_PASSWORD \
   --team-name "Equipo Lima" \
   --team-slug equipo-lima
+```
+
+For a production-like explicit setup, use the provisioning command above. To apply
+only pending schema migrations, run `mise run portal:migrate`; to run the idempotent
+local setup without starting the server, run `mise run portal:bootstrap`. Start the
+local portal with:
+
+```bash
+mise run portal:dev
 ```
 
 Add `--proxy-provider geonode` or `--proxy-provider dataimpulse` to configure a

@@ -7,11 +7,11 @@
     <link rel="stylesheet" href="/estatico/portal.css">
     <script defer src="https://unpkg.com/htmx.org@2.0.4"></script>
   </head>
-  <body>
+  <body{% if not user %} class="sesion-publica"{% endif %}>
     <a class="skip-link" href="#contenido">Saltar al contenido</a>
+    {% if user %}
     <header class="barra-superior">
       <a class="marca" href="/">Worker</a>
-      {% if user %}
       {% if setup %}
       <nav aria-label="Navegación principal">
         <form action="/logout" method="post" class="salida">
@@ -30,8 +30,8 @@
         </form>
       </nav>
       {% endif %}
-      {% endif %}
     </header>
+    {% endif %}
     <main id="contenido" class="contenido">
       {% block content %}{% endblock %}
     </main>

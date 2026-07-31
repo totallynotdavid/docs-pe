@@ -31,6 +31,7 @@ mise run format       # ruff format + ruff check --fix
 mise run check        # mypy, one pass per package
 mise run test         # pytest across all packages
 mise run build        # build the fetch standalone binary
+mise run portal:dev   # start PostgreSQL, migrate/bootstrap the portal, then run it
 ```
 
 Proxy credentials for `fetch` load from a gitignored `.env`; copy `.env.example` to

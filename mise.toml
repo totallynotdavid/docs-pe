@@ -1,6 +1,7 @@
 [tools]
 uv = "0.11.29"
 python = "3.14.6"
+postgres = "18.4"
 
 [tasks.install]
 run = "uv sync --all-packages --all-groups"
@@ -13,6 +14,40 @@ run = "uv pip list --outdated"
 
 [tasks.format]
 run = ["uv run ruff format", "uv run ruff check --fix"]
+
+[tasks."portal:db:start"]
+description = "Start the local PostgreSQL cluster used by the portal"
+run = """
+data_dir="$PWD/var/postgres"
+
+if mise x postgres -- pg_isready -h 127.0.0.1 -p 5432 -U postgres -q; then
+  exit 0
+fi
+
+if [ ! -f "$data_dir/PG_VERSION" ]; then
+  mkdir -p "$data_dir"
+  mise x postgres -- initdb -D "$data_dir" -U postgres \\
+    --auth-host=trust --auth-local=trust --no-instructions
+fi
+
+mise x postgres -- pg_ctl -D "$data_dir" -l "$data_dir/server.log" \\
+  -o "-h 127.0.0.1 -p 5432" start
+"""
+
+[tasks."portal:migrate"]
+description = "Apply pending portal schema migrations"
+depends = ["portal:db:start"]
+run = "uv run --env-file .env portal-migrate"
+
+[tasks."portal:bootstrap"]
+description = "Idempotently provision the local portal administrator and first team"
+depends = ["portal:migrate"]
+run = "uv run --env-file .env portal-bootstrap"
+
+[tasks."portal:dev"]
+description = "Start PostgreSQL, migrate, bootstrap, then run the portal"
+depends = ["portal:bootstrap"]
+run = "uv run --env-file .env osiptel-portal"
 
 # One mypy process per package: each workspace member has its own tests/ package,
 # so a single `mypy .` sees two modules named "tests" and refuses to run.
