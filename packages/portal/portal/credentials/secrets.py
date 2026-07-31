@@ -75,3 +75,19 @@ class DevelopmentAesGcmSecretProtector:
             ciphertext=nonce + self._cipher.encrypt(nonce, payload, None),
             key_id=self.key_id,
         )
+
+    def reveal(self, ciphertext: bytes) -> dict[str, str]:
+        """Decrypt a credential for the trusted worker control plane only."""
+        try:
+            payload = self._cipher.decrypt(ciphertext[:12], ciphertext[12:], None)
+            values = json.loads(payload)
+        except (ValueError, json.JSONDecodeError) as error:
+            msg = "la credencial protegida no se puede leer"
+            raise CredentialConfigurationError(msg) from error
+        if not isinstance(values, dict) or not all(
+            isinstance(key, str) and isinstance(value, str)
+            for key, value in values.items()
+        ):
+            msg = "la credencial protegida no tiene un formato válido"
+            raise CredentialConfigurationError(msg)
+        return values

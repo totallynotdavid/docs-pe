@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import csv
+import hashlib
 import io
 import os
+import secrets
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -11,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 from urllib.parse import urlparse
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -38,7 +41,9 @@ from portal.domain.models import (
 )
 from portal.repository.memory import InMemoryPortalRepository
 from portal.repository.postgres import PostgresPortalRepository
+from portal.storage.files import FileObjectStorage
 from portal.storage.memory import InMemoryObjectStorage, UnconfiguredObjectStorage
+from portal.storage.port import ObjectReference
 from portal.web.render import template_environment
 from portal.web.security import same_origin
 
@@ -192,14 +197,19 @@ def create_app(
         if active_repository is None:
             active_repository = InMemoryPortalRepository()
         app.state.service = PortalService(active_repository)
+        app.state.repository = active_repository
+        app.state.pool = pool
         protector = secret_protector
         if protector is None:
             protector = DevelopmentAesGcmSecretProtector.from_environment()
         app.state.provisioning = ProvisioningService(
             active_repository, protector or UnavailableSecretProtector()
         )
+        app.state.secret_protector = protector
         app.state.storage = initial_storage or (
-            UnconfiguredObjectStorage()
+            FileObjectStorage(Path("var/objects"))
+            if settings.environment == "production" and pool is not None
+            else UnconfiguredObjectStorage()
             if settings.environment == "production"
             else InMemoryObjectStorage()
         )
@@ -965,6 +975,89 @@ def create_app(
                 error=str(error),
             )
         return RedirectResponse(f"/equipos/{team.id}/ajustes", status_code=303)
+
+    def worker_identity(request: Request) -> str:
+        expected = os.environ.get("PORTAL_WORKER_BOOTSTRAP_TOKEN", "")
+        token = request.headers.get("authorization", "").removeprefix("Bearer ")
+        worker_id = request.headers.get("x-portal-worker", "").strip()
+        if not expected or not worker_id or not secrets.compare_digest(token, expected):
+            raise HTTPException(status_code=401, detail="trabajador no autorizado")
+        if not worker_id.replace("-", "").replace("_", "").isalnum():
+            raise HTTPException(status_code=400, detail="identificador de trabajador inválido")
+        return worker_id
+
+    @app.post("/api/worker/claim")
+    async def worker_claim(request: Request) -> dict[str, object] | None:
+        worker_id = worker_identity(request)
+        body = await request.json()
+        sources = tuple(str(value) for value in body.get("sources", []))
+        repository = request.app.state.repository
+        work = await repository.claim(worker_id, sources)
+        if work is None:
+            return None
+        pool = request.app.state.pool
+        protector = request.app.state.secret_protector
+        if pool is None or not isinstance(protector, DevelopmentAesGcmSecretProtector):
+            raise HTTPException(status_code=503, detail="worker no está configurado")
+        async with pool.acquire() as connection:
+            credential = await connection.fetchrow(
+                """
+                SELECT version.provider, version.config_ciphertext
+                  FROM portal_jobs AS job
+                  JOIN portal_team_proxy_credential_versions AS version
+                    ON version.id = job.credential_version_id
+                 WHERE job.id = $1
+                """,
+                work.job_id,
+            )
+        if credential is None:
+            raise HTTPException(status_code=409, detail="credencial no disponible")
+        return {
+            "item_id": str(work.item_id),
+            "job_id": str(work.job_id),
+            "source": work.source,
+            "document": work.document,
+            "fence": work.lease_fence,
+            "credential": {
+                "provider": credential["provider"],
+                "config": protector.reveal(bytes(credential["config_ciphertext"])),
+            },
+        }
+
+    @app.post("/api/worker/publish")
+    async def worker_publish(request: Request) -> dict[str, bool]:
+        worker_id = worker_identity(request)
+        body = await request.json()
+        try:
+            item_id = UUID(str(body["item_id"]))
+            fence = int(body["fence"])
+            content = base64.b64decode(str(body["content"]), validate=True)
+        except (KeyError, TypeError, ValueError) as error:
+            raise HTTPException(status_code=400, detail="resultado de trabajador inválido") from error
+        pool = request.app.state.pool
+        if pool is None:
+            raise HTTPException(status_code=503, detail="worker no está configurado")
+        async with pool.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                SELECT item.team_id FROM portal_job_items AS item WHERE item.id = $1
+                """,
+                item_id,
+            )
+        if row is None:
+            raise HTTPException(status_code=404, detail="trabajo no encontrado")
+        reference = ObjectReference(
+            id=uuid4(), team_id=row["team_id"], provider="portal-worker",
+            container="results", object_key=f"{item_id}/{uuid4()}",
+            sha256=hashlib.sha256(content).hexdigest(), size_bytes=len(content),
+            content_type="application/json",
+        )
+        await request.app.state.storage.put_immutable(reference, content)
+        await request.app.state.repository.add_object_reference(reference)
+        published = await request.app.state.repository.publish(
+            item_id, worker_id, fence, reference.id
+        )
+        return {"published": published}
 
     return app
 
