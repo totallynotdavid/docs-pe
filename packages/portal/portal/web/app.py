@@ -50,29 +50,29 @@ if TYPE_CHECKING:
 
 MAX_CSV_UPLOAD_BYTES = 10 * 1024 * 1024
 
-# Product descriptions for the stable fetch adapters. Eligibility is still enforced
-# by the submission planner; this helps people choose the right output upfront.
+# Product copy for the stable fetch adapters. Eligibility remains enforced by the
+# submission planner; the UI makes the outcome of each choice explicit upfront.
 SOURCE_OPTIONS = (
     {
-        "id": "sunat", "name": "SUNAT · Identidad",
-        "description": "Obtiene el DNI y nombre asociados a un RUC de persona natural.",
-        "eligibility": "Solo RUC que empiezan en 10",
+        "id": "sunat", "name": "DNI y nombre",
+        "output": "DNI y nombre de la persona.",
+        "eligibility": "Para RUC que empiezan en 10",
         "sample_headers": ("RUC", "DNI", "Nombre"),
         "sample_row": ("10412345678", "12345678", "María Pérez Gómez"),
         "default": True,
     },
     {
-        "id": "osiptel", "name": "OSIPTEL · Líneas móviles",
-        "description": "Obtiene las líneas registradas, con número parcialmente oculto y operador.",
-        "eligibility": "DNI y RUC",
+        "id": "osiptel", "name": "Líneas móviles",
+        "output": "Modalidad, número oculto y operador de cada línea.",
+        "eligibility": "Para DNI y RUC",
         "sample_headers": ("Documento", "Modalidad", "Número", "Operador"),
         "sample_row": ("10412345678", "Postpago", "98765••••", "CLARO"),
         "default": False,
     },
     {
-        "id": "sunat_reps", "name": "SUNAT · Representantes",
-        "description": "Obtiene los representantes legales registrados para una empresa.",
-        "eligibility": "Solo RUC que empiezan en 20",
+        "id": "sunat_reps", "name": "Representantes legales",
+        "output": "DNI, nombre y cargo de los representantes.",
+        "eligibility": "Para RUC que empiezan en 20",
         "sample_headers": ("Razón social", "DNI", "Nombre", "Cargo"),
         "sample_row": ("Empresa S.A.C.", "12345678", "María Pérez Gómez", "Gerente"),
         "default": False,
