@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Personas · {{ team.name }} · Worker{% endblock %}
-{% block context %}<strong>{{ team.name }}</strong> · Personas{% endblock %}
+{% block titlebar %}Personas del equipo{% endblock %}
 {% block content %}
-<header class="encabezado-pagina"><div><p class="ceja">Configuración del equipo</p><h1>Personas</h1><p class="subtitulo">Decide quién puede consultar documentos y gestionar la configuración.</p></div></header>
+<h1 class="solo-lector">Personas de {{ team.name }}</h1>
 <section class="panel"><div class="panel-cabecera"><div><h2>Añadir persona</h2><p>Las personas deben tener una cuenta creada en la plataforma.</p></div></div><div class="panel-cuerpo">{% if error %}<p class="mensaje mensaje--error" role="alert">{{ error }}</p>{% endif %}<form action="/equipos/{{ team.id }}/ajustes/miembros" method="post" class="formulario"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Persona<select name="email" required><option value="" selected disabled>Selecciona una persona</option>{% for candidate in candidates %}<option value="{{ candidate.email }}">{{ candidate.email }}</option>{% endfor %}</select></label><label>Nivel de acceso<select name="role"><option value="team_member">Puede consultar</option><option value="team_leader">Puede administrar</option></select></label><button type="submit">Guardar acceso</button></form></div></section>
 <section class="panel"><div class="panel-cabecera"><div><h2>Equipo actual</h2><p>Las personas administradoras pueden actualizar la configuración.</p></div></div><ul class="lista-enlaces">{% for member, role in members %}<li><span>{{ member.email }}</span><div class="acciones"><span class="meta">{{ role|rol }}</span>{% if member.id != user.id %}<form action="/equipos/{{ team.id }}/ajustes/miembros/quitar" method="post" class="salida"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="email" value="{{ member.email }}"><button type="submit">Quitar</button></form>{% endif %}</div></li>{% endfor %}</ul></section>
 {% endblock %}

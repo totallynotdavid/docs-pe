@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Equipos · Worker{% endblock %}
+{% block titlebar %}Equipos{% endblock %}
 {% block content %}
-<header class="encabezado-pagina"><div><p class="ceja">Espacio de trabajo</p><h1>Equipos</h1><p class="subtitulo">Selecciona un equipo para consultar documentos, seguir tareas y administrar accesos.</p></div></header>
+<h1 class="solo-lector">Equipos</h1>
 <section class="panel" aria-labelledby="titulo-equipos"><div class="panel-cabecera"><div><h2 id="titulo-equipos">Tus equipos</h2><p>Espacios a los que tienes acceso.</p></div></div>{% if teams %}<ul class="lista-enlaces">{% for team in teams %}<li><a href="/equipos/{{ team.id }}">{{ team.name }}</a><span class="meta">{{ team.role|rol }}</span></li>{% endfor %}</ul>{% else %}<p class="estado-vacio">Aún no perteneces a un equipo.</p>{% endif %}</section>
 {% endblock %}

@@ -28,7 +28,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .nav-etiqueta { color: var(--foreground-tertiary); font-size: 10px; font-weight: var(--font-weight-semibold); letter-spacing: .08em; margin: 0 8px 7px; text-transform: uppercase; }
 .nav-enlace { align-items: center; border-radius: var(--radius-sm); color: var(--foreground-secondary); display: flex; font-weight: var(--font-weight-medium); gap: 9px; min-height: 31px; padding: 0 8px; text-decoration: none; }
 .nav-enlace:hover { background: var(--background-transparent-light); color: var(--foreground); }
-.nav-enlace::before { background: var(--foreground-light); border-radius: 50%; content: ""; height: 5px; width: 5px; }
+.icono { display: block; flex: 0 0 auto; }
 .nav-enlace--admin { margin-top: 14px; }
 .cuenta { border-top: 1px solid var(--border); margin-top: auto; padding: 12px 6px 0; }
 .cuenta details summary { align-items: center; color: var(--foreground-secondary); cursor: pointer; display: flex; font-size: var(--font-size-caption); font-weight: var(--font-weight-medium); gap: 8px; list-style: none; }
@@ -36,23 +36,19 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .avatar { align-items: center; background: var(--color-blue-5); border-radius: 50%; color: var(--color-blue-11); display: inline-flex; font-size: 10px; font-weight: 700; height: 24px; justify-content: center; text-transform: uppercase; width: 24px; }
 .cuenta-menu { display: grid; gap: 3px; padding: 8px 0 0 32px; }
 .cuenta-email { color: var(--foreground-tertiary); font-size: 11px; overflow-wrap: anywhere; }
-.salida button { background: transparent; border: 0; color: var(--foreground-secondary); font-size: var(--font-size-caption); padding: 2px 0; text-align: left; }
+.salida button { align-items: center; background: transparent; border: 0; color: var(--foreground-secondary); display: inline-flex; font-size: var(--font-size-caption); gap: 6px; padding: 2px 0; text-align: left; }
 .salida button:hover { color: var(--foreground); text-decoration: underline; }
 
 .workspace { min-width: 0; }
-.barra-superior { align-items: center; background: color-mix(in oklab, var(--background) 92%, transparent); border-bottom: 1px solid var(--border); display: flex; height: 48px; justify-content: space-between; padding: 0 28px; }
-.contexto { color: var(--foreground-secondary); font-size: var(--font-size-caption); }
-.contexto strong { color: var(--foreground); font-weight: var(--font-weight-medium); }
-.estado-sesion { align-items: center; color: var(--foreground-tertiary); display: inline-flex; font-size: 11px; gap: 6px; }
-.estado-sesion::before { background: var(--success); border-radius: 50%; content: ""; height: 6px; width: 6px; }
+.barra-superior { align-items: center; background: var(--secondary); border-bottom: 1px solid var(--border); display: flex; height: 48px; justify-content: space-between; padding: 0 16px; }
+.titulo-barra { color: var(--foreground); font-size: var(--font-size-body); font-weight: var(--font-weight-semibold); }
+.acciones-barra { align-items: center; display: flex; gap: 8px; }
 .contenido { margin: 0 auto; max-width: 1120px; padding: 40px 48px 72px; width: 100%; }
 
-.encabezado-pagina { align-items: flex-end; display: flex; gap: 24px; justify-content: space-between; margin-bottom: 27px; }
-.encabezado-pagina h1 { font-size: 24px; font-weight: var(--font-weight-semibold); letter-spacing: -.035em; line-height: 1.12; margin: 0; }
 .subtitulo { color: var(--foreground-secondary); margin: 6px 0 0; max-width: 640px; }
-.ceja { color: var(--foreground-tertiary); font-size: 10px; font-weight: var(--font-weight-semibold); letter-spacing: .09em; margin: 0 0 7px; text-transform: uppercase; }
 h2 { font-size: var(--font-size-heading-sm); font-weight: var(--font-weight-semibold); letter-spacing: -.015em; margin: 0; }
 p { margin: 0; }
+.solo-lector { clip: rect(0 0 0 0); clip-path: inset(50%); height: 1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
 
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: 0 1px 2px color(display-p3 0 0 0 / .025); overflow: hidden; }
 .panel-cabecera { align-items: center; border-bottom: 1px solid var(--border); display: flex; gap: 16px; justify-content: space-between; padding: 15px 17px; }
@@ -92,4 +88,4 @@ button:active, .boton:active { transform: scale(.98); }
 
 body.sesion-publica { align-items: center; background: var(--secondary); display: flex; justify-content: center; padding: 16px; } body.sesion-publica .contenido { max-width: 400px; padding: 0; }.sesion-publica .panel--estrecho { background: transparent; border: 0; box-shadow: none; text-align: center; }.marca-auth { align-items: center; background: var(--foreground); border-radius: 6px; color: var(--primary-foreground); display: inline-flex; font-size: var(--font-size-heading-sm); font-weight: var(--font-weight-semibold); height: 48px; justify-content: center; margin: 16px auto; width: 48px; }.panel--estrecho h1 { font-size: 24px; margin: 16px 0 7px; }.descripcion-auth { color: var(--foreground-secondary); font-size: var(--font-size-caption); margin-bottom: 24px; }.panel--estrecho .formulario { text-align: left; }.panel--estrecho .formulario button { margin-top: 4px; }
 
-@media (max-width: 720px) { .app-shell { display: block; }.sidebar { border-bottom: 1px solid var(--border); border-right: 0; display: block; padding: 10px 14px; }.marca { margin: 0; }.navegacion, .cuenta { display: none; }.barra-superior { height: 42px; padding: 0 16px; }.contenido { padding: 26px 16px 48px; }.encabezado-pagina { align-items: flex-start; flex-direction: column; gap: 15px; margin-bottom: 20px; }.encabezado-pagina .acciones { width: 100%; }.encabezado-pagina .boton { flex: 1; }.lista-enlaces li { align-items: flex-start; flex-wrap: wrap; }.metricas { grid-template-columns: 1fr; }.busqueda { grid-template-columns: 1fr; }.busqueda button { width: 100%; } }
+@media (max-width: 720px) { .app-shell { display: block; }.sidebar { border-bottom: 1px solid var(--border); border-right: 0; display: block; padding: 10px 14px; }.marca { margin: 0; }.navegacion, .cuenta { display: none; }.barra-superior { height: 42px; padding: 0 16px; }.contenido { padding: 26px 16px 48px; }.acciones-barra .boton { min-width: 0; }.lista-enlaces li { align-items: flex-start; flex-wrap: wrap; }.metricas { grid-template-columns: 1fr; }.busqueda { grid-template-columns: 1fr; }.busqueda button { width: 100%; } }

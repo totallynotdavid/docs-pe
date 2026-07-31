@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Configuración · {{ team.name }} · Worker{% endblock %}
-{% block context %}<strong>{{ team.name }}</strong> · Configuración{% endblock %}
+{% block titlebar %}Configuración del equipo{% endblock %}
 {% block content %}
-<header class="encabezado-pagina"><div><p class="ceja">Equipo</p><h1>Configuración</h1><p class="subtitulo">Gestiona quién puede trabajar en el equipo y la conexión necesaria para ejecutar consultas.</p></div></header>
+<h1 class="solo-lector">Configuración del equipo</h1>
 <section class="panel"><ul class="lista-enlaces"><li><div><a href="/equipos/{{ team.id }}/ajustes/proxy">Conexión proxy</a><p class="meta">{% if readiness.has_active_credential %}Configurada y lista para usar.{% else %}Aún falta configurar una conexión.{% endif %}</p></div><a class="boton boton--secundario" href="/equipos/{{ team.id }}/ajustes/proxy">Gestionar</a></li><li><div><a href="/equipos/{{ team.id }}/ajustes/miembros">Personas del equipo</a><p class="meta">Añade o actualiza los permisos de acceso.</p></div><a class="boton boton--secundario" href="/equipos/{{ team.id }}/ajustes/miembros">Gestionar</a></li></ul></section>
 {% endblock %}

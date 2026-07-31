@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ team.name }} · Worker{% endblock %}
-{% block context %}<strong>{{ team.name }}</strong> · Equipo{% endblock %}
+{% block titlebar %}{{ team.name }}{% endblock %}
+{% block header_actions %}<a class="boton boton--secundario" href="/equipos/{{ team.id }}/buscar">Buscar</a>{% if team.role.value == 'team_leader' %}<a class="boton" href="/equipos/{{ team.id }}/procesos/nuevo">Nueva consulta</a>{% endif %}{% endblock %}
 {% block content %}
-<header class="encabezado-pagina"><div><p class="ceja">{{ team.role|rol }}</p><h1>{{ team.name }}</h1><p class="subtitulo">Consultas y tareas de este equipo.</p></div><div class="acciones"><a class="boton boton--secundario" href="/equipos/{{ team.id }}/buscar">Buscar</a>{% if team.role.value == 'team_leader' %}<a class="boton" href="/equipos/{{ team.id }}/procesos/nuevo">Nueva consulta</a>{% endif %}</div></header>
+<h1 class="solo-lector">{{ team.name }}</h1>
 {% if team.role.value == 'team_leader' %}<section class="panel" aria-labelledby="titulo-tareas"><div class="panel-cabecera"><div><h2 id="titulo-tareas">Tareas recientes</h2><p>El estado se actualiza mientras se procesan.</p></div><a class="boton boton--secundario" href="/equipos/{{ team.id }}/ajustes">Configuración</a></div><div id="lista-procesos" hx-get="/equipos/{{ team.id }}/procesos/fragmento?page=1" hx-trigger="load" hx-swap="innerHTML">{% include "fragments/jobs.html" %}</div></section>{% else %}<section class="panel"><p class="estado-vacio">Puedes buscar documentos en este equipo.</p></section>{% endif %}
 {% endblock %}

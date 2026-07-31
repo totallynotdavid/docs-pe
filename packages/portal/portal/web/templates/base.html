@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="es">
+{% from "icons.html" import icon %}
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,9 +17,9 @@
         {% if not setup %}
         <nav class="navegacion" aria-label="Navegación principal">
           <p class="nav-etiqueta">Espacio de trabajo</p>
-          <a class="nav-enlace" href="/">Equipos</a>
-          <a class="nav-enlace" href="/notificaciones">Actividad</a>
-          {% if user.is_site_admin %}<a class="nav-enlace nav-enlace--admin" href="/administracion/equipos">Administración</a>{% endif %}
+          <a class="nav-enlace" href="/">{{ icon('equipos') }} Equipos</a>
+          <a class="nav-enlace" href="/notificaciones">{{ icon('actividad') }} Actividad</a>
+          {% if user.is_site_admin %}<a class="nav-enlace nav-enlace--admin" href="/administracion/equipos">{{ icon('administracion') }} Administración</a>{% endif %}
         </nav>
         {% endif %}
         <div class="cuenta">
@@ -26,13 +27,13 @@
             <summary><span class="avatar">{{ user.email[0] }}</span> Mi cuenta</summary>
             <div class="cuenta-menu">
               <span class="cuenta-email">{{ user.email }}</span>
-              <form action="/logout" method="post" class="salida"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Cerrar sesión</button></form>
+              <form action="/logout" method="post" class="salida"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">{{ icon('salir', 14) }} Cerrar sesión</button></form>
             </div>
           </details>
         </div>
       </aside>
       <div class="workspace">
-        <header class="barra-superior"><span class="contexto">{% block context %}<strong>Worker</strong> · Espacio de trabajo{% endblock %}</span><span class="estado-sesion">Todo listo</span></header>
+        <header class="barra-superior"><span class="titulo-barra">{% block titlebar %}Worker{% endblock %}</span><div class="acciones-barra">{% block header_actions %}{% endblock %}</div></header>
     {% endif %}
     <main id="contenido" class="contenido">{% block content %}{% endblock %}</main>
     {% if user %}</div></div>{% endif %}
