@@ -147,6 +147,20 @@ def test_login_csrf_cookie_rotation_and_generic_failure() -> None:
         assert client.get("/", follow_redirects=False).status_code == 303
 
 
+def test_new_job_explains_each_source_with_a_result_sample() -> None:
+    repository, _, _, _, team_id, _ = _experience()
+    with _client(repository) as client:
+        assert _login(client, "lider@osiptel.test").status_code == 303
+        page = client.get(f"/equipos/{team_id}/procesos/nuevo")
+
+    assert page.status_code == 200
+    assert "SUNAT · Identidad" in page.text
+    assert "Solo RUC que empiezan en 10" in page.text
+    assert "Ejemplo de resultado" in page.text
+    assert "DNI" in page.text and "Nombre" in page.text
+    assert 'value="sunat" checked' in page.text
+
+
 async def test_roles_cross_team_isolation_submission_and_terminal_rendering() -> None:
     repository, _, leader_id, member_id, team_id, credential_id = _experience()
     with _client(repository) as member_client:

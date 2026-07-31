@@ -50,6 +50,35 @@ if TYPE_CHECKING:
 
 MAX_CSV_UPLOAD_BYTES = 10 * 1024 * 1024
 
+# Product descriptions for the stable fetch adapters. Eligibility is still enforced
+# by the submission planner; this helps people choose the right output upfront.
+SOURCE_OPTIONS = (
+    {
+        "id": "sunat", "name": "SUNAT · Identidad",
+        "description": "Obtiene el DNI y nombre asociados a un RUC de persona natural.",
+        "eligibility": "Solo RUC que empiezan en 10",
+        "sample_headers": ("RUC", "DNI", "Nombre"),
+        "sample_row": ("10412345678", "12345678", "María Pérez Gómez"),
+        "default": True,
+    },
+    {
+        "id": "osiptel", "name": "OSIPTEL · Líneas móviles",
+        "description": "Obtiene las líneas registradas, con número parcialmente oculto y operador.",
+        "eligibility": "DNI y RUC",
+        "sample_headers": ("Documento", "Modalidad", "Número", "Operador"),
+        "sample_row": ("10412345678", "Postpago", "98765••••", "CLARO"),
+        "default": False,
+    },
+    {
+        "id": "sunat_reps", "name": "SUNAT · Representantes",
+        "description": "Obtiene los representantes legales registrados para una empresa.",
+        "eligibility": "Solo RUC que empiezan en 20",
+        "sample_headers": ("Razón social", "DNI", "Nombre", "Cargo"),
+        "sample_row": ("Empresa S.A.C.", "12345678", "María Pérez Gómez", "Gerente"),
+        "default": False,
+    },
+)
+
 
 def csv_input_lines(content: bytes) -> tuple[InputLine, ...]:
     """Read one document per row from the first column of an UTF-8 CSV file."""
@@ -413,7 +442,7 @@ def create_app(
             csrf_token=session.csrf_token,
             team=team,
             credentials=credentials,
-            sources=("osiptel", "sunat", "sunat_reps"),
+            source_options=SOURCE_OPTIONS,
             error="",
         )
 
@@ -468,7 +497,7 @@ def create_app(
                 csrf_token=session.csrf_token,
                 team=team,
                 credentials=credentials,
-                sources=("osiptel", "sunat", "sunat_reps"),
+                source_options=SOURCE_OPTIONS,
                 error=str(error),
             )
         return RedirectResponse(
