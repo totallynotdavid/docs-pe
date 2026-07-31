@@ -62,11 +62,16 @@ class PortabilidadPage:
             subject=number, columns=columns, elapsed_ms=elapsed_ms, mint_ms=mint_ms
         )
 
-    def _solve_turnstile(self, *, attempts: int = 3, poll_s: int = 40) -> int:
+    def _solve_turnstile(self, *, attempts: int = 10, poll_s: int = 12) -> int:
         started = time.monotonic()
         for _ in range(attempts):
-            # The first click reliably misses (widget not yet interactive); the click
-            # is idempotent, so re-clicking until a token appears is safe.
+            # The first click reliably misses (the widget is not interactive the
+            # instant the form settles), and gui_click_captcha is idempotent. A
+            # landed click mints the token within a few seconds, so re-click after
+            # a short poll rather than waiting out a long one on a click that has
+            # already missed: burning the full window on the doomed first click was
+            # what pinned every solve near 48s. attempts * poll_s is the total
+            # ceiling before we treat it as a genuine miss.
             self._session.gui_click_captcha()
             for _ in range(poll_s):
                 if self._session.evaluate(TOKEN_JS):

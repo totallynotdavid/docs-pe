@@ -41,12 +41,14 @@ class SeleniumBaseBrowser:
         if shutil.which("Xvfb") is None:
             msg = "Xvfb is required for the browser collector but is not installed"
             raise BrowserError(msg)
-        browser_args = list(_SOFTWARE_WEBGL_ARGS) if self._software_webgl else None
-        # proxy is "user:pass@host:port"; SeleniumBase parses it and installs a
-        # proxy-auth extension. None routes Chrome direct.
-        self._driver = sb_cdp.Chrome(
-            self._url, browser_args=browser_args, proxy=self._proxy
-        )
+        args = list(_SOFTWARE_WEBGL_ARGS) if self._software_webgl else []
+        if self._proxy is not None:
+            # Deliberately set as a Chrome flag rather than SeleniumBase's proxy=
+            # argument: that argument only accepts credentials, and supplying
+            # them makes it enable CDP Fetch interception, which stalls heavy
+            # pages. The proxy here is an unauthenticated local relay anyway.
+            args.append(f"--proxy-server={self._proxy}")
+        self._driver = sb_cdp.Chrome(self._url, browser_args=args or None)
         return SeleniumBaseSession(self._driver)
 
     def __exit__(

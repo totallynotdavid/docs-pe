@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -9,6 +10,7 @@ from browser.backends.seleniumbase import SeleniumBaseBrowser
 from browser.diagnostics import DiagnosticLog
 from browser.errors import BrowserError, RejectedError
 from browser.ingest import new_run_id, read_subjects
+from browser.local_proxy import LocalProxy
 from browser.proxy import load_proxy_provider
 from browser.store import ObservationStore
 
@@ -128,16 +130,22 @@ class _Driver:
                 print(f"Restarting {self.site.name} session ({restarts}): {exc}")
 
     def _drive_session(self, subjects: list[Subject]) -> None:
-        # A fresh endpoint per session means each restart (a ban) rotates to a
-        # new exit IP; None routes direct.
-        proxy = (
-            self.provider.new_endpoint().as_chrome_proxy() if self.provider else None
-        )
-        with SeleniumBaseBrowser(
-            url=self.site.url,
-            software_webgl=self.config.software_webgl,
-            proxy=proxy,
-        ) as session:
+        with ExitStack() as stack:
+            proxy = None
+            if self.provider is not None:
+                # A fresh endpoint per session means each restart (a ban)
+                # rotates to a new exit IP. Chrome only ever sees the local
+                # relay, which carries the credentials upstream; None routes
+                # direct.
+                relay = LocalProxy(self.provider.new_endpoint())
+                proxy = stack.enter_context(relay)
+            session = stack.enter_context(
+                SeleniumBaseBrowser(
+                    url=self.site.url,
+                    software_webgl=self.config.software_webgl,
+                    proxy=proxy,
+                )
+            )
             page = self.site.open_page(
                 session,
                 control=self.config.control,

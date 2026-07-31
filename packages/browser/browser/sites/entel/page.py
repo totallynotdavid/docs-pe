@@ -187,9 +187,7 @@ class EntelPage:
             msg = f"could not install Entel Step2 block: {result!r}"
             raise BrowserError(msg)
         self._drive_form(self._control)
-        if self._session.evaluate("!!window.__entelTemplate") is not True:
-            msg = "Entel form did not produce a Step2 request template"
-            raise BrowserError(msg)
+        self._wait_for_template()
         self._capture_stage("template-captured")
         installed = self._session.evaluate(
             INSTALL_LOOKUP_JS % (json.dumps(ENDPOINT), json.dumps(ENDPOINT))
@@ -236,6 +234,17 @@ class EntelPage:
         except BrowserError:
             return False
         return True
+
+    def _wait_for_template(self, *, timeout_s: float = 45.0) -> None:
+        # Continuar kicks off intermediate OutSystems round trips before the
+        # Step2 request is issued, so how long the template takes depends on
+        # network latency (notably via a proxy exit). Poll instead of assuming.
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if self._session.evaluate("!!window.__entelTemplate") is True:
+                return
+            time.sleep(0.5)
+        _fail("Entel form did not produce a Step2 request template")
 
     def _wait_for_form(self, *, timeout_s: float = 45.0) -> None:
         deadline = time.monotonic() + timeout_s

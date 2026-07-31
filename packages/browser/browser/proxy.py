@@ -21,20 +21,16 @@ from dotenv import load_dotenv
 
 @dataclass(frozen=True)
 class ProxyEndpoint:
-    """One proxy exit as a Chrome-ready connection string.
+    """One upstream proxy exit and the credentials to reach it.
 
-    SeleniumBase CDP takes proxy="user:pass@host:port" (no scheme) and builds an
-    auth extension from it, so that is the shape we return. Never log the string:
-    it carries the account password.
+    Chrome never sees these: browser/local_proxy.py authenticates upstream on
+    its behalf. Never log the password.
     """
 
     host: str
     port: str
     username: str
     password: str
-
-    def as_chrome_proxy(self) -> str:
-        return f"{self.username}:{self.password}@{self.host}:{self.port}"
 
 
 class ProxyProvider(Protocol):

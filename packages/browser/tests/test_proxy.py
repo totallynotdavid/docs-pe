@@ -61,11 +61,12 @@ def _set_env(monkeypatch: pytest.MonkeyPatch, env: dict[str, str]) -> None:
         monkeypatch.setenv(name, value)
 
 
-def test_endpoint_renders_a_schemeless_chrome_proxy_string() -> None:
+def test_endpoint_carries_upstream_host_and_credentials() -> None:
     endpoint = ProxyEndpoint(
         host="proxy.geonode.io", port="10000", username="u-session-x", password="p"
     )
-    assert endpoint.as_chrome_proxy() == "u-session-x:p@proxy.geonode.io:10000"
+    assert (endpoint.host, endpoint.port) == ("proxy.geonode.io", "10000")
+    assert (endpoint.username, endpoint.password) == ("u-session-x", "p")
 
 
 def test_geonode_endpoint_encodes_country_and_lifetime(
