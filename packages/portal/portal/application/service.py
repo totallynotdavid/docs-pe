@@ -211,18 +211,20 @@ class PortalService:
             sorted(notifications, key=lambda event: event.sequence, reverse=True)
         )
 
-    async def submit_text(
+    async def submit_input(
         self,
         *,
         actor_id: UUID,
         team_id: UUID,
         credential_version_id: UUID,
         filename: str,
-        documents: str,
+        content: bytes,
+        content_type: str,
+        lines: tuple[InputLine, ...],
         sources: tuple[str, ...],
         storage: ObjectStorage,
     ) -> Job:
-        """Persist the submitted input through the immutable storage port, then admit it."""
+        """Persist an immutable submission and admit its already-parsed input lines."""
         await self.require_leader(actor_id, team_id)
         credential = await self._repository.credential(credential_version_id)
         if (
@@ -233,31 +235,25 @@ class PortalService:
         ):
             msg = "el equipo necesita una credencial proxy activa"
             raise PermissionDenied(msg)
-        content = documents.encode("utf-8")
         reference = ObjectReference(
             id=uuid4(),
             team_id=team_id,
             provider="portal-browser",
             container="submissions",
-            object_key=f"{team_id}/{uuid4()}.txt",
+            object_key=f"{team_id}/{uuid4()}",
             sha256=hashlib.sha256(content).hexdigest(),
             size_bytes=len(content),
-            content_type="text/plain; charset=utf-8",
+            content_type=content_type,
         )
         await storage.put_immutable(reference, content)
         await self._repository.add_object_reference(reference)
-        lines = tuple(
-            InputLine(ordinal, value.strip())
-            for ordinal, value in enumerate(documents.splitlines(), start=1)
-            if value.strip()
-        )
         return await self.submit(
             SubmitJob(
                 actor_id=actor_id,
                 team_id=team_id,
                 credential_version_id=credential_version_id,
                 input_object_id=reference.id,
-                filename=filename.strip() or "documentos.txt",
+                filename=filename,
                 sources=sources,
                 lines=lines,
             )

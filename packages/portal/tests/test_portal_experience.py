@@ -69,11 +69,26 @@ def _submit_job(client: TestClient, team_id: UUID, credential_id: UUID, document
         f"/equipos/{team_id}/procesos",
         data={
             "credential_version_id": str(credential_id),
-            "filename": "registros.txt",
-            "documents": documents,
             "sources": "osiptel",
             "csrf_token": _session_csrf(client),
         },
+        files={"input_file": ("registros.csv", documents.encode(), "text/csv")},
+        headers={"Origin": ORIGIN},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    return UUID(response.headers["location"].rsplit("/", 1)[1])
+
+
+def _submit_csv(client: TestClient, team_id: UUID, credential_id: UUID):
+    response = client.post(
+        f"/equipos/{team_id}/procesos",
+        data={
+            "credential_version_id": str(credential_id),
+            "sources": "osiptel",
+            "csrf_token": _session_csrf(client),
+        },
+        files={"input_file": ("barranca.csv", b"10412345678\n10412345679\n", "text/csv")},
         headers={"Origin": ORIGIN},
         follow_redirects=False,
     )
@@ -193,6 +208,21 @@ async def test_roles_cross_team_isolation_submission_and_terminal_rendering() ->
     assert leader_id != member_id
 
 
+async def test_csv_upload_uses_the_file_name_and_first_column() -> None:
+    repository, _, _, _, team_id, credential_id = _experience()
+    with _client(repository) as client:
+        assert _login(client, "lider@osiptel.test").status_code == 303
+        csv_job = _submit_csv(client, team_id, credential_id)
+
+    stored_job = await repository.job(csv_job, team_id)
+    assert stored_job is not None
+    assert stored_job.filename == "barranca.csv"
+    assert [item.document for item in stored_job.items] == [
+        "10412345678",
+        "10412345679",
+    ]
+
+
 async def test_htmx_search_notifications_partial_results_and_pagination() -> None:
     repository, _, _, _, team_id, credential_id = _experience()
     with _client(repository) as client:
@@ -208,7 +238,7 @@ async def test_htmx_search_notifications_partial_results_and_pagination() -> Non
             f"/equipos/{team_id}/buscar/fragmento?q=104", headers={"HX-Request": "true"}
         )
         assert search.status_code == 200
-        assert "10412345678" in search.text and "registros.txt" in search.text
+        assert "10412345678" in search.text and "registros.csv" in search.text
         partial = client.get(
             f"/equipos/{team_id}/buscar/fragmento?q=999", headers={"HX-Request": "true"}
         )

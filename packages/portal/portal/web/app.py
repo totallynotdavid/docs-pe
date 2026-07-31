@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import os
 
 from collections.abc import AsyncIterator
@@ -11,7 +13,7 @@ from typing import TYPE_CHECKING, Protocol
 from urllib.parse import urlparse
 from uuid import UUID
 
-from fastapi import FastAPI, Form, HTTPException, Request, Response
+from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
@@ -28,6 +30,7 @@ from portal.domain.errors import NotFound, PermissionDenied, PortalError
 from portal.domain.models import (
     BrowserSession,
     CredentialVersion,
+    InputLine,
     JobState,
     ProxyProvider,
     Team,
@@ -43,6 +46,29 @@ from portal.web.security import same_origin
 if TYPE_CHECKING:
     from portal.repository.protocols import PortalRepository
     from portal.storage.port import ObjectStorage
+
+
+MAX_CSV_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+def csv_input_lines(content: bytes) -> tuple[InputLine, ...]:
+    """Read one document per row from the first column of an UTF-8 CSV file."""
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError as error:
+        msg = "el CSV debe usar codificación UTF-8"
+        raise ValueError(msg) from error
+
+    try:
+        rows = csv.reader(io.StringIO(text, newline=""))
+        return tuple(
+            InputLine(ordinal, row[0].strip())
+            for ordinal, row in enumerate(rows, start=1)
+            if row and row[0].strip()
+        )
+    except csv.Error as error:
+        msg = "no se pudo leer el archivo CSV"
+        raise ValueError(msg) from error
 
 
 class ReadinessProbe(Protocol):
@@ -396,19 +422,31 @@ def create_app(
         request: Request,
         team_id: UUID,
         credential_version_id: UUID = Form(),
-        filename: str = Form(),
-        documents: str = Form(),
+        filename: str = Form(default=""),
+        input_file: UploadFile | None = File(default=None),
         sources: list[str] = Form(),
         csrf_token: str = Form(),
     ) -> Response:
         user = await mutation_user(request, csrf_token)
         try:
-            job = await service(request).submit_text(
+            if input_file is None or not input_file.filename:
+                raise ValueError("seleccione un archivo CSV")
+            uploaded_filename = Path(input_file.filename).name
+            if not uploaded_filename.lower().endswith(".csv"):
+                raise ValueError("seleccione un archivo con extensión .csv")
+            content = await input_file.read(MAX_CSV_UPLOAD_BYTES + 1)
+            if len(content) > MAX_CSV_UPLOAD_BYTES:
+                raise ValueError("el archivo CSV no puede superar los 10 MB")
+            if not content:
+                raise ValueError("el archivo CSV está vacío")
+            job = await service(request).submit_input(
                 actor_id=user.id,
                 team_id=team_id,
                 credential_version_id=credential_version_id,
-                filename=filename,
-                documents=documents,
+                filename=filename.strip() or uploaded_filename,
+                content=content,
+                content_type="text/csv; charset=utf-8",
+                lines=csv_input_lines(content),
                 sources=tuple(sources),
                 storage=request.app.state.storage,
             )

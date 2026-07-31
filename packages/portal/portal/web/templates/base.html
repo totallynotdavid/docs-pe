@@ -50,6 +50,17 @@
         document.addEventListener('click', event => { if (!account.contains(event.target)) close(); });
         document.addEventListener('keydown', event => { if (event.key === 'Escape') { close(); button.focus(); } });
       })();
+      (() => {
+        const dropzone = document.querySelector('[data-csv-dropzone]');
+        const input = document.querySelector('[data-csv-input]');
+        const status = document.querySelector('[data-csv-status]');
+        if (!dropzone || !input || !status) return;
+        const describe = file => { status.textContent = `${file.name} · ${(file.size / 1024).toFixed(1)} KB`; };
+        input.addEventListener('change', () => { if (input.files[0]) describe(input.files[0]); });
+        ['dragenter', 'dragover'].forEach(type => dropzone.addEventListener(type, event => { event.preventDefault(); dropzone.classList.add('archivo-csv--arrastrando'); }));
+        ['dragleave', 'drop'].forEach(type => dropzone.addEventListener(type, event => { event.preventDefault(); dropzone.classList.remove('archivo-csv--arrastrando'); }));
+        dropzone.addEventListener('drop', event => { const [file] = event.dataTransfer.files; if (!file) return; const files = new DataTransfer(); files.items.add(file); input.files = files.files; describe(file); });
+      })();
     </script>{% endif %}
   </body>
 </html>
