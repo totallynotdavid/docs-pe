@@ -1,10 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Notificaciones · Worker{% endblock %}
+{% block title %}Actividad · Worker{% endblock %}
 {% block content %}
-<section class="panel" aria-labelledby="titulo-notificaciones">
-  <h1 id="titulo-notificaciones">Notificaciones</h1>
-  <div id="lista-notificaciones" hx-get="/notificaciones/fragmento" hx-trigger="load" hx-swap="innerHTML">
-    {% include "fragments/notifications.html" %}
-  </div>
-</section>
+<header class="encabezado-pagina"><div><p class="ceja">Espacio de trabajo</p><h1>Actividad</h1><p class="subtitulo">Actualizaciones recientes de tus equipos y consultas.</p></div></header>
+<section class="panel"><div class="panel-cabecera"><div><h2>Actualizaciones</h2><p>Se muestran las novedades más recientes.</p></div></div><div id="lista-notificaciones" hx-get="/notificaciones/fragmento" hx-trigger="load" hx-swap="innerHTML">{% include "fragments/notifications.html" %}</div></section>
 {% endblock %}

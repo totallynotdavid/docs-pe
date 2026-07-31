@@ -1,35 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Proxy · {{ team.name }} · Worker{% endblock %}
+{% block title %}Conexión proxy · {{ team.name }} · Worker{% endblock %}
+{% block context %}<strong>{{ team.name }}</strong> · Conexión{% endblock %}
 {% block content %}
-<section class="panel" aria-labelledby="titulo-proxy">
-  <p class="ceja">{{ team.name }} · Ajustes</p>
-  <h1 id="titulo-proxy">Proxy</h1>
-  {% if readiness.has_active_credential %}<p>Hay una credencial proxy activa.</p>{% else %}<p class="estado-vacio">Configura una credencial validada para enviar tareas.</p>{% endif %}
-  <nav class="acciones" aria-label="Proveedor">
-    <a class="boton {% if provider.value != 'geonode' %}boton--secundario{% endif %}" href="/equipos/{{ team.id }}/ajustes/proxy?proveedor=geonode">GeoNode</a>
-    <a class="boton {% if provider.value != 'dataimpulse' %}boton--secundario{% endif %}" href="/equipos/{{ team.id }}/ajustes/proxy?proveedor=dataimpulse">DataImpulse</a>
-  </nav>
-  {% if error %}<p class="mensaje mensaje--error" role="alert">{{ error }}</p>{% endif %}
-  <form action="/equipos/{{ team.id }}/ajustes/proxy" method="post" class="formulario" autocomplete="off">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="provider" value="{{ provider.value }}">
-    <label>Etiqueta <input name="label" maxlength="120" placeholder="Producción Lima" required></label>
-    {% for field in fields %}
-    <label>{{ field.label }}
-      {% if field.choices %}
-      <select name="{{ field.name }}" {% if field.required %}required{% endif %}>
-        {% for value, choice_label in field.choices %}<option value="{{ value }}" {% if value == field.default %}selected{% endif %}>{{ choice_label }}</option>{% endfor %}
-      </select>
-      {% else %}
-      <input name="{{ field.name }}" type="{% if field.secret %}password{% else %}text{% endif %}" value="{% if not field.secret %}{{ field.default }}{% endif %}" {% if field.required %}required{% endif %}>
-      {% endif %}
-    </label>
-    {% endfor %}
-    <button type="submit">Validar y guardar</button>
-  </form>
-  <h2>Versiones</h2>
-  <ul class="lista-enlaces">
-    {% for credential in credentials %}<li><span>{{ credential.label }} · versión {{ credential.version }}</span><span>{{ credential.state.value|estado_credencial }}</span></li>{% else %}<li class="estado-vacio">Aún no hay versiones.</li>{% endfor %}
-  </ul>
-</section>
+<header class="encabezado-pagina"><div><p class="ceja">Configuración del equipo</p><h1>Conexión proxy</h1><p class="subtitulo">Configura una conexión segura para ejecutar las consultas del equipo.</p></div></header>
+<section class="panel"><div class="panel-cabecera"><div><h2>{% if readiness.has_active_credential %}Conexión activa{% else %}Configurar conexión{% endif %}</h2><p>{% if readiness.has_active_credential %}Hay una conexión validada y lista para usar.{% else %}Añade los datos de tu proveedor para continuar.{% endif %}</p></div></div><div class="panel-cuerpo"><div class="acciones" style="margin-bottom: 18px"><a class="boton {% if provider.value != 'geonode' %}boton--secundario{% endif %}" href="/equipos/{{ team.id }}/ajustes/proxy?proveedor=geonode">GeoNode</a><a class="boton {% if provider.value != 'dataimpulse' %}boton--secundario{% endif %}" href="/equipos/{{ team.id }}/ajustes/proxy?proveedor=dataimpulse">DataImpulse</a></div>{% if error %}<p class="mensaje mensaje--error" role="alert">{{ error }}</p>{% endif %}<form action="/equipos/{{ team.id }}/ajustes/proxy" method="post" class="formulario" autocomplete="off"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="provider" value="{{ provider.value }}"><label>Nombre de referencia<input name="label" maxlength="120" placeholder="Ej. Producción Lima" required></label>{% for field in fields %}<label>{{ field.label }}{% if field.choices %}<select name="{{ field.name }}" {% if field.required %}required{% endif %}>{% for value, choice_label in field.choices %}<option value="{{ value }}" {% if value == field.default %}selected{% endif %}>{{ choice_label }}</option>{% endfor %}</select>{% else %}<input name="{{ field.name }}" type="{% if field.secret %}password{% else %}text{% endif %}" value="{% if not field.secret %}{{ field.default }}{% endif %}" {% if field.required %}required{% endif %}>{% endif %}</label>{% endfor %}<button type="submit">Validar y guardar</button></form></div></section>
+<section class="panel"><div class="panel-cabecera"><div><h2>Historial de conexiones</h2><p>Versiones guardadas para este equipo.</p></div></div><ul class="lista-enlaces">{% for credential in credentials %}<li><span>{{ credential.label }} · versión {{ credential.version }}</span><span class="meta">{{ credential.state.value|estado_credencial }}</span></li>{% else %}<li class="estado-vacio">Aún no hay conexiones guardadas.</li>{% endfor %}</ul></section>
 {% endblock %}

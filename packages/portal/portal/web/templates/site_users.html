@@ -1,17 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Personas · Administración · Worker{% endblock %}
+{% block context %}<strong>Administración</strong> · Plataforma{% endblock %}
 {% block content %}
-<section class="panel" aria-labelledby="titulo-personas">
-  <p class="ceja">Administración del sitio</p>
-  <h1 id="titulo-personas">Personas</h1>
-  <nav class="acciones" aria-label="Administración"><a class="boton boton--secundario" href="/administracion/equipos">Equipos</a></nav>
-  {% if error %}<p class="mensaje mensaje--error" role="alert">{{ error }}</p>{% endif %}
-  <form action="/administracion/usuarios" method="post" class="formulario">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label>Correo <input type="email" name="email" required></label>
-    <label>Contraseña inicial <input type="password" name="password" minlength="12" required></label>
-    <button type="submit">Agregar persona</button>
-  </form>
-  <ul class="lista-enlaces">{% for person in users %}<li><span>{{ person.email }}</span>{% if person.is_site_admin %}<span>Administración del sitio</span>{% endif %}</li>{% endfor %}</ul>
-</section>
+<header class="encabezado-pagina"><div><p class="ceja">Plataforma</p><h1>Personas</h1><p class="subtitulo">Crea cuentas y luego añádelas a los equipos que correspondan.</p></div><div class="acciones"><a class="boton boton--secundario" href="/administracion/equipos">Equipos</a></div></header>
+<section class="panel"><div class="panel-cabecera"><div><h2>Añadir persona</h2><p>La contraseña se cambia en el primer acceso si corresponde.</p></div></div><div class="panel-cuerpo">{% if error %}<p class="mensaje mensaje--error" role="alert">{{ error }}</p>{% endif %}<form action="/administracion/usuarios" method="post" class="formulario"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Correo electrónico<input type="email" name="email" required></label><label>Contraseña temporal<input type="password" name="password" minlength="12" required></label><button type="submit">Añadir persona</button></form></div></section>
+<section class="panel"><div class="panel-cabecera"><h2>Personas con acceso</h2></div><ul class="lista-enlaces">{% for person in users %}<li><span>{{ person.email }}</span>{% if person.is_site_admin %}<span class="meta">Administradora de la plataforma</span>{% endif %}</li>{% endfor %}</ul></section>
 {% endblock %}

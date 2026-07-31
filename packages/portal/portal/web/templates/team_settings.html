@@ -1,17 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Ajustes · {{ team.name }} · Worker{% endblock %}
+{% block title %}Configuración · {{ team.name }} · Worker{% endblock %}
+{% block context %}<strong>{{ team.name }}</strong> · Configuración{% endblock %}
 {% block content %}
-<section class="panel" aria-labelledby="titulo-ajustes">
-  <p class="ceja">{{ team.name }}</p>
-  <h1 id="titulo-ajustes">Ajustes del equipo</h1>
-  {% if readiness.has_active_credential %}
-  <p>El proxy está listo para usar.</p>
-  {% else %}
-  <p class="estado-vacio">Falta una credencial proxy validada.</p>
-  {% endif %}
-  <nav class="acciones" aria-label="Ajustes del equipo">
-    <a class="boton" href="/equipos/{{ team.id }}/ajustes/proxy">Proxy</a>
-    <a class="boton boton--secundario" href="/equipos/{{ team.id }}/ajustes/miembros">Miembros</a>
-  </nav>
-</section>
+<header class="encabezado-pagina"><div><p class="ceja">Equipo</p><h1>Configuración</h1><p class="subtitulo">Gestiona quién puede trabajar en el equipo y la conexión necesaria para ejecutar consultas.</p></div></header>
+<section class="panel"><ul class="lista-enlaces"><li><div><a href="/equipos/{{ team.id }}/ajustes/proxy">Conexión proxy</a><p class="meta">{% if readiness.has_active_credential %}Configurada y lista para usar.{% else %}Aún falta configurar una conexión.{% endif %}</p></div><a class="boton boton--secundario" href="/equipos/{{ team.id }}/ajustes/proxy">Gestionar</a></li><li><div><a href="/equipos/{{ team.id }}/ajustes/miembros">Personas del equipo</a><p class="meta">Añade o actualiza los permisos de acceso.</p></div><a class="boton boton--secundario" href="/equipos/{{ team.id }}/ajustes/miembros">Gestionar</a></li></ul></section>
 {% endblock %}

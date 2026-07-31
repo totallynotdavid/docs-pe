@@ -1,26 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Tarea {{ job.filename }} · Worker{% endblock %}
+{% block title %}{{ job.filename }} · Worker{% endblock %}
+{% block context %}<strong>{{ team.name }}</strong> · Consulta{% endblock %}
 {% block content %}
-<section class="panel" aria-labelledby="titulo-detalle">
-  <p class="ceja">{{ team.name }}</p>
-  <h1 id="titulo-detalle">{{ job.filename }}</h1>
-  <div id="progreso-proceso" aria-live="polite" aria-atomic="true" data-progreso-url="/equipos/{{ team.id }}/procesos/{{ job.id }}/progreso">
-    {% include "fragments/job_progress.html" %}
-  </div>
-  {% if team.role.value == 'team_leader' and not es_terminal(job) %}
-  <form action="/equipos/{{ team.id }}/procesos/{{ job.id }}/cancelar" method="post" class="acciones">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button class="boton-peligro" type="submit">Cancelar tarea</button>
-  </form>
-  {% endif %}
-</section>
+<header class="encabezado-pagina"><div><p class="ceja">{{ team.name }} · Tarea</p><h1>{{ job.filename }}</h1><p class="subtitulo">Sigue el avance y revisa el resultado de esta consulta.</p></div>{% if team.role.value == 'team_leader' and not es_terminal(job) %}<form action="/equipos/{{ team.id }}/procesos/{{ job.id }}/cancelar" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="boton-peligro" type="submit">Cancelar consulta</button></form>{% endif %}</header>
+<section class="panel"><div class="panel-cuerpo"><div id="progreso-proceso" aria-live="polite" aria-atomic="true" data-progreso-url="/equipos/{{ team.id }}/procesos/{{ job.id }}/progreso">{% include "fragments/job_progress.html" %}</div></div></section>
 <script>
   (() => {
     const region = document.querySelector('[data-progreso-url]');
     if (!region || !window.EventSource) return;
     const events = new EventSource(region.dataset.progresoUrl);
     events.addEventListener('progreso', event => { region.innerHTML = event.data; });
-    events.onerror = () => { /* EventSource reconnects using Last-Event-ID. */ };
   })();
 </script>
 {% endblock %}

@@ -1,29 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Nueva tarea · {{ team.name }} · Worker{% endblock %}
+{% block title %}Nueva consulta · {{ team.name }} · Worker{% endblock %}
+{% block context %}<strong>{{ team.name }}</strong> · Nueva consulta{% endblock %}
 {% block content %}
-<section class="panel" aria-labelledby="titulo-proceso">
-  <p class="ceja">{{ team.name }}</p>
-  <h1 id="titulo-proceso">Nueva tarea</h1>
-  <p>Ingresa un documento por línea.</p>
-  {% if error %}<p class="mensaje mensaje--error" role="alert">{{ error }}</p>{% endif %}
-  {% if credentials %}
-  <form action="/equipos/{{ team.id }}/procesos" method="post" class="formulario">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label>Nombre del archivo <input name="filename" value="documentos.txt" required></label>
-    <fieldset><legend>Fuentes</legend>
-      {% for source in sources %}<label class="opcion"><input type="checkbox" name="sources" value="{{ source }}" {% if source == 'osiptel' %}checked{% endif %}> {{ source }}</label>{% endfor %}
-    </fieldset>
-    <label>Documentos <textarea name="documents" rows="10" required></textarea></label>
-    <label>Credencial activa
-      <select name="credential_version_id" required>
-        {% for credential in credentials %}<option value="{{ credential.id }}">{{ credential.label }} · versión {{ credential.version }}</option>{% endfor %}
-      </select>
-    </label>
-    <button type="submit">Crear tarea</button>
-  </form>
-  {% else %}
-  <p class="estado-vacio">Configura una credencial proxy activa antes de crear una tarea.</p>
-  <a class="boton" href="/equipos/{{ team.id }}/ajustes/proxy">Configurar proxy</a>
-  {% endif %}
-</section>
+<header class="encabezado-pagina"><div><p class="ceja">{{ team.name }}</p><h1>Nueva consulta</h1><p class="subtitulo">Pega un documento por línea para procesarlos en conjunto.</p></div></header>
+<section class="panel"><div class="panel-cuerpo">{% if error %}<p class="mensaje mensaje--error" role="alert">{{ error }}</p>{% endif %}{% if credentials %}<form action="/equipos/{{ team.id }}/procesos" method="post" class="formulario"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><div class="seccion-formulario"><h2>Contenido</h2><p>Define un nombre para reconocer esta consulta más tarde.</p><label>Nombre de la consulta<input name="filename" value="documentos.txt" required></label><label>Documentos<textarea name="documents" rows="10" required placeholder="10412345678&#10;10412345679"></textarea></label></div><div class="seccion-formulario"><h2>Origen y conexión</h2><p>Elige las fuentes que se consultarán y la conexión activa.</p><fieldset><legend>Fuentes</legend>{% for source in sources %}<label class="opcion"><input type="checkbox" name="sources" value="{{ source }}" {% if source == 'osiptel' %}checked{% endif %}> {{ source }}</label>{% endfor %}</fieldset><label>Conexión<select name="credential_version_id" required>{% for credential in credentials %}<option value="{{ credential.id }}">{{ credential.label }} · versión {{ credential.version }}</option>{% endfor %}</select></label></div><button type="submit">Iniciar consulta</button></form>{% else %}<h2>Antes de continuar</h2><p class="subtitulo">Este equipo necesita una conexión proxy activa para ejecutar consultas.</p><div class="acciones" style="margin-top: 16px"><a class="boton" href="/equipos/{{ team.id }}/ajustes/proxy">Configurar conexión</a></div>{% endif %}</div></section>
 {% endblock %}

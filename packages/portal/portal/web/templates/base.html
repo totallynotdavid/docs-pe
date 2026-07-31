@@ -10,30 +10,31 @@
   <body{% if not user %} class="sesion-publica"{% endif %}>
     <a class="skip-link" href="#contenido">Saltar al contenido</a>
     {% if user %}
-    <header class="barra-superior">
-      <a class="marca" href="/">Worker</a>
-      {% if setup %}
-      <nav aria-label="Navegación principal">
-        <form action="/logout" method="post" class="salida">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button type="submit">Salir</button>
-        </form>
-      </nav>
-      {% else %}
-      <nav aria-label="Navegación principal">
-        <a class="nav-enlace" href="/">Equipos</a>
-        <a class="nav-enlace" href="/notificaciones">Notificaciones</a>
-        {% if user.is_site_admin %}<a class="nav-enlace" href="/administracion/equipos">Administración</a>{% endif %}
-        <form action="/logout" method="post" class="salida">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button type="submit">Salir</button>
-        </form>
-      </nav>
-      {% endif %}
-    </header>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="marca" href="/"><span class="marca-sello" aria-hidden="true">W</span> Worker</a>
+        {% if not setup %}
+        <nav class="navegacion" aria-label="Navegación principal">
+          <p class="nav-etiqueta">Espacio de trabajo</p>
+          <a class="nav-enlace" href="/">Equipos</a>
+          <a class="nav-enlace" href="/notificaciones">Actividad</a>
+          {% if user.is_site_admin %}<a class="nav-enlace nav-enlace--admin" href="/administracion/equipos">Administración</a>{% endif %}
+        </nav>
+        {% endif %}
+        <div class="cuenta">
+          <details>
+            <summary><span class="avatar">{{ user.email[0] }}</span> Mi cuenta</summary>
+            <div class="cuenta-menu">
+              <span class="cuenta-email">{{ user.email }}</span>
+              <form action="/logout" method="post" class="salida"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Cerrar sesión</button></form>
+            </div>
+          </details>
+        </div>
+      </aside>
+      <div class="workspace">
+        <header class="barra-superior"><span class="contexto">{% block context %}<strong>Worker</strong> · Espacio de trabajo{% endblock %}</span><span class="estado-sesion">Todo listo</span></header>
     {% endif %}
-    <main id="contenido" class="contenido">
-      {% block content %}{% endblock %}
-    </main>
+    <main id="contenido" class="contenido">{% block content %}{% endblock %}</main>
+    {% if user %}</div></div>{% endif %}
   </body>
 </html>
