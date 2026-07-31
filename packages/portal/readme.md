@@ -54,9 +54,11 @@ Add `--proxy-provider geonode` or `--proxy-provider dataimpulse` to configure a
 provider from the named `PORTAL_PROVISION_*` variables. The command applies and
 verifies migrations, creates or finds the administrator/team/leader relationship,
 and prints only names and status. It never prints record identifiers or credentials.
-For local development, `PORTAL_SECRET_PROTECTION_KEY` enables the AES-GCM adapter.
-Production must inject a deployment secret-protection/KMS adapter before optional
-proxy configuration is used; no cloud provider is selected here.
+`PORTAL_SECRET_PROTECTION_KEY` enables the AES-GCM adapter in every environment;
+the existing `PORTAL_SECRET_KEY` deployment secret is accepted as its compatible
+fallback. In production, inject either as a deployment secret (never commit it); a
+dedicated secret-manager/KMS adapter can replace it later. No cloud provider is
+selected here.
 
 Run the focused suite with `uv run pytest packages/portal/tests`, format with
 `uv run ruff format packages/portal`, lint with `uv run ruff check packages/portal`,

@@ -38,10 +38,11 @@ class UnavailableSecretProtector:
 
 
 class DevelopmentAesGcmSecretProtector:
-    """Environment-injected local adapter, deliberately separate from a future KMS.
+    """Environment-injected AES-GCM adapter, deliberately separate from a future KMS.
 
     The key is never persisted with the ciphertext, returned to a caller, or rendered.
-    Production deployments should inject a dedicated secret-manager adapter instead.
+    Production deployments must inject its key as a deployment secret; a dedicated
+    secret-manager adapter can replace this implementation later.
     """
 
     key_id = "development-environment"
@@ -60,6 +61,8 @@ class DevelopmentAesGcmSecretProtector:
     @classmethod
     def from_environment(cls) -> DevelopmentAesGcmSecretProtector | None:
         value = os.environ.get("PORTAL_SECRET_PROTECTION_KEY", "").strip()
+        if not value:
+            value = os.environ.get("PORTAL_SECRET_KEY", "").strip()
         return cls(value) if value else None
 
     async def protect(self, values: dict[str, str]) -> ProtectedSecret:

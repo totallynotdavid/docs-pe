@@ -83,8 +83,7 @@ async def provision(args: argparse.Namespace) -> None:
             args.admin_email, hash_password(password)
         )
         protector: SecretProtector = UnavailableSecretProtector()
-        if settings.environment != "production":
-            protector = DevelopmentAesGcmSecretProtector.from_environment() or protector
+        protector = DevelopmentAesGcmSecretProtector.from_environment() or protector
         service = ProvisioningService(repository, protector)
         team_count, initial_team_id = await repository.installation_status()
         if team_count == 0:

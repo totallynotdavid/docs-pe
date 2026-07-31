@@ -138,7 +138,7 @@ def create_app(
             active_repository = InMemoryPortalRepository()
         app.state.service = PortalService(active_repository)
         protector = secret_protector
-        if protector is None and settings.environment != "production":
+        if protector is None:
             protector = DevelopmentAesGcmSecretProtector.from_environment()
         app.state.provisioning = ProvisioningService(
             active_repository, protector or UnavailableSecretProtector()
