@@ -59,7 +59,8 @@ MAX_CSV_UPLOAD_BYTES = 10 * 1024 * 1024
 # submission planner; the UI makes the outcome of each choice explicit upfront.
 SOURCE_OPTIONS = (
     {
-        "id": "sunat", "name": "DNI y nombre",
+        "id": "sunat",
+        "name": "DNI y nombre",
         "output": "DNI y nombre de la persona.",
         "eligibility": "Para RUC que empiezan en 10",
         "sample_headers": ("RUC", "DNI", "Nombre"),
@@ -67,7 +68,8 @@ SOURCE_OPTIONS = (
         "default": True,
     },
     {
-        "id": "osiptel", "name": "Líneas móviles",
+        "id": "osiptel",
+        "name": "Líneas móviles",
         "output": "Modalidad, número oculto y operador de cada línea.",
         "eligibility": "Para DNI y RUC",
         "sample_headers": ("Documento", "Modalidad", "Número", "Operador"),
@@ -75,7 +77,8 @@ SOURCE_OPTIONS = (
         "default": False,
     },
     {
-        "id": "sunat_reps", "name": "Representantes legales",
+        "id": "sunat_reps",
+        "name": "Representantes legales",
         "output": "DNI, nombre y cargo de los representantes.",
         "eligibility": "Para RUC que empiezan en 20",
         "sample_headers": ("Razón social", "DNI", "Nombre", "Cargo"),
@@ -983,7 +986,9 @@ def create_app(
         if not expected or not worker_id or not secrets.compare_digest(token, expected):
             raise HTTPException(status_code=401, detail="trabajador no autorizado")
         if not worker_id.replace("-", "").replace("_", "").isalnum():
-            raise HTTPException(status_code=400, detail="identificador de trabajador inválido")
+            raise HTTPException(
+                status_code=400, detail="identificador de trabajador inválido"
+            )
         return worker_id
 
     @app.post("/api/worker/claim")
@@ -1033,7 +1038,9 @@ def create_app(
             fence = int(body["fence"])
             content = base64.b64decode(str(body["content"]), validate=True)
         except (KeyError, TypeError, ValueError) as error:
-            raise HTTPException(status_code=400, detail="resultado de trabajador inválido") from error
+            raise HTTPException(
+                status_code=400, detail="resultado de trabajador inválido"
+            ) from error
         pool = request.app.state.pool
         if pool is None:
             raise HTTPException(status_code=503, detail="worker no está configurado")
@@ -1047,9 +1054,13 @@ def create_app(
         if row is None:
             raise HTTPException(status_code=404, detail="trabajo no encontrado")
         reference = ObjectReference(
-            id=uuid4(), team_id=row["team_id"], provider="portal-worker",
-            container="results", object_key=f"{item_id}/{uuid4()}",
-            sha256=hashlib.sha256(content).hexdigest(), size_bytes=len(content),
+            id=uuid4(),
+            team_id=row["team_id"],
+            provider="portal-worker",
+            container="results",
+            object_key=f"{item_id}/{uuid4()}",
+            sha256=hashlib.sha256(content).hexdigest(),
+            size_bytes=len(content),
             content_type="application/json",
         )
         await request.app.state.storage.put_immutable(reference, content)

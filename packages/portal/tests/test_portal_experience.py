@@ -88,7 +88,9 @@ def _submit_csv(client: TestClient, team_id: UUID, credential_id: UUID):
             "sources": "osiptel",
             "csrf_token": _session_csrf(client),
         },
-        files={"input_file": ("barranca.csv", b"10412345678\n10412345679\n", "text/csv")},
+        files={
+            "input_file": ("barranca.csv", b"10412345678\n10412345679\n", "text/csv")
+        },
         headers={"Origin": ORIGIN},
         follow_redirects=False,
     )
