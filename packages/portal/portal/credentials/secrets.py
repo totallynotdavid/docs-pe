@@ -49,7 +49,8 @@ class DevelopmentAesGcmSecretProtector:
 
     def __init__(self, encoded_key: str) -> None:
         try:
-            key = base64.urlsafe_b64decode(encoded_key.encode("ascii"))
+            padding = "=" * (-len(encoded_key) % 4)
+            key = base64.urlsafe_b64decode((encoded_key + padding).encode("ascii"))
         except (BinasciiError, UnicodeEncodeError, ValueError) as error:
             msg = "la clave local de protección no tiene un formato válido"
             raise CredentialConfigurationError(msg) from error
