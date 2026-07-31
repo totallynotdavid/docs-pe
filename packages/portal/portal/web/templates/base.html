@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Worker{% endblock %}</title>
-    <link rel="stylesheet" href="/estatico/portal.css">
+    <link rel="stylesheet" href="/estatico/portal.css?v=portal-shell-20260731-2">
     <script defer src="https://unpkg.com/htmx.org@2.0.4"></script>
   </head>
   <body{% if not user %} class="sesion-publica"{% endif %}>
@@ -22,20 +22,34 @@
           {% if user.is_site_admin %}<a class="nav-enlace nav-enlace--admin" href="/administracion/equipos">{{ icon('administracion') }} Administración</a>{% endif %}
         </nav>
         {% endif %}
-        <div class="cuenta">
-          <details>
-            <summary><span class="avatar">{{ user.email[0] }}</span> Mi cuenta</summary>
-            <div class="cuenta-menu">
-              <span class="cuenta-email">{{ user.email }}</span>
-              <form action="/logout" method="post" class="salida"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">{{ icon('salir', 14) }} Cerrar sesión</button></form>
-            </div>
-          </details>
+        <div class="cuenta" data-cuenta>
+          <button class="cuenta-activador" type="button" aria-expanded="false" aria-controls="menu-cuenta" data-cuenta-activador><span class="avatar">{{ user.email[0] }}</span><span>Mi cuenta</span>{{ icon('abajo', 14) }}</button>
+          <div class="cuenta-menu" id="menu-cuenta" hidden data-cuenta-menu>
+            <span class="cuenta-email">{{ user.email }}</span>
+            <form action="/logout" method="post" class="salida"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">{{ icon('salir', 14) }} Cerrar sesión</button></form>
+          </div>
         </div>
       </aside>
       <div class="workspace">
         <header class="barra-superior"><span class="titulo-barra">{% block titlebar %}Worker{% endblock %}</span><div class="acciones-barra">{% block header_actions %}{% endblock %}</div></header>
     {% endif %}
     <main id="contenido" class="contenido">{% block content %}{% endblock %}</main>
-    {% if user %}</div></div>{% endif %}
+    {% if user %}</div></div>
+    <script>
+      (() => {
+        const account = document.querySelector('[data-cuenta]');
+        const button = document.querySelector('[data-cuenta-activador]');
+        const menu = document.querySelector('[data-cuenta-menu]');
+        if (!account || !button || !menu) return;
+        const close = () => { menu.hidden = true; button.setAttribute('aria-expanded', 'false'); };
+        button.addEventListener('click', () => {
+          const open = menu.hidden;
+          menu.hidden = !open;
+          button.setAttribute('aria-expanded', String(open));
+        });
+        document.addEventListener('click', event => { if (!account.contains(event.target)) close(); });
+        document.addEventListener('keydown', event => { if (event.key === 'Escape') { close(); button.focus(); } });
+      })();
+    </script>{% endif %}
   </body>
 </html>

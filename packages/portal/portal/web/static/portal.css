@@ -31,10 +31,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .icono { display: block; flex: 0 0 auto; }
 .nav-enlace--admin { margin-top: 14px; }
 .cuenta { border-top: 1px solid var(--border); margin-top: auto; padding: 12px 6px 0; }
-.cuenta details summary { align-items: center; color: var(--foreground-secondary); cursor: pointer; display: flex; font-size: var(--font-size-caption); font-weight: var(--font-weight-medium); gap: 8px; list-style: none; }
-.cuenta details summary::-webkit-details-marker { display: none; }
+.cuenta-activador { align-items: center; background: transparent; border: 0; border-radius: var(--radius-sm); box-shadow: none; color: var(--foreground-secondary); display: flex; font-size: var(--font-size-caption); font-weight: var(--font-weight-medium); gap: 8px; height: 28px; justify-content: flex-start; padding: 0; width: 100%; }
+.cuenta-activador:hover, .cuenta-activador[aria-expanded="true"] { background: transparent; color: var(--foreground); }
+.cuenta-activador .icono { margin-left: auto; transition: transform var(--motion-fast) var(--ease-standard); }
+.cuenta-activador[aria-expanded="true"] .icono { transform: rotate(180deg); }
 .avatar { align-items: center; background: var(--color-blue-5); border-radius: 50%; color: var(--color-blue-11); display: inline-flex; font-size: 10px; font-weight: 700; height: 24px; justify-content: center; text-transform: uppercase; width: 24px; }
-.cuenta-menu { display: grid; gap: 3px; padding: 8px 0 0 32px; }
+.cuenta-menu { background: var(--background); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow-elevation-1); display: grid; gap: 6px; margin-top: 8px; padding: 9px 10px; }
 .cuenta-email { color: var(--foreground-tertiary); font-size: 11px; overflow-wrap: anywhere; }
 .salida button { align-items: center; background: transparent; border: 0; color: var(--foreground-secondary); display: inline-flex; font-size: var(--font-size-caption); gap: 6px; padding: 2px 0; text-align: left; }
 .salida button:hover { color: var(--foreground); text-decoration: underline; }
