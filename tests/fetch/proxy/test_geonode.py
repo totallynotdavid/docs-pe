@@ -2,32 +2,25 @@ from __future__ import annotations
 
 import pytest
 
+from fetch.domain.errors import ProxyConfigurationError
 from fetch.proxy.geonode import (
     _HTTP_STICKY_PORT_MAX,
     _HTTP_STICKY_PORT_MIN,
+    GEONODE,
     GeoNodeConfig,
     GeoNodeProvider,
     build_username,
-    load_geonode_config,
     slot_port,
 )
+from fetch.proxy.load import values_from_environment
 
 
-# A path that never exists, so load_dotenv's own file lookup is a silent no-op.
-_ENV_FILE = "/nonexistent/does-not-exist.env"
+# Variable names come from the field schema, so this list cannot drift from it.
+_ENV_VARS = tuple(f"GEONODE_{field.name}".upper() for field in GEONODE.fields)
 
-_ENV_VARS = (
-    "GEONODE_USER",
-    "GEONODE_PASS",
-    "GEONODE_GATEWAY",
-    "GEONODE_TYPE",
-    "GEONODE_COUNTRY",
-    "GEONODE_STATE",
-    "GEONODE_CITY",
-    "GEONODE_ASN",
-    "GEONODE_STRICT_OFF",
-    "GEONODE_LIFETIME",
-)
+
+def _load() -> dict[str, str]:
+    return values_from_environment(GEONODE)
 
 
 @pytest.fixture(autouse=True)
@@ -37,37 +30,45 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _set_minimal_valid_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GEONODE_USER", "user")
-    monkeypatch.setenv("GEONODE_PASS", "pass")
+    monkeypatch.setenv("GEONODE_USERNAME", "user")
+    monkeypatch.setenv("GEONODE_PASSWORD", "pass")
     monkeypatch.setenv("GEONODE_COUNTRY", "PE")
 
 
-def test_missing_user_or_pass_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_missing_username_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GEONODE_COUNTRY", "PE")
-    with pytest.raises(RuntimeError, match="GEONODE_USER or GEONODE_PASS"):
-        load_geonode_config(env_file=_ENV_FILE)
+    with pytest.raises(ProxyConfigurationError, match="username is required"):
+        _load()
 
 
 def test_missing_country_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     # OSIPTEL's WAF blocks foreign exits; this must fail loudly.
-    monkeypatch.setenv("GEONODE_USER", "user")
-    monkeypatch.setenv("GEONODE_PASS", "pass")
-    with pytest.raises(RuntimeError, match="GEONODE_COUNTRY must be set"):
-        load_geonode_config(env_file=_ENV_FILE)
+    monkeypatch.setenv("GEONODE_USERNAME", "user")
+    monkeypatch.setenv("GEONODE_PASSWORD", "pass")
+    monkeypatch.setenv("GEONODE_COUNTRY", "")
+    with pytest.raises(ProxyConfigurationError, match="country is required"):
+        _load()
+
+
+def test_a_malformed_country_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_minimal_valid_env(monkeypatch)
+    monkeypatch.setenv("GEONODE_COUNTRY", "peru")
+    with pytest.raises(ProxyConfigurationError, match="two-letter country code"):
+        _load()
 
 
 def test_unknown_gateway_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_minimal_valid_env(monkeypatch)
     monkeypatch.setenv("GEONODE_GATEWAY", "de")
-    with pytest.raises(RuntimeError, match="GEONODE_GATEWAY"):
-        load_geonode_config(env_file=_ENV_FILE)
+    with pytest.raises(ProxyConfigurationError, match="gateway must be one of"):
+        _load()
 
 
 def test_invalid_proxy_type_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_minimal_valid_env(monkeypatch)
-    monkeypatch.setenv("GEONODE_TYPE", "bogus")
-    with pytest.raises(RuntimeError, match="GEONODE_TYPE"):
-        load_geonode_config(env_file=_ENV_FILE)
+    monkeypatch.setenv("GEONODE_PROXY_TYPE", "bogus")
+    with pytest.raises(ProxyConfigurationError, match="proxy_type must be one of"):
+        _load()
 
 
 @pytest.mark.parametrize("lifetime", ["2", "1441"])
@@ -75,28 +76,38 @@ def test_lifetime_out_of_range_raises(
     monkeypatch: pytest.MonkeyPatch, lifetime: str
 ) -> None:
     _set_minimal_valid_env(monkeypatch)
-    monkeypatch.setenv("GEONODE_LIFETIME", lifetime)
-    with pytest.raises(RuntimeError, match="GEONODE_LIFETIME"):
-        load_geonode_config(env_file=_ENV_FILE)
+    monkeypatch.setenv("GEONODE_LIFETIME_MINUTES", lifetime)
+    with pytest.raises(ProxyConfigurationError, match="lifetime_minutes must be"):
+        _load()
 
 
 def test_happy_path_applies_defaults_for_everything_optional(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _set_minimal_valid_env(monkeypatch)
-    config = load_geonode_config(env_file=_ENV_FILE)
-    assert config == GeoNodeConfig(
-        user="user",
-        password="pass",
-        host="proxy.geonode.io",
-        proxy_type="residential",
-        country="PE",
-        state="",
-        city="",
-        asn="",
-        strict_off=False,
-        lifetime=10,
-    )
+    assert _load() == {
+        "username": "user",
+        "password": "pass",
+        "gateway": "fr",
+        "proxy_type": "residential",
+        "country": "PE",
+        "state": "",
+        "city": "",
+        "asn": "",
+        "strict_off": "",
+        "lifetime_minutes": "10",
+    }
+
+
+def test_build_turns_normalized_values_into_a_gateway_bound_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The gateway name is a field; the host it resolves to is not, so `build` is
+    # the only place that mapping lives.
+    _set_minimal_valid_env(monkeypatch)
+    monkeypatch.setenv("GEONODE_GATEWAY", "sg")
+    session = GEONODE.build(_load()).new_session(slot_id=1)
+    assert session.host == "sg.proxy.geonode.io"
 
 
 def test_build_username_includes_every_set_optional_field() -> None:

@@ -1,15 +1,25 @@
+"""The portal's HTTP surface, driven end to end against real PostgreSQL."""
+
 from __future__ import annotations
 
 import re
 
-from uuid import UUID, uuid4
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+from uuid import UUID
 
 from fastapi.testclient import TestClient
-from portal.domain.models import CredentialVersion, TeamRole
-from portal.repository.memory import InMemoryPortalRepository
-from portal.settings import PortalSettings
-from portal.web.app import create_app
-from portal.web.security import hash_password
+from portal.domain.models import TeamRole
+from portal.security import hash_password
+
+from tests.portal.conftest import object_reference, seed_team, seed_user
+
+
+if TYPE_CHECKING:
+    import asyncpg
+
+    from fastapi import FastAPI
+    from portal.repository.postgres import PostgresPortalRepository
 
 
 ORIGIN = "http://testserver"
@@ -36,33 +46,49 @@ def _session_csrf(client: TestClient) -> str:
     return _csrf(client.get("/").text)
 
 
-def _experience() -> tuple[InMemoryPortalRepository, UUID, UUID, UUID, UUID, UUID]:
-    repository = InMemoryPortalRepository()
-    admin = repository.add_user(
-        "admin@osiptel.test", hash_password(PASSWORD), is_site_admin=True
-    )
-    leader = repository.add_user("lider@osiptel.test", hash_password(PASSWORD))
-    member = repository.add_user("miembro@osiptel.test", hash_password(PASSWORD))
-    outsider = repository.add_user("otro@osiptel.test", hash_password(PASSWORD))
-    team_id = uuid4()
-    other_team_id = uuid4()
-    repository.grant(leader.id, team_id, TeamRole.TEAM_LEADER)
-    repository.grant(member.id, team_id, TeamRole.TEAM_MEMBER)
-    repository.grant(outsider.id, other_team_id, TeamRole.TEAM_LEADER)
-    credential_id = uuid4()
-    repository.add_credential(
-        CredentialVersion(credential_id, team_id, "Proxy Lima", 1)
-    )
-    return repository, admin.id, leader.id, member.id, team_id, credential_id
+@dataclass(frozen=True)
+class Experience:
+    """One installation with the four roles the pages distinguish between."""
+
+    admin_id: UUID
+    leader_id: UUID
+    member_id: UUID
+    team_id: UUID
+    credential_id: UUID
 
 
-def _client(repository: InMemoryPortalRepository) -> TestClient:
-    return TestClient(
-        create_app(
-            PortalSettings("", public_origin=ORIGIN),
-            repository=repository,
-        )
+async def _experience(
+    pool: asyncpg.Pool, repository: PostgresPortalRepository
+) -> Experience:
+    hashed = hash_password(PASSWORD)
+    team = await seed_team(pool, password_hash=hashed)
+    other = await seed_team(pool, password_hash=hashed)
+    admin_id = await seed_user(pool, email="admin@osiptel.test")
+    member_id = await seed_user(pool, email="miembro@osiptel.test")
+    await pool.execute(
+        """
+        UPDATE portal_users
+           SET password_hash = $2,
+               is_site_admin = (id = $1),
+               email = CASE id WHEN $3 THEN 'lider@osiptel.test'
+                               WHEN $4 THEN 'otro@osiptel.test'
+                               ELSE email END
+         WHERE id = ANY($5::uuid[])
+        """,
+        admin_id,
+        hashed,
+        team.actor_id,
+        other.actor_id,
+        [admin_id, member_id, team.actor_id, other.actor_id],
     )
+    await repository.add_member(team.team_id, member_id, TeamRole.TEAM_MEMBER)
+    return Experience(
+        admin_id, team.actor_id, member_id, team.team_id, team.credential_id
+    )
+
+
+def _client(app: FastAPI) -> TestClient:
+    return TestClient(app)
 
 
 def _submit_job(client: TestClient, team_id: UUID, credential_id: UUID, documents: str):
@@ -99,9 +125,11 @@ def _submit_csv(client: TestClient, team_id: UUID, credential_id: UUID):
     return UUID(response.headers["location"].rsplit("/", 1)[1])
 
 
-def test_login_csrf_cookie_rotation_and_generic_failure() -> None:
-    repository, _, _, _, _, _ = _experience()
-    with _client(repository) as client:
+async def test_login_csrf_cookie_rotation_and_generic_failure(
+    pool: asyncpg.Pool, repository: PostgresPortalRepository, app: FastAPI
+) -> None:
+    await _experience(pool, repository)
+    with _client(app) as client:
         page = client.get("/login")
         assert 'class="barra-superior"' not in page.text
         assert 'class="acceso__marca"' in page.text
@@ -150,9 +178,11 @@ def test_login_csrf_cookie_rotation_and_generic_failure() -> None:
         assert client.get("/", follow_redirects=False).status_code == 303
 
 
-def test_new_job_makes_source_outcomes_visible_without_exposing_setup_details() -> None:
-    repository, _, _, _, team_id, _ = _experience()
-    with _client(repository) as client:
+async def test_new_job_makes_source_outcomes_visible_without_exposing_setup_details(
+    pool: asyncpg.Pool, repository: PostgresPortalRepository, app: FastAPI
+) -> None:
+    team_id = (await _experience(pool, repository)).team_id
+    with _client(app) as client:
         assert _login(client, "lider@osiptel.test").status_code == 303
         page = client.get(f"/equipos/{team_id}/procesos/nuevo")
 
@@ -167,16 +197,20 @@ def test_new_job_makes_source_outcomes_visible_without_exposing_setup_details() 
     assert "versión 1" not in page.text
 
 
-async def test_roles_cross_team_isolation_submission_and_terminal_rendering() -> None:
-    repository, _, leader_id, member_id, team_id, credential_id = _experience()
-    with _client(repository) as member_client:
+async def test_roles_cross_team_isolation_submission_and_terminal_rendering(
+    pool: asyncpg.Pool, repository: PostgresPortalRepository, app: FastAPI
+) -> None:
+    people = await _experience(pool, repository)
+    leader_id, member_id = people.leader_id, people.member_id
+    team_id, credential_id = people.team_id, people.credential_id
+    with _client(app) as member_client:
         assert _login(member_client, "miembro@osiptel.test").status_code == 303
         assert member_client.get(f"/equipos/{team_id}/buscar?q=104").status_code == 200
         assert (
             member_client.get(f"/equipos/{team_id}/procesos/nuevo").status_code == 403
         )
 
-    with _client(repository) as leader_client:
+    with _client(app) as leader_client:
         assert _login(leader_client, "lider@osiptel.test").status_code == 303
         excluded_job = _submit_job(
             leader_client, team_id, credential_id, "no-es-documento"
@@ -202,11 +236,11 @@ async def test_roles_cross_team_isolation_submission_and_terminal_rendering() ->
         assert reconnect.text == "event: fin\ndata: \n\n"
 
         active_job = _submit_job(leader_client, team_id, credential_id, "10412345678")
-        assert await repository.cancel(active_job, team_id)
+        assert await repository.cancel(active_job, team_id) is not None
         cancelled = leader_client.get(f"/equipos/{team_id}/procesos/{active_job}")
         assert "Cancelado" in cancelled.text
 
-    with _client(repository) as outsider_client:
+    with _client(app) as outsider_client:
         assert _login(outsider_client, "otro@osiptel.test").status_code == 303
         assert (
             outsider_client.get(
@@ -221,7 +255,7 @@ async def test_roles_cross_team_isolation_submission_and_terminal_rendering() ->
             == 403
         )
 
-    with _client(repository) as anonymous_client:
+    with _client(app) as anonymous_client:
         assert (
             anonymous_client.get(
                 f"/equipos/{team_id}/procesos/{excluded_job}/progreso"
@@ -232,9 +266,12 @@ async def test_roles_cross_team_isolation_submission_and_terminal_rendering() ->
     assert leader_id != member_id
 
 
-async def test_csv_upload_uses_the_file_name_and_first_column() -> None:
-    repository, _, _, _, team_id, credential_id = _experience()
-    with _client(repository) as client:
+async def test_csv_upload_uses_the_file_name_and_first_column(
+    pool: asyncpg.Pool, repository: PostgresPortalRepository, app: FastAPI
+) -> None:
+    people = await _experience(pool, repository)
+    team_id, credential_id = people.team_id, people.credential_id
+    with _client(app) as client:
         assert _login(client, "lider@osiptel.test").status_code == 303
         csv_job = _submit_csv(client, team_id, credential_id)
 
@@ -247,16 +284,22 @@ async def test_csv_upload_uses_the_file_name_and_first_column() -> None:
     ]
 
 
-async def test_htmx_search_notifications_partial_results_and_pagination() -> None:
-    repository, _, _, _, team_id, credential_id = _experience()
-    with _client(repository) as client:
+async def test_htmx_search_notifications_partial_results_and_pagination(
+    pool: asyncpg.Pool, repository: PostgresPortalRepository, app: FastAPI
+) -> None:
+    people = await _experience(pool, repository)
+    team_id, credential_id = people.team_id, people.credential_id
+    with _client(app) as client:
         assert _login(client, "lider@osiptel.test").status_code == 303
         job_id = _submit_job(client, team_id, credential_id, "10412345678")
-        job = repository.jobs[job_id]
-        assert await repository.record_published_result(
-            job_id, job.items[0].id, job.lease_fence, uuid4()
+        claimed = await repository.claim("trabajador", ("osiptel",))
+        assert claimed is not None and claimed.job_id == job_id
+        assert await repository.publish(
+            claimed.item_id,
+            "trabajador",
+            claimed.lease_fence,
+            await object_reference(pool, team_id, "salida/uno.json"),
         )
-        await repository.complete(job_id)
 
         search = client.get(
             f"/equipos/{team_id}/buscar?q=104", headers={"HX-Request": "true"}
@@ -279,10 +322,13 @@ async def test_htmx_search_notifications_partial_results_and_pagination() -> Non
         assert "Tarea completada" in notifications.text
 
 
-def test_one_url_serves_both_the_page_and_the_fragment_htmx_swaps_into_it() -> None:
+async def test_one_url_serves_both_the_page_and_the_fragment_htmx_swaps_into_it(
+    pool: asyncpg.Pool, repository: PostgresPortalRepository, app: FastAPI
+) -> None:
     """A pushed htmx URL must reload as a whole page, not as a bare fragment."""
-    repository, _, _, _, team_id, credential_id = _experience()
-    with _client(repository) as client:
+    people = await _experience(pool, repository)
+    team_id, credential_id = people.team_id, people.credential_id
+    with _client(app) as client:
         assert _login(client, "lider@osiptel.test").status_code == 303
         _submit_job(client, team_id, credential_id, "10412345678")
 

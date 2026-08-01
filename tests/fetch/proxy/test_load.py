@@ -2,21 +2,23 @@ from __future__ import annotations
 
 import pytest
 
+from fetch.domain.errors import ProxyConfigurationError
 from fetch.proxy.dataimpulse import DataImpulseProvider
 from fetch.proxy.geonode import GeoNodeProvider
 from fetch.proxy.load import load_proxy_providers
+from fetch.proxy.registry import PROVIDERS
 
 
 _ENV_FILE = "/nonexistent/does-not-exist.env"
 
+# Every variable the schemas can read, so a leaked one cannot mask a failure.
 _ENV_VARS = (
     "PROXY_PROVIDER",
-    "GEONODE_USER",
-    "GEONODE_PASS",
-    "GEONODE_COUNTRY",
-    "DATAIMPULSE_USER",
-    "DATAIMPULSE_PASS",
-    "DATAIMPULSE_COUNTRY",
+    *(
+        f"{spec.name}_{field.name}".upper()
+        for spec in PROVIDERS.values()
+        for field in spec.fields
+    ),
 )
 
 
@@ -27,11 +29,11 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _set_valid_provider_creds(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GEONODE_USER", "user")
-    monkeypatch.setenv("GEONODE_PASS", "pass")
+    monkeypatch.setenv("GEONODE_USERNAME", "user")
+    monkeypatch.setenv("GEONODE_PASSWORD", "pass")
     monkeypatch.setenv("GEONODE_COUNTRY", "PE")
-    monkeypatch.setenv("DATAIMPULSE_USER", "user")
-    monkeypatch.setenv("DATAIMPULSE_PASS", "pass")
+    monkeypatch.setenv("DATAIMPULSE_USERNAME", "user")
+    monkeypatch.setenv("DATAIMPULSE_PASSWORD", "pass")
     monkeypatch.setenv("DATAIMPULSE_COUNTRY", "pe")
 
 
@@ -41,20 +43,20 @@ def test_a_missing_or_blank_proxy_provider_raises(
 ) -> None:
     if value:
         monkeypatch.setenv("PROXY_PROVIDER", value)
-    with pytest.raises(RuntimeError, match="PROXY_PROVIDER must be set"):
+    with pytest.raises(ProxyConfigurationError, match="PROXY_PROVIDER must be set"):
         load_proxy_providers(env_file=_ENV_FILE)
 
 
 def test_an_unknown_provider_name_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PROXY_PROVIDER", "bogus")
-    with pytest.raises(RuntimeError, match="is not one of"):
+    with pytest.raises(ProxyConfigurationError, match="unknown proxy provider"):
         load_proxy_providers(env_file=_ENV_FILE)
 
 
 def test_a_duplicate_provider_name_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_valid_provider_creds(monkeypatch)
     monkeypatch.setenv("PROXY_PROVIDER", "geonode,geonode")
-    with pytest.raises(RuntimeError, match="more than once"):
+    with pytest.raises(ProxyConfigurationError, match="more than once"):
         load_proxy_providers(env_file=_ENV_FILE)
 
 
@@ -122,5 +124,5 @@ def test_an_invalid_lane_count_raises(
 ) -> None:
     _set_valid_provider_creds(monkeypatch)
     monkeypatch.setenv("PROXY_PROVIDER", value)
-    with pytest.raises(RuntimeError, match="lane count"):
+    with pytest.raises(ProxyConfigurationError, match="lane count"):
         load_proxy_providers(env_file=_ENV_FILE)

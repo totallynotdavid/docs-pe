@@ -1,14 +1,23 @@
+"""Provisioning is the only path that creates teams, users and credentials."""
+
 from __future__ import annotations
 
-import asyncio
 import re
+
+from typing import TYPE_CHECKING
 
 from fastapi.testclient import TestClient
 from portal.domain.models import TeamRole
-from portal.repository.memory import InMemoryPortalRepository
-from portal.settings import PortalSettings
-from portal.web.app import create_app
-from portal.web.security import hash_password
+from portal.security import hash_password
+
+from tests.portal.conftest import seed_user
+
+
+if TYPE_CHECKING:
+    import asyncpg
+
+    from fastapi import FastAPI
+    from portal.repository.postgres import PostgresPortalRepository
 
 
 ORIGIN = "http://testserver"
@@ -32,19 +41,32 @@ def _login(client: TestClient, email: str) -> None:
     assert response.status_code == 303
 
 
-def _client(repository: InMemoryPortalRepository) -> TestClient:
-    return TestClient(
-        create_app(PortalSettings("", public_origin=ORIGIN), repository=repository)
-    )
+def _client(app: FastAPI) -> TestClient:
+    return TestClient(app)
 
 
-def test_first_team_setup_is_the_only_empty_installation_path() -> None:
-    repository = InMemoryPortalRepository()
-    admin = repository.add_user(
-        "admin@osiptel.test", hash_password(PASSWORD), is_site_admin=True
+async def _person(
+    pool: asyncpg.Pool, email: str, *, is_site_admin: bool = False
+) -> str:
+    user_id = await seed_user(pool, email=email)
+    await pool.execute(
+        "UPDATE portal_users SET password_hash = $2, is_site_admin = $3 WHERE id = $1",
+        user_id,
+        hash_password(PASSWORD),
+        is_site_admin,
     )
-    with _client(repository) as client:
-        _login(client, admin.email)
+    return email
+
+
+async def test_first_team_setup_is_the_only_empty_installation_path(
+    pool: asyncpg.Pool, repository: PostgresPortalRepository, app: FastAPI
+) -> None:
+    admin_email = await _person(pool, "admin@osiptel.test", is_site_admin=True)
+    admin_id = await pool.fetchval(
+        "SELECT id FROM portal_users WHERE email = $1", admin_email
+    )
+    with _client(app) as client:
+        _login(client, admin_email)
         assert client.get("/", follow_redirects=False).headers["location"] == "/inicio"
         first = client.get("/inicio")
         assert "UUID" not in first.text and "persona líder" not in first.text
@@ -62,22 +84,24 @@ def test_first_team_setup_is_the_only_empty_installation_path() -> None:
         assert created.headers["location"].endswith("/ajustes/proxy")
         assert "config_ciphertext" not in client.get(created.headers["location"]).text
 
-    team = asyncio.run(repository.team_by_slug("equipo-lima"))
+    team = await repository.team_by_slug("equipo-lima")
     assert team is not None
-    assert asyncio.run(repository.role_for(admin.id, team.id)) is TeamRole.TEAM_LEADER
+    assert await repository.role_for(admin_id, team.id) is TeamRole.TEAM_LEADER
 
 
-def test_site_and_team_settings_use_email_selectors_and_keep_members_limited() -> None:
-    repository = InMemoryPortalRepository()
-    admin = repository.add_user(
-        "admin@osiptel.test", hash_password(PASSWORD), is_site_admin=True
+async def test_site_and_team_settings_use_email_selectors_and_keep_members_limited(
+    pool: asyncpg.Pool, repository: PostgresPortalRepository, app: FastAPI
+) -> None:
+    admin_email = await _person(pool, "admin@osiptel.test", is_site_admin=True)
+    leader_email = await _person(pool, "lider@osiptel.test")
+    member_email = await _person(pool, "miembro@osiptel.test")
+    admin_id = await pool.fetchval(
+        "SELECT id FROM portal_users WHERE email = $1", admin_email
     )
-    leader = repository.add_user("lider@osiptel.test", hash_password(PASSWORD))
-    member = repository.add_user("miembro@osiptel.test", hash_password(PASSWORD))
-    asyncio.run(repository.create_first_team("inicial", "Inicial", admin.id))
+    await repository.create_first_team("inicial", "Inicial", admin_id)
 
-    with _client(repository) as admin_client:
-        _login(admin_client, admin.email)
+    with _client(app) as admin_client:
+        _login(admin_client, admin_email)
         teams = admin_client.get("/administracion/equipos")
         assert "leader_id" not in teams.text and "ID de la persona" not in teams.text
         created = admin_client.post(
@@ -85,7 +109,7 @@ def test_site_and_team_settings_use_email_selectors_and_keep_members_limited() -
             data={
                 "name": "Consultas Norte",
                 "slug": "consultas-norte",
-                "leader_email": leader.email,
+                "leader_email": leader_email,
                 "csrf_token": _csrf(teams.text),
             },
             headers={"Origin": ORIGIN},
@@ -101,13 +125,13 @@ def test_site_and_team_settings_use_email_selectors_and_keep_members_limited() -
         )
 
     team_id = team_url.rsplit("/", 1)[1]
-    with _client(repository) as leader_client:
-        _login(leader_client, leader.email)
+    with _client(app) as leader_client:
+        _login(leader_client, leader_email)
         page = leader_client.get(f"{team_url}/ajustes/miembros")
         added = leader_client.post(
             f"{team_url}/ajustes/miembros",
             data={
-                "email": member.email,
+                "email": member_email,
                 "role": "team_member",
                 "csrf_token": _csrf(page.text),
             },
@@ -117,8 +141,8 @@ def test_site_and_team_settings_use_email_selectors_and_keep_members_limited() -
         assert added.status_code == 303
         assert leader_client.get(f"{team_url}/credenciales").status_code == 404
 
-    with _client(repository) as member_client:
-        _login(member_client, member.email)
+    with _client(app) as member_client:
+        _login(member_client, member_email)
         assert member_client.get(f"{team_url}/buscar").status_code == 200
         assert member_client.get(f"{team_url}/ajustes").status_code == 403
         assert member_client.get(f"{team_url}/procesos/nuevo").status_code == 403

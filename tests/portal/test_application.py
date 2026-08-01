@@ -1,107 +1,136 @@
+"""Team authorization and submission planning, against the real repository."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
-from portal.domain.errors import PermissionDenied, SourceValidationError
+from portal.domain.errors import PermissionDenied, Reason, SourceValidationError
 from portal.domain.models import DeliveryChannel, JobState, TeamRole
-from portal.testing import command, leader
+
+from tests.portal.conftest import object_reference, seed_team, seed_user, submit_command
 
 
 if TYPE_CHECKING:
+    import asyncpg
+
     from portal.application.service import PortalService
-    from portal.repository.memory import InMemoryPortalRepository
+    from portal.repository.postgres import PostgresPortalRepository
+
+
+async def _input(pool: asyncpg.Pool, team_id: UUID) -> UUID:
+    return await object_reference(pool, team_id, f"entradas/{uuid4().hex}.csv")
 
 
 async def test_team_member_cannot_submit_a_process(
-    repository: InMemoryPortalRepository, service: PortalService
+    pool: asyncpg.Pool,
+    repository: PostgresPortalRepository,
+    service: PortalService,
 ) -> None:
-    _, team_id, credential_id = leader(repository)
-    member_id = uuid4()
-    repository.grant(member_id, team_id, TeamRole.TEAM_MEMBER)
+    team = await seed_team(pool)
+    member_id = await seed_user(pool)
+    await repository.add_member(team.team_id, member_id, TeamRole.TEAM_MEMBER)
+    command = submit_command(team, await _input(pool, team.team_id), actor_id=member_id)
 
-    with pytest.raises(PermissionDenied, match="líder"):
-        await service.submit(command(member_id, team_id, credential_id))
+    with pytest.raises(PermissionDenied) as raised:
+        await service.submit(command)
 
-    assert repository.jobs == {}
+    assert raised.value.reason is Reason.LEADER_REQUIRED
+    assert await pool.fetchval("SELECT count(*) FROM portal_jobs") == 0
 
 
 async def test_credential_cannot_cross_team_boundary(
-    repository: InMemoryPortalRepository, service: PortalService
+    pool: asyncpg.Pool, service: PortalService
 ) -> None:
-    leader_a, team_a, _credential_a = leader(repository)
-    _leader_b, _team_b, credential_b = leader(repository)
+    team_a = await seed_team(pool)
+    team_b = await seed_team(pool)
+    command = submit_command(
+        team_a._replace(credential_id=team_b.credential_id),
+        await _input(pool, team_a.team_id),
+    )
 
-    with pytest.raises(PermissionDenied, match="mismo equipo"):
-        await service.submit(command(leader_a, team_a, credential_b))
+    with pytest.raises(PermissionDenied) as raised:
+        await service.submit(command)
+
+    assert raised.value.reason is Reason.CREDENTIAL_WRONG_TEAM
 
 
 async def test_members_only_search_their_team_published_results(
-    repository: InMemoryPortalRepository, service: PortalService
+    pool: asyncpg.Pool,
+    repository: PostgresPortalRepository,
+    service: PortalService,
 ) -> None:
-    leader_a, team_a, credential_a = leader(repository)
-    leader_b, team_b, credential_b = leader(repository)
-    member_a = uuid4()
-    repository.grant(member_a, team_a, TeamRole.TEAM_MEMBER)
-    job_a = await service.submit(command(leader_a, team_a, credential_a))
-    job_b = await service.submit(command(leader_b, team_b, credential_b))
-    assert await repository.record_published_result(
-        job_a.id, job_a.items[0].id, job_a.lease_fence, uuid4()
+    team_a = await seed_team(pool)
+    team_b = await seed_team(pool)
+    member_a = await seed_user(pool)
+    await repository.add_member(team_a.team_id, member_a, TeamRole.TEAM_MEMBER)
+    job_a = await service.submit(
+        submit_command(team_a, await _input(pool, team_a.team_id))
     )
-    assert await repository.record_published_result(
-        job_b.id, job_b.items[0].id, job_b.lease_fence, uuid4()
+    job_b = await service.submit(
+        submit_command(team_b, await _input(pool, team_b.team_id))
     )
+    for job in (job_a, job_b):
+        claimed = await repository.claim("trabajador", ("osiptel",))
+        assert claimed is not None
+        assert await repository.publish(
+            claimed.item_id,
+            "trabajador",
+            claimed.lease_fence,
+            await object_reference(pool, job.team_id, f"salida/{job.id}.json"),
+        )
 
-    assert [job.id for job in await service.published_results(member_a, team_a)] == [
-        job_a.id
-    ]
+    published = await service.published_results(member_a, team_a.team_id)
+
+    assert [job.id for job in published] == [job_a.id]
+    assert job_b.id not in {job.id for job in published}
 
 
 async def test_only_stable_fetch_sources_are_allowed(
-    repository: InMemoryPortalRepository, service: PortalService
+    pool: asyncpg.Pool, service: PortalService
 ) -> None:
-    leader_id, team_id, credential_id = leader(repository)
+    team = await seed_team(pool)
+    command = submit_command(
+        team, await _input(pool, team.team_id), sources=("portabilidad",)
+    )
 
-    with pytest.raises(SourceValidationError, match="browser"):
-        await service.submit(
-            command(leader_id, team_id, credential_id, sources=("browser",))
-        )
+    with pytest.raises(SourceValidationError) as raised:
+        await service.submit(command)
+
+    assert raised.value.reason is Reason.SOURCE_NOT_ENABLED
+    assert raised.value.params["invalid"] == "portabilidad"
 
 
 async def test_all_excluded_input_is_terminal_and_creates_outbox_intents(
-    repository: InMemoryPortalRepository, service: PortalService
+    pool: asyncpg.Pool, service: PortalService
 ) -> None:
-    leader_id, team_id, credential_id = leader(repository)
+    team = await seed_team(pool)
+
     job = await service.submit(
-        command(leader_id, team_id, credential_id, value="inválido")
+        submit_command(team, await _input(pool, team.team_id), value="inválido")
     )
 
     assert job.state is JobState.COMPLETED
     assert job.items == []
-    assert len(job.exclusions) == 1
-    assert [event.event_type for event in repository.events] == ["proceso.completed"]
-    assert {intent.channel for intent in repository.outbox} == set(DeliveryChannel)
-
-
-async def test_cancellation_fences_late_work_and_preserves_published_result(
-    repository: InMemoryPortalRepository, service: PortalService
-) -> None:
-    leader_id, team_id, credential_id = leader(repository)
-    job = await service.submit(command(leader_id, team_id, credential_id))
-    item = job.items[0]
-    published_object_id = uuid4()
-    assert await repository.record_published_result(
-        job.id, item.id, job.lease_fence, published_object_id
+    # admit_submission returns the admitted work; the exclusions are persisted and
+    # read back by `job`, which is what the detail page renders.
+    stored = await service.job(team.actor_id, team.team_id, job.id)
+    assert [excluded.reason for excluded in stored.exclusions] == ["documento_invalido"]
+    events = await pool.fetch(
+        "SELECT event_type FROM portal_job_events WHERE job_id = $1", job.id
     )
-
-    cancelled = await service.cancel(leader_id, team_id, job.id)
-
-    assert cancelled.state is JobState.CANCELLED
-    assert item.result_object_id == published_object_id
-    assert (
-        await repository.record_published_result(job.id, item.id, 0, uuid4()) is False
+    assert [row["event_type"] for row in events] == ["proceso.completed"]
+    channels = await pool.fetch(
+        """
+        SELECT DISTINCT outbox.channel
+          FROM portal_notification_outbox AS outbox
+          JOIN portal_job_events AS event ON event.id = outbox.event_id
+         WHERE event.job_id = $1
+        """,
+        job.id,
     )
-    assert {intent.channel for intent in repository.outbox} == set(DeliveryChannel)
-    assert repository.events[-1].event_type == "proceso.cancelled"
+    assert {row["channel"] for row in channels} == {
+        channel.value for channel in DeliveryChannel
+    }

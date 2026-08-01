@@ -33,9 +33,12 @@ mode, an `INP001` ignore) disappears once the name is unique.
 pytest is configured once in the root `pyproject.toml`: `asyncio_mode = "auto"`, so
 async tests are plain `async def test_*` with no decorator.
 
-The real PostgreSQL contract tests in `tests/portal/test_postgres_queue.py`
-**skip silently** unless `PORTAL_TEST_DSN` is set. A green `mise run test` does not mean
-the queue contract ran.
+**The whole of `tests/portal` skips silently unless `PORTAL_TEST_DSN` is set.** There is
+no in-memory repository to fall back on, so a green `mise run test` without it means the
+portal was not tested at all -- 33 tests, not one file. `mise run portal:db:start` then
+`PORTAL_TEST_DSN=postgresql://postgres@127.0.0.1:5432/postgres mise run test` runs them;
+CI always does. Each test gets a freshly migrated database of its own and drops it
+afterwards, so they are safe to run in parallel and never share state.
 
 ## Architecture
 
