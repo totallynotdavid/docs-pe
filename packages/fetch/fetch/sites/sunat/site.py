@@ -45,7 +45,9 @@ async def _lookup_tipo_documento(
     record = parse_tipo_documento(page)
     if record is None:
         return ()
-    return ((record.tipo_doc, record.num_doc, record.nombre),)
+    return (
+        (record.tipo_doc, record.num_doc, record.nombre, record.tipo_contribuyente),
+    )
 
 
 async def _lookup_representantes(
@@ -105,10 +107,12 @@ _TUNING = SiteTuning(session_budget=50)
 
 SUNAT = Site(
     name="sunat",
-    columns=("tipo_doc", "num_doc", "nombre"),
+    columns=("tipo_doc", "num_doc", "nombre", "tipo_contribuyente"),
     accepts=_accepts_natural_ruc,
-    # A persona natural always has an identity document, so an empty result is
-    # drift, never a valid blank.
+    # Every RUC-10 SUNAT will answer for yields at least a name, so an empty
+    # result is drift, never a valid blank. A sucesion indivisa has no identity
+    # document but still has a name, and the parser reports it with tipo_doc and
+    # num_doc blank rather than nothing at all.
     allows_empty=False,
     tuning=_TUNING,
     endpoints=(_HOME,),

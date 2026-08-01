@@ -82,8 +82,6 @@ def _cfg(
     tmp_path: Path,
     input_csv: Path,
     sites: tuple[Site, ...],
-    *,
-    workers: int | None = None,
 ) -> RunConfig:
     return RunConfig(
         input_csv=input_csv,
@@ -92,7 +90,6 @@ def _cfg(
         dedupe=True,
         debug=False,
         session_budget=None,
-        workers=workers,
         ban_cooldown_s=None,
         wait_min_s=0.0,
         wait_max_s=0.0,

@@ -27,10 +27,10 @@ class RunConfig:
     sites: tuple[Site, ...]
     dedupe: bool
     debug: bool
-    # The next three: None means "use each site's/provider's own default"; a
-    # value overrides it.
+    # Both: None means "use each site's/provider's own default"; a value
+    # overrides it. Lane count is deliberately absent -- it is per provider, and
+    # lives in PROXY_PROVIDER (e.g. "geonode:30,dataimpulse:18").
     session_budget: int | None
-    workers: int | None
     ban_cooldown_s: float | None
     wait_min_s: float
     wait_max_s: float
@@ -48,7 +48,6 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
     parser.add_argument("--dedupe", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--debug", action="store_true", default=False)
     parser.add_argument("--session-budget", type=int, default=None)
-    parser.add_argument("--workers", type=int, default=None)
     parser.add_argument("--ban-cooldown-s", type=float, default=None)
     parser.add_argument("--wait-min-s", type=float, default=0.0)
     parser.add_argument("--wait-max-s", type=float, default=0.0)
@@ -73,8 +72,6 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
         errors.append(f"--sites {exc}")
     if ns.session_budget is not None and ns.session_budget < 1:
         errors.append("--session-budget must be >= 1")
-    if ns.workers is not None and ns.workers < 1:
-        errors.append("--workers must be >= 1")
     if ns.ban_cooldown_s is not None and ns.ban_cooldown_s < 0:
         errors.append("--ban-cooldown-s must be >= 0")
     if ns.wait_min_s < 0:
@@ -91,7 +88,6 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
         dedupe=ns.dedupe,
         debug=ns.debug,
         session_budget=ns.session_budget,
-        workers=ns.workers,
         ban_cooldown_s=ns.ban_cooldown_s,
         wait_min_s=ns.wait_min_s,
         wait_max_s=ns.wait_max_s,

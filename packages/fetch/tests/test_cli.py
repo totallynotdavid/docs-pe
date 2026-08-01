@@ -62,7 +62,6 @@ def test_an_unknown_site_is_rejected(
     ("flag", "value", "message"),
     [
         ("--session-budget", "0", "--session-budget must be >= 1"),
-        ("--workers", "0", "--workers must be >= 1"),
         ("--ban-cooldown-s", "-1", "--ban-cooldown-s must be >= 0"),
     ],
 )

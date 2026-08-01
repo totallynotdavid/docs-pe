@@ -48,7 +48,7 @@ async def test_returns_the_document_record() -> None:
 
     async with _client(handler) as client:
         rows = await SUNAT.lookup(client, Doc("20100000001"))
-    assert rows == (("Doc", "20100000001", "ACME SAC"),)
+    assert rows == (("Doc", "20100000001", "ACME SAC", ""),)
 
 
 async def test_returns_empty_for_a_result_page_without_a_document_row() -> None:

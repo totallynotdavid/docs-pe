@@ -74,7 +74,7 @@ async def run(cfg: RunConfig, *, run_id: str) -> None:
                     kv(
                         run_id=run_id,
                         provider=provider.name,
-                        workers=_workers(cfg, provider),
+                        workers=provider.tuning.workers,
                         ban_cooldown_s=_cooldown(cfg, provider),
                     ),
                 )
@@ -138,7 +138,7 @@ async def _run_workers(
                     wait_max_s=cfg.wait_max_s,
                     ban_cooldown_s=_cooldown(cfg, provider),
                 )
-                for _ in range(_workers(cfg, provider)):
+                for _ in range(provider.tuning.workers):
                     next_slot[provider.name] += 1
                     lane_id += 1
                     group.create_task(
@@ -161,12 +161,6 @@ def _budget(cfg: RunConfig, site: Site) -> int:
     if cfg.session_budget is not None:
         return cfg.session_budget
     return site.tuning.session_budget
-
-
-def _workers(cfg: RunConfig, provider: ProxyProvider) -> int:
-    if cfg.workers is not None:
-        return cfg.workers
-    return provider.tuning.workers
 
 
 def _cooldown(cfg: RunConfig, provider: ProxyProvider) -> float:
