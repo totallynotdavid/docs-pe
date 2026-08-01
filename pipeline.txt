@@ -9,17 +9,53 @@ Toolchain on every box goes through mise, not bare uv/fetch:
 
 Sites (--sites flag, pick one):
   osiptel      DNI or RUC -> phone line counts. accepts any doc. use for raw DNI/RUC files.
-  sunat        RUC-10 (persona natural) -> tipo_doc, num_doc, nombre.
+  sunat        RUC-10 (persona natural) -> tipo_doc, num_doc, nombre, tipo_contribuyente.
+               A SUCESION INDIVISA (the estate of someone who died intestate; SUNAT registers it
+               as a taxpayer and taxes it like a natural person) has NO Tipo de Documento block,
+               so those rows carry an empty tipo_doc/num_doc and take nombre from the RUC row
+               instead. They are ~0.1% of a RUC-10 batch and cluster in the LOW RUC ranges, so a
+               sorted shard "a" gets nearly all of them (surco: 183 on shard a vs 5 on shard b).
+               They yield a name but no DNI, so they drop out of any osiptel follow-up.
+               A missing document block for any OTHER contributor type is still drift and errors.
   sunat_reps   RUC-20 (empresa) -> legal reps (razon_social, doc_type, num_doc, nombre, cargo, fecha_desde).
 
-Env file: --env-file .env.geonode-only (proven, use by default for both osiptel and sunat).
-  GEONODE_COUNTRY=PE is mandatory for osiptel (foreign exits get WAF-blocked, status=500).
+Env file: --env-file .env (GEONODE_COUNTRY=PE is mandatory for osiptel — foreign exits get
+  WAF-blocked, status=500). The boxes also carry .env.both / .env.geonode / .env.geonode-only /
+  .env.dataimpulse, which are near-duplicate secret files differing only in PROXY_PROVIDER.
+  They predate per-provider lane counts and should be collapsed back into one .env per box.
+
+CONCURRENCY lives entirely in PROXY_PROVIDER, as "name[:lanes]" per entry:
+    PROXY_PROVIDER=geonode:30,dataimpulse:18
+  Omit ":lanes" to take that provider's own tuned default (geonode 15, dataimpulse 18).
+  Lanes are spawned PER PROVIDER, so the line above is 48 lanes on that box, not 30.
+  There is no --workers flag: it applied ONE number to every provider, which is what forced
+  DataImpulse to 20 lanes during barranca_dni. Adding a provider is one more comma entry.
+
+  RUN BOTH PROVIDERS. DataImpulse is not a fallback — it is usually the faster half. On surco
+  sunat it went from 30.6 docs/s (geonode alone, 25 lanes/box) to 74 docs/s with both at 20+20,
+  and on zeus it served MORE rows than geonode (43,495 vs 39,084). Its July export shows
+  4.9M osiptel requests in 8 days, ~5.75x geonode's lifetime total on that host.
+  Provider is attributable per row: proxy_id is "proxy-1-port-NNNNN" for geonode,
+  "dataimpulse-slot-N" for dataimpulse, so split any DB query with
+    case when proxy_id like 'dataimpulse%' then 'dataimpulse' else 'geonode' end
+
+  An earlier version of this file claimed DataImpulse "collapses at 20 lanes" because every lane
+  shares gw.dataimpulse.com:823. That was WRONG — the single shared port is real, but it is not a
+  concurrency limit. A 600-doc osiptel probe at 20 lanes returned 600/600 with attempt_count=0 on
+  every row. The barranca_dni failures behind that claim were the account being out of traffic
+  (its usage export shows TRAFFIC_EXHAUSTED), not lane contention. Check the DataImpulse dashboard
+  for traffic before blaming concurrency.
 
 1. VALIDATE INPUT
    wc -l file.csv
-   grep -cvE '^[0-9]+$' file.csv      # non-digit rows, should be 0
-   sort file.csv | uniq -d | wc -l    # dupes, should be 0
+   awk '{print length($0)}' file.csv | sort -u   # lengths, should be one value (8 DNI / 11 RUC)
+   sort file.csv | uniq -d | wc -l               # dupes, should be 0
    Check digit length matches doc type (8 = DNI, 11 starting "10"/"20" = RUC).
+
+   DO NOT validate with grep -cvE '^[0-9]+$' — it returns 0 on a CRLF file because $ matches
+   before the \r. surco.csv had 235,235 CRs and grep called it clean; awk length caught it
+   (12 not 11). Normalize with:  awk '{sub(/\r$/,""); print}' in.csv > out.csv
+   (that also fixes a missing trailing newline, which split/wc silently mishandle).
 
 2. SPLIT for 2 servers (roughly even halves)
    split -d -l <half_count> file.csv part_
@@ -32,9 +68,29 @@ Env file: --env-file .env.geonode-only (proven, use by default for both osiptel 
    scp <job>_b.csv dubu@poseidon:~/git/phone-numbers-by-carrier/
 
 4. LAUNCH (detached, survives ssh drop — setsid + < /dev/null is what detaches it)
-   ssh dubu@master 'cd ~/git/phone-numbers-by-carrier && setsid ~/.local/bin/mise exec -- uv run fetch --input <job>_a.csv --output <job>_a_out.csv --sites <site> --env-file .env.geonode-only > <job>_a_out.log 2>&1 < /dev/null & disown'
+   ssh dubu@master 'cd ~/git/phone-numbers-by-carrier && setsid ~/.local/bin/mise exec -- uv run fetch --input <job>_a.csv --output <job>_a_out.csv --sites <site> --env-file .env > <job>_a_out.log 2>&1 < /dev/null & disown'
    ssh dubu@poseidon '... same with _b ...'
    ssh returns exit 255 or hangs ~120s on the backgrounding command itself — harmless, ignore it.
+
+   Proven lane counts (set them in PROXY_PROVIDER, see the top of this file):
+     sunat    geonode:20,dataimpulse:20 on both boxes -> 74 docs/s, ~0.1% failures (all the
+              known SUCESION INDIVISA class). geonode:25 alone on both boxes -> 30.6 docs/s.
+     osiptel  geonode:30 on both boxes (60 lanes) -> 27,220 docs/hr with zero failures.
+   geonode shows NO per-lane degradation from 15 -> 60 lanes (7.9s/lookup at 60 vs 9.5s at 15),
+   and its sticky ports allow 901 slots, so ports are never the limit. None of these are
+   ceilings — raise them while watching the DB error_codes, not the log.
+
+   DO NOT size bandwidth from the proxy dashboards' bytes-per-request. They count one "request"
+   per proxied SESSION, not per lookup, so any site with session_budget > 1 looks enormously
+   more expensive than it is. Measured directly against the origin instead (2026-08-01):
+     osiptel  ~16 KB/lookup  ~6s   — session_budget=1  (new proxy session EVERY lookup, so
+                                     its sessions and lookups are 1:1 and the dashboard agrees)
+     sunat    ~26 KB/lookup        — session_budget=50; home GET 22.8 KB once per session,
+                                     consulta POST ~26 KB each
+   The dashboards reported sunat at ~937-982 KB/"request" (geonode AND dataimpulse both), which
+   is ~36 lookups' worth of bytes per counted session — not the per-doc cost. The real numbers
+   are small: a 235k-doc sunat job is ~6 GB total, not ~220 GB. Bandwidth is NOT the constraint
+   on these jobs; latency and lane count are.
 
 5. CHECK ALIVE
    ssh dubu@<host> 'pgrep -af "bin/fetch --input <job>_a" | grep -v pgrep'
@@ -49,10 +105,30 @@ Env file: --env-file .env.geonode-only (proven, use by default for both osiptel 
    print(c.execute(\"select status, count(*) from outcomes group by status\").fetchall())"'
    status is ok / failed / not_found. A "failed" row is only permanent once attempt_count >= 12 (MAX_TOTAL_ATTEMPTS) — otherwise it's still retryable.
 
+   The output CSVs do not exist until the run ENDS. export_all runs in run.py's finally block,
+   writing every file from the state DB in one shot. A mid-run box with no *.osiptel.csv is
+   normal and is NOT evidence it is broken — check the DB, and only the DB.
+
    If there are failures, read them before retrying blind:
    ... same python snippet, query: select doc, error_code, attempt_count, error_detail from outcomes where status="failed"
    Transient (ProxyError 568/569, ConnectTimeout, ReadTimeout, upstream_not_ready) -> just relaunch, it'll retry them.
    Deterministic (same error_code on the same doc every attempt, provider_schema_error) -> stop, investigate the site code, don't just retry.
+
+   A deterministic error can also PARK A HEALTHY PROVIDER, which looks like a provider outage.
+   fetch.py's except branch calls breaker.record_failure() unconditionally ("Every fault is
+   environmental"), so 10 consecutive deterministic failures trip that provider's circuit breaker.
+   Relaunches retry known-bad docs FIRST, so they arrive as exactly that consecutive burst. On the
+   surco relaunch this parked all 20 of poseidon's DataImpulse lanes for ~5 min (circuit_open x14,
+   cooldown doubling to 300s) while zeus, which had no accumulated bad docs, ran at full speed.
+   It self-heals on the first good doc. If one provider's row count goes flat while its sibling
+   keeps moving, check for this before suspecting the account.
+
+   NEVER triage from the log — only from the DB. A relaunch retries the retryable failed docs
+   FIRST, so the log opens with every lane emitting lookup_failed on the same handful of
+   known-bad docs at attempt=2/3/4, and the circuit breaker escalates (circuit_open level 4-5,
+   40-80s cooldowns). It reads exactly like the whole run collapsing. It isn't: log lines count
+   ATTEMPTS, so 30 bad docs x 4 attempts x 25 lanes is a wall of text from 0.1% of the input.
+   Check `select status, count(*)` before reacting. (Cost me two healthy runs killed on barranca.)
 
 7. RELAUNCH (only needed if retryable failures remain; resumes from the DB automatically)
    Same command as step 4, but append to the log instead of truncating:
@@ -75,6 +151,10 @@ Env file: --env-file .env.geonode-only (proven, use by default for both osiptel 
     diff <(head -1 <job>_a_out.<site>.csv) <(head -1 <job>_b_out.<site>.csv)     # headers must match
     comm -12 <(tail -n+2 a.csv|cut -d, -f1|sort -u) <(tail -n+2 b.csv|cut -d, -f1|sort -u) | wc -l   # doc overlap, must be 0
 
+    Exported CSVs are CRLF (python csv.writer default). The \r rides on the LAST field, so any
+    check that compares a last field — diff of two derived files, a join key, awk on $NF —
+    fails on data that is actually identical. Pipe through tr -d '\r' before comparing.
+
 11. MERGE (header once, both bodies)
     { head -1 a.csv; tail -n+2 a.csv; tail -n+2 b.csv; } > <job>_out.<site>.csv
     Do this per file type separately (csv, counts, errors, not_found).
@@ -82,6 +162,16 @@ Env file: --env-file .env.geonode-only (proven, use by default for both osiptel 
     Sanity check: unique docs in the merged file + terminal_failed count should equal total input rows.
     Note: for osiptel, unique docs in the main csv can be LESS than total succeeded — a doc with 0 phone
     lines is still a valid success but contributes 0 rows (allows_empty=True). Not a bug.
+    So the identity to reconcile against is:
+        unique docs in main csv + docs with zero lines + terminal_failed = total input
+    barranca_dni worked out as 41,458 + 8,997 + 0 = 50,455. The zero-line share was 17.8%,
+    which is the normal shape for DNIs, not a signal that something dropped.
+
+    osiptel also emits .counts.csv, a pure projection over the SAME fetch (no extra request),
+    so it must agree with the main csv exactly — cheap, high-value integrity check:
+        sum of the lines column == total row count of the main csv
+        per doc: sum(lines) == total_lines == that doc's row count in the main csv
+        the doc SET of counts.csv == the doc set of the main csv
 
 12. FILE IT
     mkdir -p results/<job>
