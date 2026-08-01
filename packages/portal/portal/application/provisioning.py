@@ -4,29 +4,37 @@ import re
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from uuid import UUID
 
-from portal.credentials.providers import ProxyField, provider_for
-from portal.credentials.secrets import SecretProtector
+from fetch.domain.errors import ProxyConfigurationError
+from fetch.proxy.registry import PROVIDERS, preflight, spec_for
+
+from portal.credentials.secrets import AesGcmSecretProtector
 from portal.domain.errors import (
     CredentialConfigurationError,
     NotFound,
     PermissionDenied,
     ProvisioningError,
+    Reason,
 )
 from portal.domain.models import (
     CredentialState,
     CredentialVersion,
     PortalUser,
-    ProxyProvider,
     Team,
     TeamRole,
 )
-from portal.web.security import hash_password
+from portal.security import hash_password
+
+
+if TYPE_CHECKING:
+    from fetch.proxy.base import Field
 
 
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_MIN_PASSWORD = 12
 
 
 @dataclass(frozen=True)
@@ -46,7 +54,7 @@ class TeamReadiness:
 class ProvisioningService:
     """Installation, team setup, and proxy lifecycle application boundary."""
 
-    def __init__(self, repository, secret_protector: SecretProtector) -> None:
+    def __init__(self, repository, secret_protector: AesGcmSecretProtector) -> None:
         self._repository = repository
         self._secret_protector = secret_protector
 
@@ -80,9 +88,8 @@ class ProvisioningService:
         self, actor_id: UUID, *, email: str, password: str
     ) -> PortalUser:
         await self._require_site_admin(actor_id)
-        if len(password) < 12:
-            msg = "la contraseña debe tener al menos 12 caracteres"
-            raise ProvisioningError(msg)
+        if len(password) < _MIN_PASSWORD:
+            raise ProvisioningError(Reason.PASSWORD_TOO_SHORT, minimum=_MIN_PASSWORD)
         return await self._repository.create_user(
             self._email(email), hash_password(password)
         )
@@ -100,8 +107,7 @@ class ProvisioningService:
     ) -> None:
         await self._require_leader(actor_id, team_id)
         if role not in {TeamRole.TEAM_LEADER, TeamRole.TEAM_MEMBER}:
-            msg = "el rol seleccionado no es válido"
-            raise ProvisioningError(msg)
+            raise ProvisioningError(Reason.ROLE_INVALID)
         member = await self._user_by_email(email)
         await self._repository.add_member(team_id, member.id, role)
 
@@ -139,89 +145,95 @@ class ProvisioningService:
         *,
         team_id: UUID,
         label: str,
-        provider: ProxyProvider | str,
+        provider: str,
         values: Mapping[str, str],
     ) -> CredentialVersion:
         await self._require_leader(actor_id, team_id)
         clean_label = self._label(label)
-        adapter = provider_for(provider)
-        normalized = adapter.normalize(values)
+        spec = self._spec(provider)
+        try:
+            normalized = spec.normalize(values)
+        except ProxyConfigurationError as error:
+            raise CredentialConfigurationError(Reason.PROXY_INVALID) from error
         protected = await self._secret_protector.protect(normalized)
         pending = await self._repository.start_credential_validation(
             team_id,
             clean_label,
-            adapter.provider.value,
+            spec.name,
             protected.ciphertext,
             protected.key_id,
             actor_id,
         )
         try:
-            await adapter.preflight(normalized)
-        except CredentialConfigurationError:
+            await preflight(spec.name, normalized)
+        except ProxyConfigurationError as error:
+            # The detail is stored and shown; it never carries a URL, an account
+            # name, or the provider's own response body.
             await self._repository.finish_credential_validation(
                 pending.id,
                 state=CredentialState.FAILED,
-                detail="no se pudo validar la conexión con el proveedor",
+                detail=Reason.PROXY_PREFLIGHT_FAILED.value,
                 actor_id=actor_id,
             )
-            raise
+            raise CredentialConfigurationError(Reason.PROXY_PREFLIGHT_FAILED) from error
         return await self._repository.finish_credential_validation(
             pending.id,
             state=CredentialState.ACTIVE,
-            detail="validación completada",
+            detail="",
             actor_id=actor_id,
         )
 
     @staticmethod
-    def provider_fields(provider: ProxyProvider | str) -> tuple[ProxyField, ...]:
-        return provider_for(provider).fields
+    def provider_fields(provider: str) -> tuple[Field, ...]:
+        return ProvisioningService._spec(provider).fields
+
+    @staticmethod
+    def _spec(provider: str):
+        if provider not in PROVIDERS:
+            raise CredentialConfigurationError(Reason.PROXY_UNAVAILABLE)
+        return spec_for(provider)
 
     async def _require_site_admin(self, actor_id: UUID) -> PortalUser:
         user = await self._repository.user_by_id(actor_id)
         if user is None or not user.is_site_admin:
-            raise PermissionDenied("solo la administración del sitio puede continuar")
+            raise PermissionDenied(Reason.SITE_ADMIN_REQUIRED)
         return user
 
     async def _require_leader(self, actor_id: UUID, team_id: UUID) -> None:
         role = await self._repository.role_for(actor_id, team_id)
         if role is not TeamRole.TEAM_LEADER:
-            raise PermissionDenied("solo un líder del equipo puede continuar")
+            raise PermissionDenied(Reason.LEADER_REQUIRED)
 
     async def _user_by_email(self, email: str) -> PortalUser:
         found = await self._repository.user_by_email(self._email(email))
         if found is None:
-            msg = "no se encontró una persona con ese correo"
-            raise NotFound(msg)
+            raise NotFound(Reason.USER_NOT_FOUND)
         return found[0]
 
     @staticmethod
     def _name(value: str) -> str:
         name = value.strip()
         if not 1 <= len(name) <= 120:
-            msg = "el nombre del equipo debe tener entre 1 y 120 caracteres"
-            raise ProvisioningError(msg)
+            raise ProvisioningError(Reason.TEAM_NAME_LENGTH)
         return name
 
     @staticmethod
     def _slug(value: str) -> str:
         slug = value.strip().lower()
         if not _SLUG.fullmatch(slug):
-            msg = "el identificador debe usar minúsculas, números y guiones"
-            raise ProvisioningError(msg)
+            raise ProvisioningError(Reason.SLUG_INVALID)
         return slug
 
     @staticmethod
     def _email(value: str) -> str:
         email = value.lower().strip()
         if not _EMAIL.fullmatch(email):
-            msg = "el correo no tiene un formato válido"
-            raise ProvisioningError(msg)
+            raise ProvisioningError(Reason.EMAIL_INVALID)
         return email
 
     @staticmethod
     def _label(value: str) -> str:
         label = value.strip()
         if not 1 <= len(label) <= 120:
-            msg = "la etiqueta debe tener entre 1 y 120 caracteres"
-            raise CredentialConfigurationError(msg)
+            raise CredentialConfigurationError(Reason.LABEL_LENGTH)
         return label

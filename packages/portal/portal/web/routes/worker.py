@@ -10,8 +10,8 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from portal.credentials.secrets import SecretRevealer
-from portal.repository.protocols import WorkerQueue
+from portal.credentials.secrets import AesGcmSecretProtector
+from portal.repository.postgres import PostgresPortalRepository
 from portal.storage.port import ObjectReference
 from portal.web.deps import Storage
 
@@ -32,24 +32,19 @@ def _worker_identity(request: Request) -> str:
     return worker_id
 
 
-def _queue(request: Request) -> WorkerQueue:
-    """The worker API exists only where the queue and its credentials are real."""
-    queue: WorkerQueue | None = request.app.state.worker_queue
-    if queue is None:
-        raise HTTPException(status_code=503, detail="worker no está configurado")
+def _queue(request: Request) -> PostgresPortalRepository:
+    queue: PostgresPortalRepository = request.app.state.worker_queue
     return queue
 
 
-def _revealer(request: Request) -> SecretRevealer:
-    revealer: SecretRevealer | None = request.app.state.secret_revealer
-    if revealer is None:
-        raise HTTPException(status_code=503, detail="worker no está configurado")
+def _revealer(request: Request) -> AesGcmSecretProtector:
+    revealer: AesGcmSecretProtector = request.app.state.secret_protector
     return revealer
 
 
 WorkerId = Annotated[str, Depends(_worker_identity)]
-Queue = Annotated[WorkerQueue, Depends(_queue)]
-Revealer = Annotated[SecretRevealer, Depends(_revealer)]
+Queue = Annotated[PostgresPortalRepository, Depends(_queue)]
+Revealer = Annotated[AesGcmSecretProtector, Depends(_revealer)]
 
 
 @router.post("/claim")

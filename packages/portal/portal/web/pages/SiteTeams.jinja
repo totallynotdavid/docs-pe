@@ -1,56 +1,54 @@
 {#def user, csrf_token, users, teams, error #}
-<Layout titulo="Administración · Worker"
-        :usuario="user"
-        :csrf_token="csrf_token">
-  <BarraSuperior titulo="Administración · Equipos">
-    <Boton variante="secundario" href="/administracion/usuarios">
+<Layout title="Administración · Worker" :user="user" :csrf_token="csrf_token">
+  <UiTopBar title="Administración · Equipos">
+    <UiButton variant="secundario" href="/administracion/usuarios">
       Personas
-    </Boton>
-  </BarraSuperior>
-  <Contenido>
+    </UiButton>
+  </UiTopBar>
+  <UiContent>
     <h1 class="solo-lector">Administración de equipos</h1>
-    <Panel>
-      <PanelCabecera titulo="Crear equipo"
-                     descripcion="Asigna una persona responsable desde el inicio." />
-      <PanelCuerpo>
-        {% if error %}<Mensaje>{{ error }}</Mensaje>{% endif %}
-        <Formulario accion="/administracion/equipos" :csrf_token="csrf_token">
-          <Campo etiqueta="Nombre">
+    <UiPanel>
+      <UiPanelHeader title="Crear equipo"
+                     description="Asigna una persona responsable desde el inicio." />
+      <UiPanelBody>
+        {% if error %}<UiMessage>{{ error }}</UiMessage>{% endif %}
+        <UiForm action="/administracion/equipos" :csrf_token="csrf_token">
+          <UiField label="Nombre">
             <input name="name" maxlength="120" required placeholder="Ej. Equipo Lima">
-          </Campo>
-          <Campo etiqueta="Dirección del equipo"
-                 ayuda="Solo minúsculas, números y guiones.">
+          </UiField>
+          <UiField label="Dirección del equipo"
+                   help_text="Solo minúsculas, números y guiones.">
             <input name="slug"
                    pattern="[a-z0-9][a-z0-9-]{1,62}"
                    required
                    placeholder="equipo-lima">
-          </Campo>
-          <Campo etiqueta="Persona responsable">
+          </UiField>
+          <UiField label="Persona responsable">
             <select name="leader_email" required>
               <option value="" selected disabled>Selecciona una persona</option>
               {% for person in users %}<option value="{{ person.email }}">{{ person.email }}</option>{% endfor %}
             </select>
-          </Campo>
+          </UiField>
           <button type="submit">Crear equipo</button>
-        </Formulario>
-      </PanelCuerpo>
-    </Panel>
-    <Panel>
-      <PanelCabecera titulo="Equipos existentes" />
-      <Lista>
+        </UiForm>
+      </UiPanelBody>
+    </UiPanel>
+    <UiPanel>
+      <UiPanelHeader title="Equipos existentes" />
+      <UiList>
         {% for team in teams %}
-          <ListaItem>
+          <UiListItem>
             <span>{{ team.name }}</span>
-            <MetaDato>
+            <UiMeta>
               {{ team.slug }}
-            </MetaDato>
-          </ListaItem>
+            </UiMeta>
+          </UiListItem>
         {% else %}
-          <ListaItem class="estado-vacio">
+          <UiListItem class="estado-vacio">
             Aún no hay equipos.
-          </ListaItem>
+          </UiListItem>
         {% endfor %}
-      </Lista>
-    </Panel>
-  </Contenido>
+      </UiList>
+    </UiPanel>
+  </UiContent>
 </Layout>

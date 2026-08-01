@@ -1,24 +1,24 @@
 {#def job #}
-<Estado :valor="job.state">
-  {{ job.state|estado }}
-</Estado>
-<p>{{ resumen_proceso(job) }}</p>
-<Metricas>
-  <Metrica etiqueta="Registros">
+<UiStatus :value="job.state">
+  {{ job.state|job_state }}
+</UiStatus>
+<p>{{ job_summary(job) }}</p>
+<UiMetrics>
+  <UiMetric label="Registros">
     {{ job.items|length }}
-  </Metrica>
-  <Metrica etiqueta="Excluidos">
+  </UiMetric>
+  <UiMetric label="Excluidos">
     {{ job.exclusions|length }}
-  </Metrica>
-  <Metrica etiqueta="Publicados">
+  </UiMetric>
+  <UiMetric label="Publicados">
     {{ job.items|selectattr('state.value', 'equalto', 'published') |list|length }}
-  </Metrica>
-</Metricas>
+  </UiMetric>
+</UiMetrics>
 {% if job.exclusions %}
   <h2>Excluidos</h2>
-  <ListaSimple>
+  <UiPlainList>
     {% for exclusion in job.exclusions %}
       <li>Línea {{ exclusion.ordinal }}: {{ exclusion.value }} ({{ exclusion.reason }})</li>
     {% endfor %}
-  </ListaSimple>
+  </UiPlainList>
 {% endif %}

@@ -1,13 +1,13 @@
 {#def user, csrf_token, team, readiness #}
-<Layout :titulo="'Configuración · ' ~ team.name ~ ' · Worker'"
-        :usuario="user"
+<Layout :title="'Configuración · ' ~ team.name ~ ' · Worker'"
+        :user="user"
         :csrf_token="csrf_token">
-  <BarraSuperior titulo="Configuración del equipo" />
-  <Contenido>
+  <UiTopBar title="Configuración del equipo" />
+  <UiContent>
     <h1 class="solo-lector">Configuración del equipo</h1>
-    <Panel>
-      <Lista>
-        <ListaItem>
+    <UiPanel>
+      <UiList>
+        <UiListItem>
           <div>
             <a href="/equipos/{{ team.id }}/ajustes/proxy">Conexión proxy</a>
             <p class="meta">
@@ -18,22 +18,21 @@
               {% endif %}
             </p>
           </div>
-          <Boton variante="secundario"
-                 :href="'/equipos/' ~ team.id ~ '/ajustes/proxy'">
+          <UiButton variant="secundario" :href="'/equipos/' ~ team.id ~ '/ajustes/proxy'">
             Gestionar
-          </Boton>
-        </ListaItem>
-        <ListaItem>
+          </UiButton>
+        </UiListItem>
+        <UiListItem>
           <div>
             <a href="/equipos/{{ team.id }}/ajustes/miembros">Personas del equipo</a>
             <p class="meta">Añade o actualiza los permisos de acceso.</p>
           </div>
-          <Boton variante="secundario"
-                 :href="'/equipos/' ~ team.id ~ '/ajustes/miembros'">
+          <UiButton variant="secundario"
+                    :href="'/equipos/' ~ team.id ~ '/ajustes/miembros'">
             Gestionar
-          </Boton>
-        </ListaItem>
-      </Lista>
-    </Panel>
-  </Contenido>
+          </UiButton>
+        </UiListItem>
+      </UiList>
+    </UiPanel>
+  </UiContent>
 </Layout>

@@ -1,41 +1,41 @@
 {#def user, csrf_token, team, jobs, page, total #}
-<Layout :titulo="team.name ~ ' · Worker'"
-        :usuario="user"
+<Layout :title="team.name ~ ' · Worker'"
+        :user="user"
         :csrf_token="csrf_token">
-  <BarraSuperior :titulo="team.name">
-    <Boton variante="secundario" :href="'/equipos/' ~ team.id ~ '/buscar'">
+  <UiTopBar :title="team.name">
+    <UiButton variant="secundario" :href="'/equipos/' ~ team.id ~ '/buscar'">
       Buscar
-    </Boton>
+    </UiButton>
     {% if team.role.value == 'team_leader' %}
-      <Boton :href="'/equipos/' ~ team.id ~ '/procesos/nuevo'">
+      <UiButton :href="'/equipos/' ~ team.id ~ '/procesos/nuevo'">
         Nueva consulta
-      </Boton>
+      </UiButton>
     {% endif %}
-  </BarraSuperior>
-  <Contenido>
+  </UiTopBar>
+  <UiContent>
     <h1 class="solo-lector">{{ team.name }}</h1>
     {% if team.role.value == 'team_leader' %}
-      <Panel aria-labelledby="titulo-tareas">
-        <PanelCabecera titulo="Tareas recientes"
-                       descripcion="El estado se actualiza mientras se procesan."
-                       titulo_id="titulo-tareas">
-          <Boton variante="secundario" :href="'/equipos/' ~ team.id ~ '/ajustes'">
+      <UiPanel aria-labelledby="titulo-tareas">
+        <UiPanelHeader title="Tareas recientes"
+                       description="El estado se actualiza mientras se procesan."
+                       title_id="titulo-tareas">
+          <UiButton variant="secundario" :href="'/equipos/' ~ team.id ~ '/ajustes'">
             Configuración
-          </Boton>
-        </PanelCabecera>
+          </UiButton>
+        </UiPanelHeader>
         <div id="lista-procesos"
              hx-get="/equipos/{{ team.id }}?page=1"
              hx-trigger="load"
              hx-swap="innerHTML">
           <JobsFragment :team="team" :jobs="jobs" :page="page" :total="total" />
         </div>
-      </Panel>
+      </UiPanel>
     {% else %}
-      <Panel>
-        <EstadoVacio>
+      <UiPanel>
+        <UiEmptyState>
           Puedes buscar documentos en este equipo.
-        </EstadoVacio>
-      </Panel>
+        </UiEmptyState>
+      </UiPanel>
     {% endif %}
-  </Contenido>
+  </UiContent>
 </Layout>

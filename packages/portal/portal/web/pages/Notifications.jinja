@@ -1,17 +1,17 @@
 {#def user, csrf_token, notifications #}
-<Layout titulo="Actividad · Worker" :usuario="user" :csrf_token="csrf_token">
-  <BarraSuperior titulo="Actividad" />
-  <Contenido>
+<Layout title="Actividad · Worker" :user="user" :csrf_token="csrf_token">
+  <UiTopBar title="Actividad" />
+  <UiContent>
     <h1 class="solo-lector">Actividad</h1>
-    <Panel>
-      <PanelCabecera titulo="Actualizaciones"
-                     descripcion="Se muestran las novedades más recientes." />
+    <UiPanel>
+      <UiPanelHeader title="Actualizaciones"
+                     description="Se muestran las novedades más recientes." />
       <div id="lista-notificaciones"
            hx-get="/notificaciones"
            hx-trigger="load"
            hx-swap="innerHTML">
         <NotificationsFragment :notifications="notifications" />
       </div>
-    </Panel>
-  </Contenido>
+    </UiPanel>
+  </UiContent>
 </Layout>

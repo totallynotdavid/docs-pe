@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 from urllib.parse import urlparse
 
@@ -14,6 +15,7 @@ class PortalSettings:
     public_origin: str = "http://testserver"
     cookie_secure: bool = False
     tls_terminated_upstream: bool = False
+    object_root: Path = Path("var/objects")
 
     @classmethod
     def from_environment(cls) -> PortalSettings:
@@ -30,16 +32,19 @@ class PortalSettings:
             or ("" if environment == "production" else "http://testserver"),
             cookie_secure=secure == "true" if secure else environment == "production",
             tls_terminated_upstream=tls_terminated_upstream,
+            object_root=Path(os.environ.get("PORTAL_OBJECT_ROOT", "var/objects")),
         )
 
     def validate(self) -> None:
+        # The portal is PostgreSQL-only in every environment: there is one
+        # repository, so a missing DSN cannot degrade into something else.
+        if not self.database_dsn:
+            msg = "PORTAL_DATABASE_DSN is required"
+            raise RuntimeError(msg)
         if not self.is_production:
             return
-        if not self.database_dsn:
-            msg = "PORTAL_DATABASE_DSN es obligatorio en producción"
-            raise RuntimeError(msg)
         if not self.cookie_secure or urlparse(self.public_origin).scheme != "https":
-            msg = "producción requiere HTTPS y cookies Secure"
+            msg = "production requires HTTPS and Secure cookies"
             raise RuntimeError(msg)
 
     @property

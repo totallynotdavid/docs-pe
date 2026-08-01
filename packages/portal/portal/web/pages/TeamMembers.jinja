@@ -1,55 +1,55 @@
 {#def user, csrf_token, team, members, candidates, error #}
-<Layout :titulo="'Personas · ' ~ team.name ~ ' · Worker'"
-        :usuario="user"
+<Layout :title="'Personas · ' ~ team.name ~ ' · Worker'"
+        :user="user"
         :csrf_token="csrf_token">
-  <BarraSuperior titulo="Personas del equipo" />
-  <Contenido>
+  <UiTopBar title="Personas del equipo" />
+  <UiContent>
     <h1 class="solo-lector">Personas de {{ team.name }}</h1>
-    <Panel>
-      <PanelCabecera titulo="Añadir persona"
-                     descripcion="Las personas deben tener una cuenta creada en la plataforma." />
-      <PanelCuerpo>
-        {% if error %}<Mensaje>{{ error }}</Mensaje>{% endif %}
-        <Formulario :accion="'/equipos/' ~ team.id ~ '/ajustes/miembros'"
-                    :csrf_token="csrf_token">
-          <Campo etiqueta="Persona">
+    <UiPanel>
+      <UiPanelHeader title="Añadir persona"
+                     description="Las personas deben tener una cuenta creada en la plataforma." />
+      <UiPanelBody>
+        {% if error %}<UiMessage>{{ error }}</UiMessage>{% endif %}
+        <UiForm :action="'/equipos/' ~ team.id ~ '/ajustes/miembros'"
+                :csrf_token="csrf_token">
+          <UiField label="Persona">
             <select name="email" required>
               <option value="" selected disabled>Selecciona una persona</option>
               {% for candidate in candidates %}<option value="{{ candidate.email }}">{{ candidate.email }}</option>{% endfor %}
             </select>
-          </Campo>
-          <Campo etiqueta="Nivel de acceso">
+          </UiField>
+          <UiField label="Nivel de acceso">
             <select name="role">
               <option value="team_member">Puede consultar</option>
               <option value="team_leader">Puede administrar</option>
             </select>
-          </Campo>
+          </UiField>
           <button type="submit">Guardar acceso</button>
-        </Formulario>
-      </PanelCuerpo>
-    </Panel>
-    <Panel>
-      <PanelCabecera titulo="Equipo actual"
-                     descripcion="Las personas administradoras pueden actualizar la configuración." />
-      <Lista>
+        </UiForm>
+      </UiPanelBody>
+    </UiPanel>
+    <UiPanel>
+      <UiPanelHeader title="Equipo actual"
+                     description="Las personas administradoras pueden actualizar la configuración." />
+      <UiList>
         {% for member, role in members %}
-          <ListaItem>
+          <UiListItem>
             <span>{{ member.email }}</span>
-            <Acciones>
-              <MetaDato>
-                {{ role|rol }}
-              </MetaDato>
+            <UiActions>
+              <UiMeta>
+                {{ role|role_name }}
+              </UiMeta>
               {% if member.id != user.id %}
-                <AccionEnLinea :accion="'/equipos/' ~ team.id ~ '/ajustes/miembros/quitar'"
-                               :csrf_token="csrf_token">
+                <UiInlineAction :action="'/equipos/' ~ team.id ~ '/ajustes/miembros/quitar'"
+                                :csrf_token="csrf_token">
                   <input type="hidden" name="email" value="{{ member.email }}">
                   <button type="submit">Quitar</button>
-                </AccionEnLinea>
+                </UiInlineAction>
               {% endif %}
-            </Acciones>
-          </ListaItem>
+            </UiActions>
+          </UiListItem>
         {% endfor %}
-      </Lista>
-    </Panel>
-  </Contenido>
+      </UiList>
+    </UiPanel>
+  </UiContent>
 </Layout>

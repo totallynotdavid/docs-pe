@@ -4,11 +4,18 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from portal.domain.errors import SourceValidationError
+from fetch.sites.registry import STABLE_SITES
+
+from portal.domain.errors import (
+    CredentialConfigurationError,
+    NotFound,
+    ProvisioningError,
+    Reason,
+    SourceValidationError,
+)
 from portal.domain.models import (
     MAX_ACTIVE_JOBS,
     MAX_LEASE_ATTEMPTS,
-    STABLE_SOURCES,
     BrowserSession,
     ClaimedWork,
     CredentialState,
@@ -21,7 +28,6 @@ from portal.domain.models import (
     JobItem,
     JobState,
     PortalUser,
-    ProxyProvider,
     SearchResult,
     SubmissionPlan,
     SubmitJob,
@@ -613,8 +619,7 @@ class PostgresPortalRepository:
             )
             count = await connection.fetchval("SELECT count(*) FROM portal_teams")
             if state is None or state["initial_team_id"] is not None or int(count):
-                msg = "la instalación ya tiene un equipo inicial"
-                raise ValueError(msg)
+                raise ProvisioningError(Reason.INITIAL_TEAM_EXISTS)
             await self._insert_team_and_leader(connection, team, actor_id, actor_id)
             await connection.execute(
                 """
@@ -638,8 +643,7 @@ class PostgresPortalRepository:
 
     async def add_member(self, team_id: UUID, user_id: UUID, role: TeamRole) -> None:
         if role not in {TeamRole.TEAM_LEADER, TeamRole.TEAM_MEMBER}:
-            msg = "el rol de equipo no es válido"
-            raise ValueError(msg)
+            raise ProvisioningError(Reason.ROLE_INVALID)
         async with self._pool.acquire() as connection, connection.transaction():
             await self._lock_team_memberships(connection, team_id)
             current = await connection.fetchval(
@@ -769,7 +773,7 @@ class PostgresPortalRepository:
                 version,
                 is_active=False,
                 state=CredentialState.VALIDATING,
-                provider=ProxyProvider(provider),
+                provider=provider,
             )
             await connection.execute(
                 """
@@ -808,8 +812,7 @@ class PostgresPortalRepository:
         actor_id: UUID,
     ) -> CredentialVersion:
         if state not in {CredentialState.ACTIVE, CredentialState.FAILED}:
-            msg = "el estado final de la credencial no es válido"
-            raise ValueError(msg)
+            raise CredentialConfigurationError(Reason.CREDENTIAL_STATE_INVALID)
         async with self._pool.acquire() as connection, connection.transaction():
             row = await connection.fetchrow(
                 """
@@ -826,8 +829,7 @@ class PostgresPortalRepository:
                 credential_version_id,
             )
             if row is None or row["lifecycle"] != CredentialState.VALIDATING.value:
-                msg = "la credencial no está pendiente de validación"
-                raise ValueError(msg)
+                raise CredentialConfigurationError(Reason.CREDENTIAL_NOT_PENDING)
             if state is CredentialState.ACTIVE:
                 retired = await connection.fetch(
                     """
@@ -878,7 +880,7 @@ class PostgresPortalRepository:
             version=int(row["version"]),
             is_active=state is CredentialState.ACTIVE,
             state=state,
-            provider=ProxyProvider(row["provider"]),
+            provider=row["provider"],
         )
 
     async def add_object_reference(self, reference: ObjectReference) -> None:
@@ -989,12 +991,14 @@ class PostgresPortalRepository:
     ) -> ClaimedWork | None:
         """Lease the earliest eligible item while holding the cancellation gate."""
         if not sources:
-            msg = "el trabajador debe declarar al menos una fuente"
-            raise SourceValidationError(msg)
-        invalid = sorted(set(sources).difference(STABLE_SOURCES))
+            raise SourceValidationError(Reason.WORKER_SOURCE_REQUIRED)
+        invalid = sorted(set(sources).difference(STABLE_SITES))
         if invalid:
-            msg = f"fuentes no habilitadas: {', '.join(invalid)}"
-            raise SourceValidationError(msg)
+            raise SourceValidationError(
+                Reason.SOURCE_NOT_ENABLED,
+                invalid=", ".join(invalid),
+                allowed=", ".join(sorted(STABLE_SITES)),
+            )
         async with self._pool.acquire() as connection, connection.transaction():
             await self._lock_queue_gate(connection)
             await self._sweep_expired_locked(connection)
@@ -1075,8 +1079,7 @@ class PostgresPortalRepository:
             "SELECT id FROM portal_teams WHERE id = $1 FOR UPDATE", team_id
         )
         if found is None:
-            msg = "el equipo no existe"
-            raise ValueError(msg)
+            raise NotFound(Reason.TEAM_MISSING)
 
     async def _ensure_not_last_leader(
         self, connection: Connection, team_id: UUID
@@ -1089,8 +1092,7 @@ class PostgresPortalRepository:
             team_id,
         )
         if int(leaders) <= 1:
-            msg = "el equipo debe conservar al menos una persona líder"
-            raise ValueError(msg)
+            raise ProvisioningError(Reason.LAST_LEADER)
 
     async def _lock_queue_gate(self, connection: Connection) -> int:
         maximum = await connection.fetchval(_LOCK_QUEUE_GATE)
@@ -1220,5 +1222,5 @@ class PostgresPortalRepository:
             version=int(row["version"]),  # type: ignore[index]
             is_active=bool(row["is_active"]),  # type: ignore[index]
             state=CredentialState(row["lifecycle"]),  # type: ignore[index]
-            provider=ProxyProvider(row["provider"]),  # type: ignore[index]
+            provider=row["provider"],  # type: ignore[index]
         )

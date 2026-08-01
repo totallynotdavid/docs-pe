@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from portal.domain.errors import NotFound, PermissionDenied
+from portal.domain.errors import NotFound, PermissionDenied, Reason
 from portal.domain.models import (
     TERMINAL_JOB_EVENTS,
     CredentialState,
@@ -18,8 +18,7 @@ from portal.domain.models import (
     TeamRole,
 )
 from portal.domain.planning import plan_submission
-from portal.storage.port import ObjectReference
-from portal.web.security import (
+from portal.security import (
     new_csrf_token,
     new_session_token,
     token_hash,
@@ -27,29 +26,30 @@ from portal.web.security import (
     verify_dummy_password,
     verify_password,
 )
+from portal.storage.port import ObjectReference
 
 
 if TYPE_CHECKING:
     from uuid import UUID
 
     from portal.domain.models import BrowserSession, CredentialVersion, Job, JobEvent
-    from portal.repository.protocols import PortalRepository
+    from portal.repository.postgres import PostgresPortalRepository
     from portal.storage.port import ObjectStorage
 
 
 class PortalService:
     """Team-scoped commands. Repository methods provide transaction boundaries."""
 
-    def __init__(self, repository: PortalRepository) -> None:
+    def __init__(self, repository: PostgresPortalRepository) -> None:
         self._repository = repository
 
     async def submit(self, command: SubmitJob) -> Job:
         await self.require_leader(command.actor_id, command.team_id)
         credential = await self._repository.credential(command.credential_version_id)
         if credential is None or credential.team_id != command.team_id:
-            raise PermissionDenied("la credencial debe pertenecer al mismo equipo")
+            raise PermissionDenied(Reason.CREDENTIAL_WRONG_TEAM)
         if not credential.is_active or credential.state is not CredentialState.ACTIVE:
-            raise PermissionDenied("el equipo necesita una credencial proxy activa")
+            raise PermissionDenied(Reason.CREDENTIAL_REQUIRED)
         return await self._repository.admit_submission(
             command, plan_submission(command.lines, command.sources)
         )
@@ -58,7 +58,7 @@ class PortalService:
         await self.require_leader(actor_id, team_id)
         job = await self._repository.cancel(job_id, team_id)
         if job is None:
-            raise NotFound("proceso no encontrado en el equipo")
+            raise NotFound(Reason.JOB_NOT_FOUND)
         return job
 
     async def published_results(self, actor_id: UUID, team_id: UUID) -> tuple[Job, ...]:
@@ -120,7 +120,7 @@ class PortalService:
         """
         session = await self.browser_session(token)
         if session is None or not valid_csrf(submitted, session.csrf_token):
-            raise PermissionDenied("la verificación CSRF no es válida")
+            raise PermissionDenied(Reason.CSRF_INVALID)
         return session
 
     async def issue_login_csrf(self) -> str:
@@ -147,7 +147,7 @@ class PortalService:
         await self.require_reader(actor_id, team_id)
         team = await self._repository.team(team_id)
         if team is None:
-            raise NotFound("equipo no encontrado")
+            raise NotFound(Reason.TEAM_NOT_FOUND)
         role = await self._repository.role_for(actor_id, team_id)
         return Team(team.id, team.slug, team.name, role)
 
@@ -163,7 +163,7 @@ class PortalService:
         await self.require_reader(actor_id, team_id)
         job = await self._repository.job(job_id, team_id)
         if job is None:
-            raise NotFound("proceso no encontrado en el equipo")
+            raise NotFound(Reason.JOB_NOT_FOUND)
         return job
 
     async def job_events_after(
@@ -217,8 +217,7 @@ class PortalService:
             or not credential.is_active
             or credential.state is not CredentialState.ACTIVE
         ):
-            msg = "el equipo necesita una credencial proxy activa"
-            raise PermissionDenied(msg)
+            raise PermissionDenied(Reason.CREDENTIAL_REQUIRED)
         reference = ObjectReference(
             id=uuid4(),
             team_id=team_id,
@@ -252,11 +251,11 @@ class PortalService:
     async def require_reader(self, actor_id: UUID, team_id: UUID) -> TeamRole:
         role = await self._repository.role_for(actor_id, team_id)
         if role is None:
-            raise PermissionDenied("no pertenece al equipo")
+            raise PermissionDenied(Reason.NOT_A_MEMBER)
         return role
 
     async def require_leader(self, actor_id: UUID, team_id: UUID) -> TeamRole:
         role = await self.require_reader(actor_id, team_id)
         if role is not TeamRole.TEAM_LEADER:
-            raise PermissionDenied("solo un líder del equipo puede gestionar procesos")
+            raise PermissionDenied(Reason.LEADER_REQUIRED)
         return role

@@ -1,32 +1,32 @@
 {#def user, csrf_token, team, credentials, source_options, error #}
-<Layout :titulo="'Nueva consulta · ' ~ team.name ~ ' · Worker'"
-        :usuario="user"
+<Layout :title="'Nueva consulta · ' ~ team.name ~ ' · Worker'"
+        :user="user"
         :csrf_token="csrf_token">
-  <BarraSuperior titulo="Nueva consulta" />
-  <Contenido>
-    <FlujoConsulta titulo="Nueva consulta"
-                   descripcion="Sube una lista y elige la información que necesitas.">
-      {% if error %}<Mensaje>{{ error }}</Mensaje>{% endif %}
+  <UiTopBar title="Nueva consulta" />
+  <UiContent>
+    <UiQueryFlow title="Nueva consulta"
+                 description="Sube una lista y elige la información que necesitas.">
+      {% if error %}<UiMessage>{{ error }}</UiMessage>{% endif %}
       {% if credentials %}
-        <Formulario :accion="'/equipos/' ~ team.id ~ '/procesos'"
-                    :csrf_token="csrf_token"
-                    clase="formulario-consulta"
-                    enctype="multipart/form-data">
-          <PasoConsulta numero="1"
-                        titulo="Sube tu archivo"
-                        descripcion="CSV con un documento en la primera columna de cada fila."
-                        titulo_id="archivo-titulo">
-            <ArchivoCsv />
-          </PasoConsulta>
-          <PasoConsulta numero="2"
-                        titulo="¿Qué quieres obtener?"
-                        descripcion="Puedes elegir más de un resultado."
-                        titulo_id="fuentes-titulo">
-            <Fuentes>
-              {% for source in source_options %}<Fuente :fuente="source" />{% endfor %}
-            </Fuentes>
-          </PasoConsulta>
-          <ConsultaAccion>
+        <UiForm :action="'/equipos/' ~ team.id ~ '/procesos'"
+                :csrf_token="csrf_token"
+                css_class="formulario-consulta"
+                enctype="multipart/form-data">
+          <UiQueryStep number="1"
+                       title="Sube tu archivo"
+                       description="CSV con un documento en la primera columna de cada fila."
+                       title_id="archivo-titulo">
+            <UiCsvFile />
+          </UiQueryStep>
+          <UiQueryStep number="2"
+                       title="¿Qué quieres obtener?"
+                       description="Puedes elegir más de un resultado."
+                       title_id="fuentes-titulo">
+            <UiSources>
+              {% for source in source_options %}<UiSource :source="source" />{% endfor %}
+            </UiSources>
+          </UiQueryStep>
+          <UiQueryAction>
             <div>
               {% if credentials|length == 1 %}
                 <input type="hidden"
@@ -46,21 +46,21 @@
               {% endif %}
             </div>
             <button type="submit">Iniciar consulta</button>
-          </ConsultaAccion>
-        </Formulario>
+          </UiQueryAction>
+        </UiForm>
       {% else %}
-        <Panel>
-          <PanelCuerpo>
+        <UiPanel>
+          <UiPanelBody>
             <h2>Configura una conexión para comenzar</h2>
             <p class="subtitulo">Este equipo necesita una conexión proxy activa para ejecutar consultas.</p>
-            <Acciones posicion="debajo">
-              <Boton :href="'/equipos/' ~ team.id ~ '/ajustes/proxy'">
+            <UiActions position="debajo">
+              <UiButton :href="'/equipos/' ~ team.id ~ '/ajustes/proxy'">
                 Configurar conexión
-              </Boton>
-            </Acciones>
-          </PanelCuerpo>
-        </Panel>
+              </UiButton>
+            </UiActions>
+          </UiPanelBody>
+        </UiPanel>
       {% endif %}
-    </FlujoConsulta>
-  </Contenido>
+    </UiQueryFlow>
+  </UiContent>
 </Layout>

@@ -1,28 +1,5 @@
-"""Provider-specific proxy configuration and secret-protection ports."""
+"""Secret protection for stored proxy credentials.
 
-from portal.credentials.providers import (
-    DataImpulseProviderAdapter,
-    GeoNodeProviderAdapter,
-    ProxyField,
-    ProxyProviderAdapter,
-    provider_for,
-)
-from portal.credentials.secrets import (
-    DevelopmentAesGcmSecretProtector,
-    ProtectedSecret,
-    SecretProtector,
-    UnavailableSecretProtector,
-)
-
-
-__all__ = [
-    "DataImpulseProviderAdapter",
-    "DevelopmentAesGcmSecretProtector",
-    "GeoNodeProviderAdapter",
-    "ProtectedSecret",
-    "ProxyField",
-    "ProxyProviderAdapter",
-    "SecretProtector",
-    "UnavailableSecretProtector",
-    "provider_for",
-]
+The provider field schema itself lives in `fetch.proxy.registry`, so the portal
+renders a form for any vendor the engine can drive without restating its fields.
+"""

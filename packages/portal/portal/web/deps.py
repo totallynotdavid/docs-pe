@@ -7,10 +7,10 @@ from fastapi import Depends, Form, HTTPException, Request
 from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
 from portal.domain.models import BrowserSession
+from portal.security import same_origin
 from portal.settings import PortalSettings, ReadinessProbe
 from portal.storage.port import ObjectStorage
 from portal.web.errors import LoginRequired
-from portal.web.security import same_origin
 
 
 def _readiness(request: Request) -> ReadinessProbe:

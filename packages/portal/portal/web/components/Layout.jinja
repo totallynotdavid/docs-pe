@@ -1,15 +1,15 @@
-{#def titulo, usuario=None, csrf_token="", setup=False #}
+{#def title, user=None, csrf_token="", setup=False #}
 {# Collection is per page, but htmx swaps arrive after it: a list, a pagination
    nav or a metric can appear in a fragment the first render never showed. Those
    stylesheets, and the one styling bare `button` elements, belong to the document
    rather than to whichever page happened to render first. #}
-{#css Layout.css, Boton.css, Lista.css, Metricas.css #}
+{#css Layout.css, UiButton.css, UiList.css, UiMetrics.css #}
 <!DOCTYPE html>
 <html lang="es">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ titulo }}</title>
+    <title>{{ title }}</title>
     <link rel="stylesheet" href="/estatico/tokens.css">
     {{ catalog.render_assets() }}
     <meta name="htmx-config" content='{"includeIndicatorStyles": false}'>
@@ -17,11 +17,11 @@
     <script defer src="/estatico/htmx-ext-sse.min.js"></script>
     <script defer src="/estatico/portal.js"></script>
   </head>
-  <body{% if not usuario %} class="sesion-publica"{% endif %}>
+  <body{% if not user %} class="sesion-publica"{% endif %}>
     <a class="skip-link" href="#contenido">Saltar al contenido</a>
-    {% if usuario %}
+    {% if user %}
       <div class="app-shell">
-        <Sidebar :usuario="usuario" :csrf_token="csrf_token" :setup="setup" />
+        <UiSidebar :user="user" :csrf_token="csrf_token" :setup="setup" />
         <div class="workspace">{{ content }}</div>
       </div>
     {% else %}

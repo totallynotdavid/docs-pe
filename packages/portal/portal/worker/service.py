@@ -16,8 +16,7 @@ from fetch.domain.types import Doc
 from fetch.pipeline.breaker import CircuitBreaker
 from fetch.pipeline.fetch import fetch_one
 from fetch.pipeline.session import WorkerConfig, WorkerState, close_session
-from fetch.proxy.dataimpulse import DataImpulseConfig, DataImpulseProvider
-from fetch.proxy.geonode import GeoNodeConfig, GeoNodeProvider
+from fetch.proxy.registry import provider_from_values
 from fetch.sites.registry import SITES
 
 
@@ -27,37 +26,6 @@ class WorkerOptions:
     token: str
     worker_id: str
     sources: tuple[str, ...]
-
-
-def _provider(
-    name: str, values: dict[str, str]
-) -> GeoNodeProvider | DataImpulseProvider:
-    if name == "geonode":
-        return GeoNodeProvider(
-            GeoNodeConfig(
-                user=values["username"],
-                password=values["password"],
-                host=values["host"],
-                proxy_type=cast("Any", values["proxy_type"]),
-                country=values["country"],
-                state=values.get("state", ""),
-                city=values.get("city", ""),
-                asn=values.get("asn", ""),
-                strict_off=False,
-                lifetime=int(values["lifetime_minutes"]),
-            )
-        )
-    if name == "dataimpulse":
-        return DataImpulseProvider(
-            DataImpulseConfig(
-                user=values["username"],
-                password=values["password"],
-                country=values["country"],
-                sessttl=int(values["session_minutes"]),
-                host="gw.dataimpulse.com",
-            )
-        )
-    raise RuntimeError("proveedor proxy no compatible")
 
 
 class OutboundWorker:
@@ -100,7 +68,7 @@ class OutboundWorker:
         source = str(lease["source"])
         credential = cast("dict[str, Any]", lease["credential"])
         provider_name = str(credential["provider"])
-        provider = _provider(
+        provider = provider_from_values(
             provider_name, cast("dict[str, str]", credential["config"])
         )
         site = SITES[source]

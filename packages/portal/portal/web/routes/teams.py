@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Form, HTTPException, Request, Response
+from fastapi import APIRouter, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
 from portal.domain.errors import PortalError
-from portal.domain.models import BrowserSession, ProxyProvider, TeamRole
+from portal.domain.models import BrowserSession, TeamRole
+from portal.messages import message_for, provider_names
 from portal.web.deps import PageSession, Provisioning, Service, VerifiedSession
 from portal.web.render import render, render_hx
 
@@ -91,9 +92,9 @@ async def team_members_post(
         await provisioning.invite_or_add_member(
             session.user.id, team_id=team_id, email=email, role=role
         )
-    except (PortalError, ValueError) as error:
+    except PortalError as error:
         context = await _members_context(
-            session, service, provisioning, team_id, error=str(error)
+            session, service, provisioning, team_id, error=message_for(error)
         )
         return render("TeamMembers", **context)
     return RedirectResponse(f"/equipos/{team_id}/ajustes/miembros", status_code=303)
@@ -106,11 +107,9 @@ async def team_members_remove(
     team_id: UUID,
     email: str = Form(),
 ) -> Response:
-    try:
-        await provisioning.remove_member(session.user.id, team_id=team_id, email=email)
-    except ValueError as error:
-        # Removing the last leader is refused by the repository, not the planner.
-        raise HTTPException(status_code=403, detail=str(error)) from error
+    # Removing the last leader is refused by the repository; the error handler
+    # turns that refusal into the 403 page.
+    await provisioning.remove_member(session.user.id, team_id=team_id, email=email)
     return RedirectResponse(f"/equipos/{team_id}/ajustes/miembros", status_code=303)
 
 
@@ -120,7 +119,7 @@ async def _proxy_context(
     provisioning: ProvisioningService,
     team_id: UUID,
     *,
-    provider: ProxyProvider,
+    provider: str,
     error: str,
 ) -> dict[str, object]:
     return {
@@ -130,6 +129,7 @@ async def _proxy_context(
         "credentials": await service.credentials(session.user.id, team_id),
         "readiness": await provisioning.team_readiness(session.user.id, team_id),
         "provider": provider,
+        "providers": provider_names(),
         "fields": ProvisioningService.provider_fields(provider),
         "error": error,
     }
@@ -141,7 +141,7 @@ async def proxy_settings_get(
     service: Service,
     provisioning: Provisioning,
     team_id: UUID,
-    proveedor: ProxyProvider = ProxyProvider.GEONODE,
+    proveedor: str = "geonode",
 ) -> Response:
     context = await _proxy_context(
         session, service, provisioning, team_id, provider=proveedor, error=""
@@ -151,45 +151,37 @@ async def proxy_settings_get(
 
 @router.post("/ajustes/proxy", response_class=HTMLResponse)
 async def proxy_settings_post(
+    request: Request,
     session: VerifiedSession,
     service: Service,
     provisioning: Provisioning,
     team_id: UUID,
     label: str = Form(),
-    provider: ProxyProvider = Form(),
-    username: str = Form(""),
-    password: str = Form(""),
-    gateway: str = Form(""),
-    proxy_type: str = Form(""),
-    country: str = Form(""),
-    state: str = Form(""),
-    city: str = Form(""),
-    asn: str = Form(""),
-    lifetime_minutes: str = Form(""),
-    session_minutes: str = Form(""),
+    provider: str = Form(),
 ) -> Response:
+    # The provider's own field schema decides what to read, so adding a vendor
+    # never adds a parameter here.
+    form = await request.form()
+    values = {
+        field.name: str(form.get(field.name, ""))
+        for field in ProvisioningService.provider_fields(provider)
+    }
     try:
         await provisioning.configure_proxy(
             session.user.id,
             team_id=team_id,
             label=label,
             provider=provider,
-            values={
-                "username": username,
-                "password": password,
-                "gateway": gateway,
-                "proxy_type": proxy_type,
-                "country": country,
-                "state": state,
-                "city": city,
-                "asn": asn,
-                "lifetime_minutes": lifetime_minutes,
-                "session_minutes": session_minutes,
-            },
+            values=values,
         )
-    except (PortalError, ValueError) as error:
+    except PortalError as error:
         context = await _proxy_context(
-            session, service, provisioning, team_id, provider=provider, error=str(error)
+            session,
+            service,
+            provisioning,
+            team_id,
+            provider=provider,
+            error=message_for(error),
         )
         return render("ProxySettings", **context)
     return RedirectResponse(f"/equipos/{team_id}/ajustes/proxy", status_code=303)

@@ -1,1 +1,1 @@
-"""PostgreSQL adapters and test-only in-memory implementation of portal ports."""
+"""The PostgreSQL adapter. The portal has one repository and no second implementation."""

@@ -4,30 +4,26 @@ import argparse
 import asyncio
 import os
 
+from fetch.proxy.registry import PROVIDERS, spec_for
+
 from portal.application.provisioning import ProvisioningService
-from portal.credentials.secrets import (
-    DevelopmentAesGcmSecretProtector,
-    SecretProtector,
-    UnavailableSecretProtector,
-)
-from portal.domain.models import CredentialState, ProxyProvider, TeamRole
+from portal.credentials.secrets import AesGcmSecretProtector
+from portal.domain.models import CredentialState, TeamRole
 from portal.migrations import apply_migrations
 from portal.repository.postgres import PostgresPortalRepository
+from portal.security import hash_password
 from portal.settings import PortalSettings
-from portal.web.security import hash_password
 
 
 def _arguments() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Provisiona de forma idempotente la instalación inicial del portal."
+        description="Idempotently provision the portal's initial installation."
     )
     parser.add_argument("--admin-email", required=True)
     parser.add_argument("--admin-password-env", required=True)
     parser.add_argument("--team-name", required=True)
     parser.add_argument("--team-slug", required=True)
-    parser.add_argument(
-        "--proxy-provider", choices=[provider.value for provider in ProxyProvider]
-    )
+    parser.add_argument("--proxy-provider", choices=sorted(PROVIDERS))
     parser.add_argument("--proxy-label", default="Principal")
     return parser
 
@@ -35,43 +31,31 @@ def _arguments() -> argparse.ArgumentParser:
 def _environment_value(name: str) -> str:
     value = os.environ.get(name, "")
     if not value:
-        msg = f"la variable {name} es obligatoria"
+        msg = f"{name} is required"
         raise RuntimeError(msg)
     return value
 
 
-def _proxy_values(provider: ProxyProvider) -> dict[str, str]:
-    if provider is ProxyProvider.GEONODE:
-        return {
-            "username": _environment_value("PORTAL_PROVISION_GEONODE_USERNAME"),
-            "password": _environment_value("PORTAL_PROVISION_GEONODE_PASSWORD"),
-            "gateway": os.environ.get("PORTAL_PROVISION_GEONODE_GATEWAY", "fr"),
-            "proxy_type": os.environ.get(
-                "PORTAL_PROVISION_GEONODE_TYPE", "residential"
-            ),
-            "country": os.environ.get("PORTAL_PROVISION_GEONODE_COUNTRY", "PE"),
-            "state": os.environ.get("PORTAL_PROVISION_GEONODE_STATE", ""),
-            "city": os.environ.get("PORTAL_PROVISION_GEONODE_CITY", ""),
-            "asn": os.environ.get("PORTAL_PROVISION_GEONODE_ASN", ""),
-            "lifetime_minutes": os.environ.get(
-                "PORTAL_PROVISION_GEONODE_LIFETIME_MINUTES", "10"
-            ),
-        }
-    return {
-        "username": _environment_value("PORTAL_PROVISION_DATAIMPULSE_USERNAME"),
-        "password": _environment_value("PORTAL_PROVISION_DATAIMPULSE_PASSWORD"),
-        "country": os.environ.get("PORTAL_PROVISION_DATAIMPULSE_COUNTRY", "pe"),
-        "session_minutes": os.environ.get(
-            "PORTAL_PROVISION_DATAIMPULSE_SESSION_MINUTES", "3"
-        ),
-    }
+def _proxy_values(provider: str) -> dict[str, str]:
+    """Read a provider's fields from `PORTAL_PROVISION_<PROVIDER>_<FIELD>`.
+
+    Driven by the field schema, so provisioning a newly added vendor needs no
+    change here.
+    """
+    spec = spec_for(provider)
+    values: dict[str, str] = {}
+    for field in spec.fields:
+        variable = f"PORTAL_PROVISION_{provider}_{field.name}".upper()
+        if field.secret:
+            values[field.name] = _environment_value(variable)
+        else:
+            values[field.name] = os.environ.get(variable, field.default)
+    return values
 
 
 async def provision(args: argparse.Namespace) -> None:
     settings = PortalSettings.from_environment()
-    if not settings.database_dsn:
-        msg = "PORTAL_DATABASE_DSN es obligatorio para provisionar"
-        raise RuntimeError(msg)
+    settings.validate()
     password = _environment_value(args.admin_password_env)
     import asyncpg
 
@@ -82,29 +66,29 @@ async def provision(args: argparse.Namespace) -> None:
         administrator = await repository.provision_site_admin(
             args.admin_email, hash_password(password)
         )
-        protector: SecretProtector = UnavailableSecretProtector()
-        protector = DevelopmentAesGcmSecretProtector.from_environment() or protector
-        service = ProvisioningService(repository, protector)
+        service = ProvisioningService(
+            repository, AesGcmSecretProtector.from_environment()
+        )
         team_count, initial_team_id = await repository.installation_status()
         if team_count == 0:
             team = await service.create_first_team(
                 administrator.id, name=args.team_name, slug=args.team_slug
             )
-            team_status = "creado"
+            team_status = "created"
         else:
             existing_team = await repository.team_by_slug(
                 args.team_slug.strip().lower()
             )
             if existing_team is None or initial_team_id != existing_team.id:
-                msg = "la instalación ya tiene un equipo inicial diferente"
+                msg = "the installation already has a different initial team"
                 raise RuntimeError(msg)
             team = existing_team
             await repository.add_member(team.id, administrator.id, TeamRole.TEAM_LEADER)
-            team_status = "verificado"
-        print(f"Administrador: {administrator.email} (listo)")
-        print(f"Equipo: {team.name} · {team.slug} ({team_status})")
+            team_status = "verified"
+        print(f"Administrator: {administrator.email} (ready)")
+        print(f"Team: {team.name} · {team.slug} ({team_status})")
         if args.proxy_provider:
-            provider = ProxyProvider(args.proxy_provider)
+            provider = str(args.proxy_provider)
             existing = await repository.credentials_for_team(team.id)
             active = next(
                 (
@@ -123,11 +107,9 @@ async def provision(args: argparse.Namespace) -> None:
                     provider=provider,
                     values=_proxy_values(provider),
                 )
-                print(
-                    f"Proxy: {credential.label} · {provider.value} (validado y activo)"
-                )
+                print(f"Proxy: {credential.label} · {provider} (validated and active)")
             else:
-                print(f"Proxy: {active.label} · {provider.value} (verificado)")
+                print(f"Proxy: {active.label} · {provider} (verified)")
     finally:
         await pool.close()
 
@@ -138,7 +120,7 @@ def main() -> None:
         asyncio.run(provision(args))
     except Exception as error:
         # Commands may name a missing environment variable but never print its value.
-        raise SystemExit(f"Provisionamiento no completado: {error}") from error
+        raise SystemExit(f"Provisioning did not complete: {error}") from error
 
 
 if __name__ == "__main__":

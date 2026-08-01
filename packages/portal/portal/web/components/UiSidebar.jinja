@@ -1,0 +1,46 @@
+{#def user, csrf_token="", setup=False #}
+<aside class="sidebar">
+  <a class="marca" href="/">
+    <span class="marca-sello" aria-hidden="true">W</span>
+    Worker
+  </a>
+  {% if not setup %}
+    <nav class="navegacion" aria-label="Navegación principal">
+      <p class="nav-etiqueta">Espacio de trabajo</p>
+      <a class="nav-enlace" href="/">
+        <UiIcon name="equipos" />
+        Equipos
+      </a>
+      <a class="nav-enlace" href="/notificaciones">
+        <UiIcon name="actividad" />
+        Actividad
+      </a>
+      {% if user.is_site_admin %}
+        <a class="nav-enlace nav-enlace--admin" href="/administracion/equipos">
+          <UiIcon name="administracion" />
+          Administración
+        </a>
+      {% endif %}
+    </nav>
+  {% endif %}
+  <div class="cuenta" data-cuenta>
+    <button class="cuenta-activador"
+            type="button"
+            aria-expanded="false"
+            aria-controls="menu-cuenta"
+            data-cuenta-activador>
+      <span class="avatar">{{ user.email[0] }}</span>
+      <span>Mi cuenta</span>
+      <UiIcon name="abajo" :size="14" />
+    </button>
+    <div class="cuenta-menu" id="menu-cuenta" hidden data-cuenta-menu>
+      <span class="cuenta-email">{{ user.email }}</span>
+      <UiInlineAction action="/logout" :csrf_token="csrf_token">
+        <button type="submit">
+          <UiIcon name="salir" :size="14" />
+          Cerrar sesión
+        </button>
+      </UiInlineAction>
+    </div>
+  </div>
+</aside>

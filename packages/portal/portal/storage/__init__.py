@@ -1,1 +1,1 @@
-"""Immutable object-reference port. Concrete cloud adapters are intentionally later."""
+"""Immutable object storage: a reference record plus the filesystem adapter."""

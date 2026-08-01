@@ -54,6 +54,20 @@ authoritative for its own package.
 - `packages/portal` — the authenticated, team-scoped control plane, PostgreSQL-only.
   See also `packages/portal/security.md`.
 
+### The site maturity ladder
+
+The three collector packages are stages, not duplicates. `capture` probes a live site
+from your own Chrome and discovers its wire protocol; `browser` drives it for real but
+is not yet trusted for unattended runs; `fetch` is the stable, plain-HTTP form. Each
+stage rewrites for a different mechanism, so a shared parser would couple a throwaway
+probe to a production collector — that is why `capture/ruc.py`, `browser/subject.py`
+and `fetch.domain.types.Doc` are separate on purpose.
+
+`Site.stable` is the last rung: the portal offers exactly the sites whose flag is set,
+via `fetch.sites.registry.STABLE_SITES`. Promoting a site is that one flag, not an
+edit in two packages. `browser`'s sites are absent from the portal because they are
+not in `fetch` at all.
+
 ### A site is a value, not a class
 
 `fetch/domain/types.py:Site` is a frozen dataclass: name, columns, `accepts(doc)`,
@@ -62,6 +76,19 @@ a fresh proxy-bound client, `lookup(client, doc)` returns rows. The pipeline, st
 proxy code are entirely site-agnostic. Adding a site is one new `sites/<name>/` module
 plus one entry in `sites/registry.py:SITES`. `browser` and `capture` repeat that same
 plain-dict registry shape with their own site types.
+
+### A proxy provider is a value too
+
+`fetch/proxy/base.py:ProviderSpec` mirrors `Site`: a name, a `Field` schema, tuning,
+and two functions (`normalize` validates raw strings, `build` returns a live provider).
+`fetch/proxy/registry.py:PROVIDERS` is the one registry. That schema is the single
+source for all three consumers — the `<PROVIDER>_<FIELD>` environment loader, the
+portal's credential form, and the worker that rebuilds a provider from stored values —
+so adding a vendor is one module plus one registry line, with no if-chain to extend
+and no second copy of a vendor's username format to drift.
+
+`registry.preflight` validates a credential by dialing through a session the provider
+itself built, so what it checks is exactly what a run will use.
 
 ### The duplication between packages is deliberate
 
@@ -102,11 +129,28 @@ submission/cancellation) → `domain` (source planning, state policy) → `repos
 never creates schema, users, teams, or credentials — explicit provisioning is the only
 path that does.
 
+There is exactly one repository (`repository/postgres.py`), one object store
+(`storage/files.py`) and one secret protector (`credentials/secrets.py`). None of them
+has a second implementation or a protocol in front of it: the portal is PostgreSQL-only,
+so a missing DSN is a startup failure rather than a cue to degrade into something with
+different semantics. `portal/security.py` holds password, session and CSRF primitives —
+it is below the web layer, not inside it, because `provision.py` and `application/` need
+it too.
+
 Inside `web`, `create_app` only builds state and includes the routers in `web/routes/`.
 Session, CSRF and adapter lookups are `Depends()` callables in `web/deps.py`, and
-`web/errors.py` maps `NotFound` to 404 and every other `PortalError` to 403 once. A route
-that lets a `PortalError` escape is denying the request; a route that catches one is
-re-rendering its form with a message.
+`web/errors.py` maps `NotFound` to 404 and every other `PortalError` to 403 once,
+rendering the `Problem` page — this is a server-rendered app, so a refusal answers in
+HTML, not JSON. A route that lets a `PortalError` escape is denying the request; a route
+that catches one is re-rendering its form with `message_for(error)`.
+
+### Code is English; only what a person reads is Spanish
+
+An error names a `Reason`, never a sentence: `raise PermissionDenied(Reason.NOT_A_MEMBER)`.
+`portal/messages.py` is the only module that holds Spanish — user-visible copy, proxy
+field labels, provider names — so translating the portal is one file and nothing below
+the web boundary changes. Template copy and the Spanish URL vocabulary (`/equipos`,
+`/ajustes`) stay as they are; identifiers, props, filters and component names do not.
 
 A page and the fragment htmx swaps into it share one URL, chosen by the `HX-Request`
 header in `render_hx`. Serving a fragment from its own URL is what made `hx-push-url`
@@ -126,7 +170,7 @@ The markup is JinjaX, not Jinja templates: `web/components/<Name>.jinja` is a co
 and the `<Name>.css` beside it is loaded only when that component renders, which is what
 replaced the single 16 KB `static/portal.css`. `web/pages/<Name>.jinja` are the entry
 points routes name — `render("Dashboard")` — and both folders share one namespace, so a
-page writes `<Panel>` directly. Props are declared in `{#def #}`; a dynamic value uses
+page writes `<UiPanel>` directly. Components carry a `Ui` prefix; pages do not. Props are declared in `{#def #}`; a dynamic value uses
 `:prop="expression"`.
 
 `Catalog` collects each rendered component's stylesheet and `render_assets()` in
@@ -148,7 +192,9 @@ in `static/tokens.css` stay document-scope; they are not any component's propert
   Entel the only site. The code is SeleniumBase-based (`backends/seleniumbase.py`, the
   `Session` protocol in `session.py`) and also ships `portabilidad`. Trust the code.
 - `GEONODE_COUNTRY=PE` / `DATAIMPULSE_COUNTRY=pe` are mandatory, not defaults: OSIPTEL's
-  WAF blocks foreign exits.
+  WAF blocks foreign exits. Provider environment variables follow `<PROVIDER>_<FIELD>`
+  from the field schema (`GEONODE_USERNAME`, `GEONODE_LIFETIME_MINUTES`,
+  `DATAIMPULSE_SESSION_MINUTES`), so `.env` names change when a field is renamed.
 - `pipeline.txt` is the committed runbook for real multi-server batches — validating and
   splitting input, launching detached over ssh, and reading progress from the state DB.
 - Ruff runs with a wide `extend-select` and `fix = true`. `portal` has a deliberate
@@ -161,13 +207,13 @@ in `static/tokens.css` stay document-scope; they are not any component's propert
   `packages/portal/pyproject.toml`, which is the nearest one above them, and needs both
   `extension = "jinja"` and `custom_html = "[A-Z][a-zA-Z0-9]*"` — without the latter it
   does not recognise a component as an element and flattens the tree on contact.
-- **Never name a component after an HTML element.** djLint lowercases `<Meta>` to the
-  void `<meta>`, which silently turns the component into a tag and mangles everything
-  after it; that is why the class `.meta` is rendered by `MetaDato`. `Search` and
-  `Envio` are safe only because no template writes them as tags.
+- Components are prefixed `Ui` (`UiPanel`, `UiButton`, `UiMeta`) for one reason: djLint
+  lowercases `<Meta>` to the void `<meta>`, silently turning a component into a tag and
+  mangling everything after it. The prefix makes a collision impossible, so the old
+  "never name a component after an HTML element" rule no longer needs remembering.
+  Keep it on every new component.
 - djLint splits an inline run like `<strong>x</strong>.` across lines, which collapses to
   a space before the period. `{# djlint:off #}` / `{# djlint:on #}` is the way out, and
   the marker must be exactly that — trailing prose in the same comment stops it matching.
-- The repo root holds many untracked run artifacts (`*.csv`, `*.log`,
-  `*_out.state.sqlite3`) plus leftover `robot/`, `tests/`, and `.old-state-backup/`
-  directories that contain no tracked source. The codebase is `packages/*`.
+- Run artifacts go under `runs/` (gitignored as a directory), so a fixture CSV
+  elsewhere in the tree stays committable. The codebase is `packages/*`.

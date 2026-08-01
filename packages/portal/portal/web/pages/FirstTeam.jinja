@@ -1,32 +1,32 @@
 {#def user, csrf_token, error, setup #}
-<Layout titulo="Crear equipo · Worker"
-        :usuario="user"
+<Layout title="Crear equipo · Worker"
+        :user="user"
         :csrf_token="csrf_token"
         :setup="setup">
-  <BarraSuperior titulo="Crear equipo" />
-  <Contenido>
+  <UiTopBar title="Crear equipo" />
+  <UiContent>
     <h1 class="solo-lector">Crear equipo</h1>
-    <Panel>
-      <PanelCuerpo>
-        {% if error %}<Mensaje>{{ error }}</Mensaje>{% endif %}
-        <Formulario accion="/inicio" :csrf_token="csrf_token">
-          <Campo etiqueta="Nombre del equipo">
+    <UiPanel>
+      <UiPanelBody>
+        {% if error %}<UiMessage>{{ error }}</UiMessage>{% endif %}
+        <UiForm action="/inicio" :csrf_token="csrf_token">
+          <UiField label="Nombre del equipo">
             <input name="name"
                    maxlength="120"
                    required
                    autofocus
                    placeholder="Ej. Equipo Lima">
-          </Campo>
-          <Campo etiqueta="Dirección del equipo"
-                 ayuda="Se usa para identificar el equipo en su enlace. Solo minúsculas, números y guiones.">
+          </UiField>
+          <UiField label="Dirección del equipo"
+                   help_text="Se usa para identificar el equipo en su enlace. Solo minúsculas, números y guiones.">
             <input name="slug"
                    pattern="[a-z0-9][a-z0-9-]{1,62}"
                    required
                    placeholder="equipo-lima">
-          </Campo>
+          </UiField>
           <button type="submit">Crear equipo</button>
-        </Formulario>
-      </PanelCuerpo>
-    </Panel>
-  </Contenido>
+        </UiForm>
+      </UiPanelBody>
+    </UiPanel>
+  </UiContent>
 </Layout>

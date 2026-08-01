@@ -21,11 +21,6 @@ class CredentialState(StrEnum):
     RETIRED = "retired"
 
 
-class ProxyProvider(StrEnum):
-    GEONODE = "geonode"
-    DATAIMPULSE = "dataimpulse"
-
-
 class JobState(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
@@ -50,7 +45,6 @@ class DeliveryChannel(StrEnum):
     KAPSO_WHATSAPP = "kapso_whatsapp"
 
 
-STABLE_SOURCES = frozenset({"osiptel", "sunat", "sunat_reps"})
 ACTIVE_JOB_STATES = frozenset({JobState.RUNNING, JobState.CANCELLING})
 TERMINAL_JOB_STATES = frozenset(
     {JobState.COMPLETED, JobState.FAILED, JobState.CANCELLED}
@@ -109,7 +103,8 @@ class CredentialVersion:
     version: int
     is_active: bool = True
     state: CredentialState = CredentialState.ACTIVE
-    provider: ProxyProvider | None = None
+    # A key into fetch.proxy.registry.PROVIDERS; the engine owns that vocabulary.
+    provider: str = ""
 
 
 @dataclass(frozen=True)

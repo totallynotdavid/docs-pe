@@ -85,9 +85,9 @@ Everything else visual belongs to a component. `portal.web.components` holds a
 stylesheet to grow.
 
 `portal.storage.port` accepts immutable, provider-neutral object references, never a
-local process path. `portal.integrations.port` describes notification delivery, but
-does not send email or Kapso WhatsApp messages. PostgreSQL persists both `job_events`
-and `notification_outbox` intent for in-app, email, and Kapso WhatsApp delivery.
+local process path; `portal.storage.files` is the only adapter. PostgreSQL persists
+both `job_events` and `notification_outbox` intent, but nothing sends email or Kapso
+WhatsApp messages yet — the sender will arrive with its implementation, not before.
 
 The singleton `portal_queue_control` row is locked by every admission, cancellation,
 completion, and FIFO promotion transaction. It fixes the global running/cancelling

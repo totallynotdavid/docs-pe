@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from fetch.domain.types import Doc
-from fetch.sites.registry import SITES
+from fetch.sites.registry import SITES, STABLE_SITES
 
-from portal.domain.errors import SourceValidationError
+from portal.domain.errors import Reason, SourceValidationError
 from portal.domain.models import (
-    STABLE_SOURCES,
     ExcludedInput,
     InputLine,
     PlannedItem,
@@ -55,11 +54,13 @@ def plan_submission(
 
 def _validate_sources(sources: tuple[str, ...]) -> None:
     if not sources:
-        raise SourceValidationError("seleccione al menos una fuente")
+        raise SourceValidationError(Reason.SOURCE_REQUIRED)
     if len(set(sources)) != len(sources):
-        raise SourceValidationError("las fuentes no se pueden repetir")
-    invalid = sorted(set(sources).difference(STABLE_SOURCES))
+        raise SourceValidationError(Reason.SOURCE_DUPLICATED)
+    invalid = sorted(set(sources).difference(STABLE_SITES))
     if invalid:
         raise SourceValidationError(
-            f"fuentes no habilitadas: {', '.join(invalid)}; use osiptel, sunat o sunat_reps"
+            Reason.SOURCE_NOT_ENABLED,
+            invalid=", ".join(invalid),
+            allowed=", ".join(sorted(STABLE_SITES)),
         )

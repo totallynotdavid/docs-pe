@@ -1,0 +1,13 @@
+{#def detail="" #}
+<Layout title="No disponible · Worker">
+  <UiContent>
+    <UiAuthCard title="No se pudo continuar"
+                description="La acción no está disponible en este momento."
+                title_id="title-problema">
+      {% if detail %}<UiMessage>{{ detail }}</UiMessage>{% endif %}
+      <UiButton href="/">
+        Volver al inicio
+      </UiButton>
+    </UiAuthCard>
+  </UiContent>
+</Layout>

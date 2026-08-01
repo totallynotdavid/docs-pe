@@ -1,40 +1,40 @@
 {#def user, csrf_token, users, error #}
-<Layout titulo="Personas · Administración · Worker"
-        :usuario="user"
+<Layout title="Personas · Administración · Worker"
+        :user="user"
         :csrf_token="csrf_token">
-  <BarraSuperior titulo="Administración · Personas">
-    <Boton variante="secundario" href="/administracion/equipos">
+  <UiTopBar title="Administración · Personas">
+    <UiButton variant="secundario" href="/administracion/equipos">
       Equipos
-    </Boton>
-  </BarraSuperior>
-  <Contenido>
+    </UiButton>
+  </UiTopBar>
+  <UiContent>
     <h1 class="solo-lector">Administración de personas</h1>
-    <Panel>
-      <PanelCabecera titulo="Añadir persona"
-                     descripcion="La contraseña se cambia en el primer acceso si corresponde." />
-      <PanelCuerpo>
-        {% if error %}<Mensaje>{{ error }}</Mensaje>{% endif %}
-        <Formulario accion="/administracion/usuarios" :csrf_token="csrf_token">
-          <Campo etiqueta="Correo electrónico">
+    <UiPanel>
+      <UiPanelHeader title="Añadir persona"
+                     description="La contraseña se cambia en el primer acceso si corresponde." />
+      <UiPanelBody>
+        {% if error %}<UiMessage>{{ error }}</UiMessage>{% endif %}
+        <UiForm action="/administracion/usuarios" :csrf_token="csrf_token">
+          <UiField label="Correo electrónico">
             <input type="email" name="email" required>
-          </Campo>
-          <Campo etiqueta="Contraseña temporal">
+          </UiField>
+          <UiField label="Contraseña temporal">
             <input type="password" name="password" minlength="12" required>
-          </Campo>
+          </UiField>
           <button type="submit">Añadir persona</button>
-        </Formulario>
-      </PanelCuerpo>
-    </Panel>
-    <Panel>
-      <PanelCabecera titulo="Personas con acceso" />
-      <Lista>
+        </UiForm>
+      </UiPanelBody>
+    </UiPanel>
+    <UiPanel>
+      <UiPanelHeader title="Personas con acceso" />
+      <UiList>
         {% for person in users %}
-          <ListaItem>
+          <UiListItem>
             <span>{{ person.email }}</span>
-            {% if person.is_site_admin %}<MetaDato>Administradora de la plataforma</MetaDato>{% endif %}
-          </ListaItem>
+            {% if person.is_site_admin %}<UiMeta>Administradora de la plataforma</UiMeta>{% endif %}
+          </UiListItem>
         {% endfor %}
-      </Lista>
-    </Panel>
-  </Contenido>
+      </UiList>
+    </UiPanel>
+  </UiContent>
 </Layout>

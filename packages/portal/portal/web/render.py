@@ -9,13 +9,14 @@ from jinja2 import Environment
 from jinjax import Catalog
 
 from portal.domain.models import CredentialState, Job, JobState, TeamRole
+from portal.messages import choice_label, field_label, provider_label
 
 
 COMPONENTS_DIR = Path(__file__).with_name("components")
 PAGES_DIR = Path(__file__).with_name("pages")
 
 # Where a component's own stylesheet is served from. The catalog turns every
-# `{#css Panel.css #}` into a link under this prefix.
+# `{#css UiPanel.css #}` into a link under this prefix.
 COMPONENT_ASSETS_URL = "/estatico/componentes/"
 
 
@@ -51,11 +52,11 @@ def component_catalog() -> Catalog:
     autoescaping from one it is given, and leaves it off otherwise.
     """
     environment = Environment(autoescape=True)
-    environment.filters["estado"] = _state_label
-    environment.filters["rol"] = _role_label
-    environment.filters["notificacion"] = _notification_label
-    environment.filters["estado_credencial"] = _credential_state_label
-    environment.globals["es_terminal"] = lambda job: (
+    environment.filters["job_state"] = _state_label
+    environment.filters["role_name"] = _role_label
+    environment.filters["notification"] = _notification_label
+    environment.filters["credential_state"] = _credential_state_label
+    environment.globals["is_terminal"] = lambda job: (
         job.state
         in {
             JobState.COMPLETED,
@@ -63,7 +64,11 @@ def component_catalog() -> Catalog:
             JobState.CANCELLED,
         }
     )
-    environment.globals["resumen_proceso"] = _job_summary
+    environment.globals["job_summary"] = _job_summary
+    # Provider field wording: the schema is the engine's, the words are ours.
+    environment.globals["field_label"] = field_label
+    environment.globals["choice_label"] = choice_label
+    environment.globals["provider_label"] = provider_label
 
     catalog = Catalog(jinja_env=environment, root_url=COMPONENT_ASSETS_URL)
     catalog.add_folder(COMPONENTS_DIR)
