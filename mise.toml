@@ -56,7 +56,6 @@ run = [
   "uv run mypy packages/fetch",
   "uv run mypy packages/browser",
   "uv run mypy packages/capture",
-  "uv run mypy packages/jobs",
   "uv run mypy packages/portal",
 ]
 

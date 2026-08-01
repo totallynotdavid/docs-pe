@@ -16,9 +16,9 @@ automated browser, or a human at a reputable browser.
   first when adding a site. It intercepts a site's own calls from your everyday Chrome so
   you can learn its recipe, and collects through that reputable browser when automation
   cannot clear the gate. Standard library only, no browser launched.
-- [`packages/jobs`](packages/jobs/readme.md) is the separately deployable authenticated
-  internal jobs site. It uses only the stable HTTP `fetch` adapters and has its own
-  database-backed worker lease protocol; it does not integrate with CRM.
+- [`packages/portal`](packages/portal/readme.md) is the separately deployable
+  authenticated, team-scoped control plane. It uses only the stable HTTP `fetch`
+  adapters, is PostgreSQL-only, and does not integrate with CRM.
 
 ## Working in the repo
 
