@@ -1,0 +1,25 @@
+{#def user, csrf_token, team, query, results, page, has_more #}
+<Layout :titulo="'Buscar · ' ~ team.name ~ ' · Worker'"
+        :usuario="user"
+        :csrf_token="csrf_token">
+  <BarraSuperior titulo="Buscar documentos" />
+  <Contenido>
+    <h1 class="solo-lector">Buscar documentos en {{ team.name }}</h1>
+    <Panel>
+      <PanelCuerpo>
+        <Busqueda :accion="'/equipos/' ~ team.id ~ '/buscar'"
+                  :consulta="query"
+                  hx-get="/equipos/{{ team.id }}/buscar"
+                  hx-target="#resultados-busqueda"
+                  hx-push-url="true" />
+      </PanelCuerpo>
+      <div id="resultados-busqueda">
+        <SearchResultsFragment :team="team"
+                               :query="query"
+                               :results="results"
+                               :page="page"
+                               :has_more="has_more" />
+      </div>
+    </Panel>
+  </Contenido>
+</Layout>

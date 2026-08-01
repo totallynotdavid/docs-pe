@@ -1,0 +1,17 @@
+<label class="archivo-csv" data-csv-dropzone>
+  <input class="archivo-csv__input"
+         name="input_file"
+         type="file"
+         accept=".csv,text/csv"
+         required
+         data-csv-input>
+  <span class="archivo-csv__icono">
+    <Icono nombre="subir" :tamano="22" />
+  </span>
+  <span class="archivo-csv__titulo" data-csv-title>Elige un archivo CSV</span>
+  <span class="archivo-csv__ayuda" data-csv-status>o arrástralo aquí · máximo 10 MB</span>
+</label>
+<p class="archivo-csv__deteccion"
+   data-csv-detection
+   hidden
+   aria-live="polite"></p>

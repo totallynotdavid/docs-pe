@@ -104,7 +104,7 @@ def test_login_csrf_cookie_rotation_and_generic_failure() -> None:
     with _client(repository) as client:
         page = client.get("/login")
         assert 'class="barra-superior"' not in page.text
-        assert 'class="marca-auth"' in page.text
+        assert 'class="acceso__marca"' in page.text
         bad_origin = client.post(
             "/login",
             data={

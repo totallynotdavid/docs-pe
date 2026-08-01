@@ -23,7 +23,7 @@ async def login_get(
     if session is not None:
         return RedirectResponse("/", status_code=303)
     csrf_token = await service.issue_login_csrf()
-    return render("login.html", user=None, csrf_token=csrf_token, error=error)
+    return render("Login", user=None, csrf_token=csrf_token, error=error)
 
 
 @router.post("/login", dependencies=[RequireSameOrigin])

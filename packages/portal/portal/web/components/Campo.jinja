@@ -1,0 +1,7 @@
+{#def etiqueta, ayuda="" #}
+{#css Formulario.css #}
+<label>
+  {{ etiqueta }}
+  {{ content }}
+  {% if ayuda %}<span class="ayuda">{{ ayuda }}</span>{% endif %}
+</label>

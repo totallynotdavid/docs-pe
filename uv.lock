@@ -745,6 +745,19 @@ wheels = [
 ]
 
 [[package]]
+name = "jinjax"
+version = "0.65"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jinja2" },
+    { name = "markupsafe" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/26/45/7f99cc83066139d9e047055919cd748191207513fa1dcfd2e0a3bbfc872d/jinjax-0.65.tar.gz", hash = "sha256:2fb5b141a3f38db01e268fb768f3a404355ff9934ae885efcfb764d576fd7cd2", size = 32144, upload-time = "2026-06-16T22:16:11.489Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/68/35/0c153358e59cc1ee0afe3b497c83222ec45633589f32ada4241f87d189ae/jinjax-0.65-py3-none-any.whl", hash = "sha256:0cebd07dc4c6899b43447512cf23d4439f28ca005aa7ffb0cca0cb12376f9e28", size = 20609, upload-time = "2026-06-16T22:16:10.44Z" },
+]
+
+[[package]]
 name = "jsbeautifier"
 version = "2.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1038,6 +1051,7 @@ dependencies = [
     { name = "fetch" },
     { name = "httpx" },
     { name = "jinja2" },
+    { name = "jinjax" },
     { name = "pwdlib", extra = ["argon2"] },
     { name = "python-multipart" },
     { name = "uvicorn" },
@@ -1051,6 +1065,7 @@ requires-dist = [
     { name = "fetch", editable = "packages/fetch" },
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "jinja2", specifier = ">=3.1.0" },
+    { name = "jinjax", specifier = ">=0.65" },
     { name = "pwdlib", extras = ["argon2"], specifier = ">=0.3.0" },
     { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "uvicorn", specifier = ">=0.41.0" },

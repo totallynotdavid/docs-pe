@@ -1,0 +1,39 @@
+{#def user, csrf_token, team, readiness #}
+<Layout :titulo="'Configuración · ' ~ team.name ~ ' · Worker'"
+        :usuario="user"
+        :csrf_token="csrf_token">
+  <BarraSuperior titulo="Configuración del equipo" />
+  <Contenido>
+    <h1 class="solo-lector">Configuración del equipo</h1>
+    <Panel>
+      <Lista>
+        <ListaItem>
+          <div>
+            <a href="/equipos/{{ team.id }}/ajustes/proxy">Conexión proxy</a>
+            <p class="meta">
+              {% if readiness.has_active_credential %}
+                Configurada y lista para usar.
+              {% else %}
+                Aún falta configurar una conexión.
+              {% endif %}
+            </p>
+          </div>
+          <Boton variante="secundario"
+                 :href="'/equipos/' ~ team.id ~ '/ajustes/proxy'">
+            Gestionar
+          </Boton>
+        </ListaItem>
+        <ListaItem>
+          <div>
+            <a href="/equipos/{{ team.id }}/ajustes/miembros">Personas del equipo</a>
+            <p class="meta">Añade o actualiza los permisos de acceso.</p>
+          </div>
+          <Boton variante="secundario"
+                 :href="'/equipos/' ~ team.id ~ '/ajustes/miembros'">
+            Gestionar
+          </Boton>
+        </ListaItem>
+      </Lista>
+    </Panel>
+  </Contenido>
+</Layout>

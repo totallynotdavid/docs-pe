@@ -1,0 +1,40 @@
+{#def user, csrf_token, users, error #}
+<Layout titulo="Personas · Administración · Worker"
+        :usuario="user"
+        :csrf_token="csrf_token">
+  <BarraSuperior titulo="Administración · Personas">
+    <Boton variante="secundario" href="/administracion/equipos">
+      Equipos
+    </Boton>
+  </BarraSuperior>
+  <Contenido>
+    <h1 class="solo-lector">Administración de personas</h1>
+    <Panel>
+      <PanelCabecera titulo="Añadir persona"
+                     descripcion="La contraseña se cambia en el primer acceso si corresponde." />
+      <PanelCuerpo>
+        {% if error %}<Mensaje>{{ error }}</Mensaje>{% endif %}
+        <Formulario accion="/administracion/usuarios" :csrf_token="csrf_token">
+          <Campo etiqueta="Correo electrónico">
+            <input type="email" name="email" required>
+          </Campo>
+          <Campo etiqueta="Contraseña temporal">
+            <input type="password" name="password" minlength="12" required>
+          </Campo>
+          <button type="submit">Añadir persona</button>
+        </Formulario>
+      </PanelCuerpo>
+    </Panel>
+    <Panel>
+      <PanelCabecera titulo="Personas con acceso" />
+      <Lista>
+        {% for person in users %}
+          <ListaItem>
+            <span>{{ person.email }}</span>
+            {% if person.is_site_admin %}<MetaDato>Administradora de la plataforma</MetaDato>{% endif %}
+          </ListaItem>
+        {% endfor %}
+      </Lista>
+    </Panel>
+  </Contenido>
+</Layout>

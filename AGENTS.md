@@ -116,9 +116,30 @@ push an address that reloads without a layout. Those routes must keep sending
 Browser assets are vendored, not fetched: `package.json` pins htmx and `htmx-ext-sse`,
 `mise run portal:assets` copies them into `web/static`, and CI fails when the committed
 copy drifts. That is what lets every response carry `default-src 'self'` with no
-exceptions, so no template may use an inline `<script>` or a `style=` attribute — and
-`base.html`'s `htmx-config` meta turns off `includeIndicatorStyles`, because htmx
+exceptions, so no component may use an inline `<script>` or a `style=` attribute — and
+`Layout.jinja`'s `htmx-config` meta turns off `includeIndicatorStyles`, because htmx
 otherwise injects an inline `<style>` the policy blocks.
+
+### A component owns its markup and its styles
+
+The markup is JinjaX, not Jinja templates: `web/components/<Name>.jinja` is a component
+and the `<Name>.css` beside it is loaded only when that component renders, which is what
+replaced the single 16 KB `static/portal.css`. `web/pages/<Name>.jinja` are the entry
+points routes name — `render("Dashboard")` — and both folders share one namespace, so a
+page writes `<Panel>` directly. Props are declared in `{#def #}`; a dynamic value uses
+`:prop="expression"`.
+
+`Catalog` collects each rendered component's stylesheet and `render_assets()` in
+`Layout.jinja` emits the links. Collection sees one render, so anything htmx can swap in
+afterwards — lists, pagination, metrics — has to be declared in `Layout.jinja`'s own
+`{#css #}` instead, along with the sheet styling bare `button` elements. A test walks
+`pages/*Fragment.jinja` and fails when a component escapes that list.
+
+`web/routes/assets.py` serves the stylesheets from an allowlist read at import. The
+folder cannot simply be mounted, because the component templates sit in it too.
+
+Element-level rules (`*`, `html`, `body`, focus rings, `h2`, `p`) and the design tokens
+in `static/tokens.css` stay document-scope; they are not any component's property.
 
 ## Sharp edges
 
@@ -133,11 +154,20 @@ otherwise injects an inline `<style>` the policy blocks.
 - Ruff runs with a wide `extend-select` and `fix = true`. `portal` has a deliberate
   per-file ignore list in the root `pyproject.toml`; extend it rather than sprinkling
   `noqa`.
-- djLint indents the portal templates and normalizes their attributes, but it will not
-  break a line that mixes markup with inline `{% %}` — pointing it at a template written
+- djLint indents the portal components and normalizes their attributes, but it will not
+  break a line that mixes markup with inline `{% %}` — pointing it at a file written
   as one long line only wraps attributes at arbitrary columns and leaves that line in
   place. Write the element tree by hand; djLint then holds it. Its config lives in
-  `packages/portal/pyproject.toml`, which is the nearest one above the templates.
+  `packages/portal/pyproject.toml`, which is the nearest one above them, and needs both
+  `extension = "jinja"` and `custom_html = "[A-Z][a-zA-Z0-9]*"` — without the latter it
+  does not recognise a component as an element and flattens the tree on contact.
+- **Never name a component after an HTML element.** djLint lowercases `<Meta>` to the
+  void `<meta>`, which silently turns the component into a tag and mangles everything
+  after it; that is why the class `.meta` is rendered by `MetaDato`. `Search` and
+  `Envio` are safe only because no template writes them as tags.
+- djLint splits an inline run like `<strong>x</strong>.` across lines, which collapses to
+  a space before the period. `{# djlint:off #}` / `{# djlint:on #}` is the way out, and
+  the marker must be exactly that — trailing prose in the same comment stops it matching.
 - The repo root holds many untracked run artifacts (`*.csv`, `*.log`,
   `*_out.state.sqlite3`) plus leftover `robot/`, `tests/`, and `.old-state-backup/`
   directories that contain no tracked source. The codebase is `packages/*`.

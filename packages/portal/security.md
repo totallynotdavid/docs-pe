@@ -29,8 +29,11 @@ desde Administración. El arranque web no crea cuentas, equipos ni credenciales.
   vuelve a comprobar la sesión y la pertenencia antes de leer cada evento persistido.
 - Toda respuesta lleva `Content-Security-Policy: default-src 'self'` sin excepciones:
   htmx y su extensión SSE se sirven desde `web/static` en la versión que fija
-  `package.json`, y ninguna plantilla usa script ni estilo en línea. Un CDN
+  `package.json`, y ningún componente usa script ni estilo en línea. Un CDN
   comprometido deja de ser un camino hacia las credenciales de proxy del equipo.
+- Las hojas de estilo de los componentes se sirven desde una lista de permitidos
+  (`web/routes/assets.py`), no montando la carpeta: allí también viven las plantillas
+  `.jinja`, y publicarlas expondría el marcado del portal.
 - Los datos de GeoNode y DataImpulse se normalizan del lado del servidor, se protegen
   antes de persistirse y no se muestran ni se registran. La interfaz nunca recibe
   material cifrado ni claves. El adaptador local usa AES-GCM con una clave inyectada

@@ -1,0 +1,7 @@
+{#def titulo, descripcion, titulo_id #}
+<section class="acceso" aria-labelledby="{{ titulo_id }}">
+  <div class="acceso__marca" aria-hidden="true">W</div>
+  <h1 id="{{ titulo_id }}">{{ titulo }}</h1>
+  <p class="acceso__descripcion">{{ descripcion }}</p>
+  {{ content }}
+</section>

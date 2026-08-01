@@ -1,0 +1,27 @@
+{#def team, jobs, page, total #}
+{% if jobs %}
+  <Lista>
+    {% for job in jobs %}
+      <ListaItem>
+        <a href="/equipos/{{ team.id }}/procesos/{{ job.id }}">{{ job.filename }}</a>
+        <span>{{ job.state|estado }}</span>
+      </ListaItem>
+    {% endfor %}
+  </Lista>
+{% else %}
+  <EstadoVacio>
+    No hay tareas todavía.
+  </EstadoVacio>
+{% endif %}
+{% if page > 1 or page * 20 < total %}
+  <Paginacion etiqueta="Paginación de tareas">
+    {% if page > 1 %}
+      <a hx-get="/equipos/{{ team.id }}?page={{ page - 1 }}"
+         hx-target="#lista-procesos">Anterior</a>
+    {% endif %}
+    {% if page * 20 < total %}
+      <a hx-get="/equipos/{{ team.id }}?page={{ page + 1 }}"
+         hx-target="#lista-procesos">Siguiente</a>
+    {% endif %}
+  </Paginacion>
+{% endif %}

@@ -1,0 +1,7 @@
+{#def href="", variante="" #}
+{% set clases = "boton boton--" ~ variante if variante else "boton" %}
+{% if href %}
+  <a {{ attrs.render(class=clases, href=href) }}>{{ content }}</a>
+{% else %}
+  <button {{ attrs.render(class=clases) }}>{{ content }}</button>
+{% endif %}

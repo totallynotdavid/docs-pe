@@ -28,7 +28,17 @@ from portal.storage.files import FileObjectStorage
 from portal.storage.memory import InMemoryObjectStorage, UnconfiguredObjectStorage
 from portal.web.errors import install_error_handlers
 from portal.web.headers import SecurityHeaders
-from portal.web.routes import admin, auth, home, jobs, operations, search, teams, worker
+from portal.web.routes import (
+    admin,
+    assets,
+    auth,
+    home,
+    jobs,
+    operations,
+    search,
+    teams,
+    worker,
+)
 
 
 if TYPE_CHECKING:
@@ -100,6 +110,9 @@ def create_app(
     app = FastAPI(title="Worker", version="0.2.0", lifespan=lifespan)
     app.state.settings = settings
     app.state.readiness = readiness or DatabaseConfigured(settings)
+    # Component stylesheets live under the static prefix but are served by a route,
+    # so they have to be matched before the mount that would otherwise swallow them.
+    app.include_router(assets.router)
     app.mount(
         "/estatico",
         StaticFiles(directory=Path(__file__).with_name("static")),

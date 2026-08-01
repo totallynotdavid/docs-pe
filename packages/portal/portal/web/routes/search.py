@@ -26,8 +26,8 @@ async def search(
     )
     return render_hx(
         request,
-        "search.html",
-        "fragments/search_results.html",
+        "Search",
+        "SearchResultsFragment",
         user=session.user,
         csrf_token=session.csrf_token,
         team=await service.team(session.user.id, team_id),

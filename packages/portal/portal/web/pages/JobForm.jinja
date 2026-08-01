@@ -1,0 +1,66 @@
+{#def user, csrf_token, team, credentials, source_options, error #}
+<Layout :titulo="'Nueva consulta · ' ~ team.name ~ ' · Worker'"
+        :usuario="user"
+        :csrf_token="csrf_token">
+  <BarraSuperior titulo="Nueva consulta" />
+  <Contenido>
+    <FlujoConsulta titulo="Nueva consulta"
+                   descripcion="Sube una lista y elige la información que necesitas.">
+      {% if error %}<Mensaje>{{ error }}</Mensaje>{% endif %}
+      {% if credentials %}
+        <Formulario :accion="'/equipos/' ~ team.id ~ '/procesos'"
+                    :csrf_token="csrf_token"
+                    clase="formulario-consulta"
+                    enctype="multipart/form-data">
+          <PasoConsulta numero="1"
+                        titulo="Sube tu archivo"
+                        descripcion="CSV con un documento en la primera columna de cada fila."
+                        titulo_id="archivo-titulo">
+            <ArchivoCsv />
+          </PasoConsulta>
+          <PasoConsulta numero="2"
+                        titulo="¿Qué quieres obtener?"
+                        descripcion="Puedes elegir más de un resultado."
+                        titulo_id="fuentes-titulo">
+            <Fuentes>
+              {% for source in source_options %}<Fuente :fuente="source" />{% endfor %}
+            </Fuentes>
+          </PasoConsulta>
+          <ConsultaAccion>
+            <div>
+              {% if credentials|length == 1 %}
+                <input type="hidden"
+                       name="credential_version_id"
+                       value="{{ credentials[0].id }}">
+                {# Breaking this run would collapse to a space before the period. #}
+                {# djlint:off #}
+                <p class="consulta-accion__conexion">Usarás la conexión <strong>{{ credentials[0].label }}</strong>.</p>
+                {# djlint:on #}
+              {% else %}
+                <label class="consulta-accion__selector">
+                  Conexión
+                  <select name="credential_version_id" required>
+                    {% for credential in credentials %}<option value="{{ credential.id }}">{{ credential.label }}</option>{% endfor %}
+                  </select>
+                </label>
+              {% endif %}
+            </div>
+            <button type="submit">Iniciar consulta</button>
+          </ConsultaAccion>
+        </Formulario>
+      {% else %}
+        <Panel>
+          <PanelCuerpo>
+            <h2>Configura una conexión para comenzar</h2>
+            <p class="subtitulo">Este equipo necesita una conexión proxy activa para ejecutar consultas.</p>
+            <Acciones posicion="debajo">
+              <Boton :href="'/equipos/' ~ team.id ~ '/ajustes/proxy'">
+                Configurar conexión
+              </Boton>
+            </Acciones>
+          </PanelCuerpo>
+        </Panel>
+      {% endif %}
+    </FlujoConsulta>
+  </Contenido>
+</Layout>

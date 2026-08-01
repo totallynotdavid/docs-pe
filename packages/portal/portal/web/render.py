@@ -1,27 +1,37 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from fastapi import Request
 from fastapi.responses import HTMLResponse
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment
+from jinjax import Catalog
 
 from portal.domain.models import CredentialState, Job, JobState, TeamRole
 
 
-# Template names are positional-only so that a context key never shadows one.
-def render_fragment(name: str, /, **context: object) -> str:
-    """Render a template to markup, for embedding rather than responding."""
-    return _TEMPLATES.get_template(name).render(**context)
+COMPONENTS_DIR = Path(__file__).with_name("components")
+PAGES_DIR = Path(__file__).with_name("pages")
+
+# Where a component's own stylesheet is served from. The catalog turns every
+# `{#css Panel.css #}` into a link under this prefix.
+COMPONENT_ASSETS_URL = "/estatico/componentes/"
 
 
-def render(name: str, /, **context: object) -> HTMLResponse:
-    """Render a template. Templates receive data, never the request."""
+# Component names are positional-only so that a context key never shadows one.
+def render_fragment(name: str, /, **context: Any) -> str:
+    """Render a component to markup, for embedding rather than responding."""
+    return _CATALOG.render(name, **context)
+
+
+def render(name: str, /, **context: Any) -> HTMLResponse:
+    """Render a component. Components receive data, never the request."""
     return HTMLResponse(render_fragment(name, **context))
 
 
 def render_hx(
-    request: Request, page: str, fragment: str, /, **context: object
+    request: Request, page: str, fragment: str, /, **context: Any
 ) -> HTMLResponse:
     """Serve one URL as a whole page, or as the fragment htmx swaps into it.
 
@@ -33,11 +43,14 @@ def render_hx(
     return response
 
 
-def template_environment() -> Environment:
-    environment = Environment(
-        loader=FileSystemLoader(Path(__file__).with_name("templates")),
-        autoescape=select_autoescape(("html", "xml")),
-    )
+def component_catalog() -> Catalog:
+    """Build the catalog: `components/` are shared, `pages/` are the entry points.
+
+    Both folders share one namespace, so a page names a component directly. The
+    environment is handed over pre-built because a catalog only ever inherits
+    autoescaping from one it is given, and leaves it off otherwise.
+    """
+    environment = Environment(autoescape=True)
     environment.filters["estado"] = _state_label
     environment.filters["rol"] = _role_label
     environment.filters["notificacion"] = _notification_label
@@ -51,7 +64,11 @@ def template_environment() -> Environment:
         }
     )
     environment.globals["resumen_proceso"] = _job_summary
-    return environment
+
+    catalog = Catalog(jinja_env=environment, root_url=COMPONENT_ASSETS_URL)
+    catalog.add_folder(COMPONENTS_DIR)
+    catalog.add_folder(PAGES_DIR)
+    return catalog
 
 
 def _state_label(state: JobState) -> str:
@@ -97,4 +114,4 @@ def _credential_state_label(state: CredentialState) -> str:
     }[state]
 
 
-_TEMPLATES = template_environment()
+_CATALOG = component_catalog()

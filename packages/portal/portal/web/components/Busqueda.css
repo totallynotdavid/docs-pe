@@ -1,0 +1,31 @@
+.busqueda {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.busqueda label {
+  color: var(--foreground-secondary);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
+  grid-column: 1 / -1;
+}
+
+.busqueda input {
+  background: var(--background);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--foreground);
+  min-height: 32px;
+  padding: 0 9px;
+  width: 100%;
+}
+
+.busqueda input:focus { border-color: var(--foreground-tertiary); }
+
+@media (max-width: 720px) {
+  .busqueda { grid-template-columns: 1fr; }
+
+  .busqueda button { width: 100%; }
+}

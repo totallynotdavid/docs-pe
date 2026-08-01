@@ -9,6 +9,7 @@ from fastapi import UploadFile
 from fastapi.testclient import TestClient
 from portal.settings import PortalSettings
 from portal.web.app import create_app
+from portal.web.render import COMPONENTS_DIR, PAGES_DIR
 from portal.web.uploads import MAX_CSV_UPLOAD_BYTES, read_csv_upload
 
 
@@ -68,6 +69,44 @@ def test_the_portal_serves_every_asset_a_page_asks_for() -> None:
         assert {"/estatico/htmx.min.js", "/estatico/htmx-ext-sse.min.js"} <= references
         for reference in references:
             assert client.get(reference).status_code == 200, reference
+
+
+def _declared_stylesheets(source: str) -> set[str]:
+    return {
+        name.strip()
+        for declaration in re.findall(r"\{#css(.*?)#\}", source, re.DOTALL)
+        for name in declaration.split(",")
+        if name.strip()
+    }
+
+
+def test_the_layout_carries_the_styles_htmx_can_swap_in_later() -> None:
+    """Asset collection sees one render; a fragment arrives after it.
+
+    A component reachable only through a swap would otherwise land on a page whose
+    stylesheet set was decided before it existed.
+    """
+    layout = (COMPONENTS_DIR / "Layout.jinja").read_text()
+    covered = _declared_stylesheets(layout)
+
+    for fragment in sorted(PAGES_DIR.glob("*Fragment.jinja")):
+        for tag in set(re.findall(r"<([A-Z][A-Za-z0-9]*)[\s/>]", fragment.read_text())):
+            component = COMPONENTS_DIR / f"{tag}.jinja"
+            required = _declared_stylesheets(component.read_text())
+            if (COMPONENTS_DIR / f"{tag}.css").exists():
+                required.add(f"{tag}.css")
+            assert required <= covered, f"{fragment.name} -> {tag}"
+
+
+def test_every_component_stylesheet_is_reachable_but_no_template_is() -> None:
+    """The folder holds both, so serving it wholesale would publish the markup."""
+    with TestClient(create_app(PortalSettings(""))) as client:
+        for stylesheet in sorted(COMPONENTS_DIR.glob("*.css")):
+            served = client.get(f"/estatico/componentes/{stylesheet.name}")
+            assert served.status_code == 200, stylesheet.name
+            assert served.headers["content-type"].startswith("text/css")
+
+        assert client.get("/estatico/componentes/Layout.jinja").status_code == 404
 
 
 async def test_csv_upload_accepts_a_valid_file_and_strips_its_directories() -> None:

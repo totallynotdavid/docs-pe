@@ -86,9 +86,7 @@ async def _form_context(
 async def new_job_get(
     session: PageSession, service: Service, team_id: UUID
 ) -> Response:
-    return render(
-        "job_form.html", **await _form_context(session, service, team_id, error="")
-    )
+    return render("JobForm", **await _form_context(session, service, team_id, error=""))
 
 
 @router.post("")
@@ -117,7 +115,7 @@ async def new_job_post(
         )
     except (PortalError, ValueError, RuntimeError) as error:
         context = await _form_context(session, service, team_id, error=str(error))
-        return render("job_form.html", **context)
+        return render("JobForm", **context)
     return RedirectResponse(f"/equipos/{team_id}/procesos/{job.id}", status_code=303)
 
 
@@ -126,7 +124,7 @@ async def job_detail(
     session: PageSession, service: Service, team_id: UUID, job_id: UUID
 ) -> Response:
     return render(
-        "job_detail.html",
+        "JobDetail",
         user=session.user,
         csrf_token=session.csrf_token,
         team=await service.team(session.user.id, team_id),
@@ -197,7 +195,7 @@ async def _progress_stream(
             yield sse_event(
                 event_id=event.sequence,
                 event="progreso",
-                data=render_fragment("fragments/job_progress.html", job=job),
+                data=render_fragment("JobProgressFragment", job=job),
             )
             if job.state in TERMINAL_JOB_STATES:
                 yield _STREAM_CLOSED

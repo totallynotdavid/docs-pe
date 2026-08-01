@@ -1,0 +1,23 @@
+.barra-superior {
+  align-items: center;
+  background: var(--secondary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  height: 48px;
+  justify-content: space-between;
+  padding: 0 16px;
+}
+
+.titulo-barra {
+  color: var(--foreground);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+}
+
+.acciones-barra { align-items: center; display: flex; gap: 8px; }
+
+@media (max-width: 720px) {
+  .barra-superior { height: 42px; padding: 0 16px; }
+
+  .acciones-barra .boton { min-width: 0; }
+}

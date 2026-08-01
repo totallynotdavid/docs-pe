@@ -14,6 +14,7 @@ dependencies = [
     "fetch",
     "httpx>=0.28.0",
     "jinja2>=3.1.0",
+    "jinjax>=0.65",
     "pwdlib[argon2]>=0.3.0",
     "python-multipart>=0.0.20",
     "uvicorn>=0.41.0",
@@ -33,10 +34,14 @@ fetch = { workspace = true }
 include = ["portal*"]
 
 [tool.setuptools.package-data]
-portal = ["migrations/*.sql", "web/static/*.css", "web/static/*.js", "web/static/*.woff2", "web/templates/*.html", "web/templates/fragments/*.html"]
+portal = ["migrations/*.sql", "web/components/*.css", "web/components/*.jinja", "web/pages/*.jinja", "web/static/*.css", "web/static/*.js", "web/static/*.woff2"]
 
 # djLint resolves its configuration from the nearest pyproject.toml above the
 # templates it is given, which is this one rather than the workspace root.
+# `custom_html` is what teaches it that a capitalised tag is an element: without
+# it djLint flattens every JinjaX component tree it is asked to hold.
 [tool.djlint]
 profile = "jinja"
 indent = 2
+extension = "jinja"
+custom_html = "[A-Z][a-zA-Z0-9]*"

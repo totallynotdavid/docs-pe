@@ -36,9 +36,7 @@ async def _users_context(
 async def administration_users_get(
     session: PageSession, provisioning: Provisioning
 ) -> Response:
-    return render(
-        "site_users.html", **await _users_context(session, provisioning, error="")
-    )
+    return render("SiteUsers", **await _users_context(session, provisioning, error=""))
 
 
 @router.post("/usuarios", response_class=HTMLResponse)
@@ -52,7 +50,7 @@ async def administration_users_post(
         await provisioning.create_user(session.user.id, email=email, password=password)
     except (PortalError, ValueError) as error:
         context = await _users_context(session, provisioning, error=str(error))
-        return render("site_users.html", **context)
+        return render("SiteUsers", **context)
     return RedirectResponse("/administracion/usuarios", status_code=303)
 
 
@@ -73,9 +71,7 @@ async def _teams_context(
 async def administration_teams_get(
     session: PageSession, provisioning: Provisioning
 ) -> Response:
-    return render(
-        "site_teams.html", **await _teams_context(session, provisioning, error="")
-    )
+    return render("SiteTeams", **await _teams_context(session, provisioning, error=""))
 
 
 @router.post("/equipos", response_class=HTMLResponse)
@@ -92,5 +88,5 @@ async def administration_teams_post(
         )
     except (PortalError, ValueError) as error:
         context = await _teams_context(session, provisioning, error=str(error))
-        return render("site_teams.html", **context)
+        return render("SiteTeams", **context)
     return RedirectResponse(f"/equipos/{team.id}/ajustes", status_code=303)

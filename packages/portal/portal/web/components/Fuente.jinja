@@ -1,0 +1,23 @@
+{#def fuente #}
+{#css Fuentes.css #}
+<label class="fuente">
+  <input class="fuente__control"
+         type="checkbox"
+         name="sources"
+         value="{{ fuente.id }}"
+         {% if fuente.default %}checked{% endif %}>
+  <span class="fuente__contenido">
+    <span class="fuente__cabecera">
+      <span class="fuente__nombre">{{ fuente.name }}</span>
+      <span class="fuente__aplica">{{ fuente.eligibility }}</span>
+    </span>
+    <span class="fuente__resultado">Recibirás: {{ fuente.output }}</span>
+    <span class="fuente__muestra">
+      <span class="fuente__muestra-titulo">Así se verá el resultado</span>
+      <span class="fuente__tabla">
+        <span>{% for header in fuente.sample_headers %}<b>{{ header }}</b>{% endfor %}</span>
+        <span>{% for value in fuente.sample_row %}<i>{{ value }}</i>{% endfor %}</span>
+      </span>
+    </span>
+  </span>
+</label>

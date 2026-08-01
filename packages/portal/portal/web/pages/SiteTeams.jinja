@@ -1,0 +1,56 @@
+{#def user, csrf_token, users, teams, error #}
+<Layout titulo="Administración · Worker"
+        :usuario="user"
+        :csrf_token="csrf_token">
+  <BarraSuperior titulo="Administración · Equipos">
+    <Boton variante="secundario" href="/administracion/usuarios">
+      Personas
+    </Boton>
+  </BarraSuperior>
+  <Contenido>
+    <h1 class="solo-lector">Administración de equipos</h1>
+    <Panel>
+      <PanelCabecera titulo="Crear equipo"
+                     descripcion="Asigna una persona responsable desde el inicio." />
+      <PanelCuerpo>
+        {% if error %}<Mensaje>{{ error }}</Mensaje>{% endif %}
+        <Formulario accion="/administracion/equipos" :csrf_token="csrf_token">
+          <Campo etiqueta="Nombre">
+            <input name="name" maxlength="120" required placeholder="Ej. Equipo Lima">
+          </Campo>
+          <Campo etiqueta="Dirección del equipo"
+                 ayuda="Solo minúsculas, números y guiones.">
+            <input name="slug"
+                   pattern="[a-z0-9][a-z0-9-]{1,62}"
+                   required
+                   placeholder="equipo-lima">
+          </Campo>
+          <Campo etiqueta="Persona responsable">
+            <select name="leader_email" required>
+              <option value="" selected disabled>Selecciona una persona</option>
+              {% for person in users %}<option value="{{ person.email }}">{{ person.email }}</option>{% endfor %}
+            </select>
+          </Campo>
+          <button type="submit">Crear equipo</button>
+        </Formulario>
+      </PanelCuerpo>
+    </Panel>
+    <Panel>
+      <PanelCabecera titulo="Equipos existentes" />
+      <Lista>
+        {% for team in teams %}
+          <ListaItem>
+            <span>{{ team.name }}</span>
+            <MetaDato>
+              {{ team.slug }}
+            </MetaDato>
+          </ListaItem>
+        {% else %}
+          <ListaItem class="estado-vacio">
+            Aún no hay equipos.
+          </ListaItem>
+        {% endfor %}
+      </Lista>
+    </Panel>
+  </Contenido>
+</Layout>

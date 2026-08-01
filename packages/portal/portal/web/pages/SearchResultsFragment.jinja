@@ -1,0 +1,27 @@
+{#def team, query, results, page, has_more #}
+{% if query %}
+  {% if results %}
+    <Lista>
+      {% for result in results %}
+        <ListaItem>
+          <a href="/equipos/{{ team.id }}/procesos/{{ result.job_id }}">{{ result.document }}</a>
+          <span>{{ result.filename }}</span>
+        </ListaItem>
+      {% endfor %}
+    </Lista>
+  {% else %}
+    <EstadoVacio>
+      No hay resultados.
+    </EstadoVacio>
+  {% endif %}
+{% else %}
+  <EstadoVacio>
+    Ingresa un documento para buscar.
+  </EstadoVacio>
+{% endif %}
+{% if page > 1 or has_more %}
+  <Paginacion etiqueta="Paginación de búsqueda">
+    {% if page > 1 %}<a href="?q={{ query }}&page={{ page - 1 }}">Anterior</a>{% endif %}
+    {% if has_more %}<a href="?q={{ query }}&page={{ page + 1 }}">Siguiente</a>{% endif %}
+  </Paginacion>
+{% endif %}

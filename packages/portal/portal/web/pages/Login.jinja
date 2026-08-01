@@ -1,0 +1,22 @@
+{#def user, csrf_token, error #}
+<Layout titulo="Ingresar · Worker" :usuario="user" :csrf_token="csrf_token">
+  <Contenido>
+    <Acceso titulo="Iniciar sesión"
+            descripcion="Accede al portal de Worker."
+            titulo_id="titulo-ingreso">
+      {% if error %}<Mensaje>No se pudo iniciar sesión.</Mensaje>{% endif %}
+      <Formulario accion="/login" :csrf_token="csrf_token">
+        <Campo etiqueta="Correo electrónico">
+          <input type="email" name="email" autocomplete="email" required>
+        </Campo>
+        <Campo etiqueta="Contraseña">
+          <input type="password"
+                 name="password"
+                 autocomplete="current-password"
+                 required>
+        </Campo>
+        <button type="submit">Ingresar</button>
+      </Formulario>
+    </Acceso>
+  </Contenido>
+</Layout>

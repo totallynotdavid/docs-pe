@@ -20,7 +20,7 @@ async def dashboard(
         if status.can_create_first_team:
             return RedirectResponse("/inicio", status_code=303)
     return render(
-        "dashboard.html",
+        "Dashboard",
         user=session.user,
         csrf_token=session.csrf_token,
         teams=await service.teams(session.user.id),
@@ -33,7 +33,7 @@ async def first_team_get(session: PageSession, provisioning: Provisioning) -> Re
     if not status.can_create_first_team:
         return RedirectResponse("/", status_code=303)
     return render(
-        "first_team.html",
+        "FirstTeam",
         user=session.user,
         csrf_token=session.csrf_token,
         error="",
@@ -54,7 +54,7 @@ async def first_team_post(
         )
     except (PortalError, ValueError) as error:
         return render(
-            "first_team.html",
+            "FirstTeam",
             user=session.user,
             csrf_token=session.csrf_token,
             error=str(error),
@@ -69,8 +69,8 @@ async def notifications(
 ) -> Response:
     return render_hx(
         request,
-        "notifications.html",
-        "fragments/notifications.html",
+        "Notifications",
+        "NotificationsFragment",
         user=session.user,
         csrf_token=session.csrf_token,
         notifications=await service.notifications(session.user.id),

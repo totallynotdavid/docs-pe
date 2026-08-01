@@ -28,8 +28,8 @@ async def team_page(
     jobs, total = await service.jobs(session.user.id, team_id, page=max(page, 1))
     return render_hx(
         request,
-        "team.html",
-        "fragments/jobs.html",
+        "Team",
+        "JobsFragment",
         user=session.user,
         csrf_token=session.csrf_token,
         team=team,
@@ -44,7 +44,7 @@ async def team_settings_overview(
     session: PageSession, service: Service, provisioning: Provisioning, team_id: UUID
 ) -> Response:
     return render(
-        "team_settings.html",
+        "TeamSettings",
         user=session.user,
         csrf_token=session.csrf_token,
         team=await service.team(session.user.id, team_id),
@@ -75,7 +75,7 @@ async def team_members_get(
     session: PageSession, service: Service, provisioning: Provisioning, team_id: UUID
 ) -> Response:
     context = await _members_context(session, service, provisioning, team_id, error="")
-    return render("team_members.html", **context)
+    return render("TeamMembers", **context)
 
 
 @router.post("/ajustes/miembros", response_class=HTMLResponse)
@@ -95,7 +95,7 @@ async def team_members_post(
         context = await _members_context(
             session, service, provisioning, team_id, error=str(error)
         )
-        return render("team_members.html", **context)
+        return render("TeamMembers", **context)
     return RedirectResponse(f"/equipos/{team_id}/ajustes/miembros", status_code=303)
 
 
@@ -146,7 +146,7 @@ async def proxy_settings_get(
     context = await _proxy_context(
         session, service, provisioning, team_id, provider=proveedor, error=""
     )
-    return render("proxy_settings.html", **context)
+    return render("ProxySettings", **context)
 
 
 @router.post("/ajustes/proxy", response_class=HTMLResponse)
@@ -191,5 +191,5 @@ async def proxy_settings_post(
         context = await _proxy_context(
             session, service, provisioning, team_id, provider=provider, error=str(error)
         )
-        return render("proxy_settings.html", **context)
+        return render("ProxySettings", **context)
     return RedirectResponse(f"/equipos/{team_id}/ajustes/proxy", status_code=303)

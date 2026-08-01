@@ -17,7 +17,7 @@ run = "uv pip list --outdated"
 run = [
   "uv run ruff format",
   "uv run ruff check --fix",
-  "uv run djlint packages/portal/portal/web/templates --reformat --quiet",
+  "uv run djlint packages/portal/portal/web/components packages/portal/portal/web/pages --reformat --quiet",
 ]
 
 [tasks."portal:assets"]
@@ -61,7 +61,7 @@ run = "uv run --env-file .env osiptel-portal"
 [tasks.check]
 run = [
   "uv run mypy .",
-  "uv run djlint packages/portal/portal/web/templates --check",
+  "uv run djlint packages/portal/portal/web/components packages/portal/portal/web/pages --check",
 ]
 
 [tasks.test]

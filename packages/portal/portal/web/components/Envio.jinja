@@ -1,0 +1,7 @@
+{#def accion, csrf_token #}
+{# Every state change is a POST carrying the session's CSRF token, so the token
+   belongs to the form component rather than to each page that submits one. #}
+<form {{ attrs.render(action=accion, method="post") }}>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  {{ content }}
+</form>

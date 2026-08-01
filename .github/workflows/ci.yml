@@ -73,7 +73,7 @@ jobs:
         run: uv run ruff check
 
       - name: Template format check
-        run: uv run djlint packages/portal/portal/web/templates --check
+        run: uv run djlint packages/portal/portal/web/components packages/portal/portal/web/pages --check
 
       - name: Type check
         run: uv run mypy .

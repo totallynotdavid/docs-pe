@@ -1,0 +1,60 @@
+.formulario { display: grid; gap: 15px; max-width: 620px; }
+
+.formulario label {
+  color: var(--foreground-secondary);
+  display: grid;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-medium);
+  gap: 6px;
+}
+
+.ayuda {
+  color: var(--foreground-tertiary);
+  font-size: 11px;
+  font-weight: var(--font-weight-regular);
+  line-height: 1.35;
+}
+
+.formulario input, .formulario textarea, .formulario select {
+  background: var(--background);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--foreground);
+  min-height: 32px;
+  padding: 0 9px;
+  width: 100%;
+}
+
+.formulario textarea { min-height: 190px; padding: 9px; resize: vertical; }
+
+.formulario input:focus,
+.formulario textarea:focus,
+.formulario select:focus {
+  border-color: var(--foreground-tertiary);
+}
+
+.formulario fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 13px;
+  margin: 0;
+  padding: 12px;
+}
+
+.formulario legend {
+  color: var(--foreground-tertiary);
+  font-size: var(--font-size-caption);
+  padding: 0 4px;
+}
+
+/* Overrides the grid `label` above, so it has to stay after it. */
+.opcion {
+  align-items: center !important;
+  display: inline-flex !important;
+  font-weight: var(--font-weight-regular) !important;
+  gap: 6px;
+}
+
+.opcion input { min-height: auto; width: auto; }

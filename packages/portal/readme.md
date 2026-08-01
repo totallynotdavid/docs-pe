@@ -67,9 +67,9 @@ and type-check with `uv run mypy packages/portal`.
 
 ## Límites de proceso
 
-`portal.web` is a FastAPI operational boundary. Browser pages use Jinja2, HTMX, and
-SSE. It opens dependencies and serves readiness only; deployment provisioning is the
-sole path that applies schema changes or creates initial data.
+`portal.web` is a FastAPI operational boundary. Browser pages are JinjaX components
+driven by HTMX and SSE. It opens dependencies and serves readiness only; deployment
+provisioning is the sole path that applies schema changes or creates initial data.
 `portal.application` holds team authorization and submission/cancellation use cases;
 `portal.domain` contains source planning and state policy; `portal.repository` owns
 PostgreSQL transactions; `portal.worker` consumes only that PostgreSQL queue.
@@ -78,6 +78,11 @@ theme can replace tokens without changing page components. That directory also h
 the browser dependencies themselves: `package.json` pins htmx and its SSE extension,
 `mise run portal:assets` copies them in, and CI fails when the committed copy drifts
 from the pinned version.
+
+Everything else visual belongs to a component. `portal.web.components` holds a
+`<Name>.jinja` and the `<Name>.css` that only ships when it renders;
+`portal.web.pages` holds the entry points a route names. There is no global
+stylesheet to grow.
 
 `portal.storage.port` accepts immutable, provider-neutral object references, never a
 local process path. `portal.integrations.port` describes notification delivery, but
