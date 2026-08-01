@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 from portal.domain.errors import SourceValidationError
 from portal.domain.models import (
     MAX_ACTIVE_JOBS,
+    MAX_LEASE_ATTEMPTS,
     STABLE_SOURCES,
     BrowserSession,
     ClaimedWork,
@@ -20,6 +21,7 @@ from portal.domain.models import (
     JobState,
     PortalUser,
     ProxyProvider,
+    SearchResult,
     SubmissionPlan,
     SubmitJob,
     Team,
@@ -74,10 +76,34 @@ WITH candidate AS (
 )
 UPDATE portal_job_items AS item
    SET state = 'running', lease_owner = $1, lease_fence = candidate.lease_fence,
-       lease_expires_at = now() + interval '5 minutes', updated_at = now()
+       lease_expires_at = now() + interval '5 minutes', attempts = item.attempts + 1,
+       updated_at = now()
   FROM candidate
  WHERE item.id = candidate.id
 RETURNING item.id, item.job_id, item.source, item.document, item.lease_fence
+"""
+
+# Cancellation retires its own items in a single transaction, so an expired lease
+# only ever belongs to a running job. Items of a job that left 'running' are
+# already terminal and must not be resurrected here.
+_SWEEP_EXPIRED = """
+WITH expired AS (
+    SELECT item.id, item.attempts
+      FROM portal_job_items AS item
+      JOIN portal_jobs AS job ON job.id = item.job_id
+     WHERE item.state = 'running'
+       AND item.lease_expires_at < now()
+       AND job.state = 'running'
+     FOR UPDATE OF item SKIP LOCKED
+)
+UPDATE portal_job_items AS item
+   SET state = CASE WHEN expired.attempts >= $1 THEN 'failed' ELSE 'pending' END,
+       reason = CASE WHEN expired.attempts >= $1 THEN 'lease_expired' ELSE item.reason END,
+       finished_at = CASE WHEN expired.attempts >= $1 THEN now() ELSE NULL END,
+       lease_owner = NULL, lease_expires_at = NULL, updated_at = now()
+  FROM expired
+ WHERE item.id = expired.id
+RETURNING item.job_id
 """
 
 _PUBLISH_FENCED = """
@@ -281,6 +307,67 @@ class PostgresPortalRepository:
             await self._terminal_intents(connection, job_id, JobState.CANCELLED)
             await self._promote_locked(connection)
         return self._job(row)
+
+    async def search_published(
+        self, team_id: UUID, needle: str, *, limit: int, offset: int
+    ) -> tuple[tuple[SearchResult, ...], bool]:
+        """Match published documents by substring, newest job first.
+
+        Fetches one row beyond the page so the caller learns whether another page
+        exists without counting the whole match set.
+        """
+        rows = await self._pool.fetch(
+            """
+            SELECT item.job_id, job.filename, item.document
+              FROM portal_job_items AS item
+              JOIN portal_jobs AS job ON job.id = item.job_id
+             WHERE item.team_id = $1
+               AND item.state = 'published'
+               AND item.document ILIKE '%' || $2 || '%'
+             ORDER BY job.queue_sequence DESC, item.ordinal
+             LIMIT $3 OFFSET $4
+            """,
+            team_id,
+            needle,
+            limit + 1,
+            offset,
+        )
+        results = tuple(
+            SearchResult(row["job_id"], row["filename"], row["document"])
+            for row in rows[:limit]
+        )
+        return results, len(rows) > limit
+
+    async def recent_job_events(
+        self, team_ids: tuple[UUID, ...], event_types: tuple[str, ...], *, limit: int
+    ) -> tuple[JobEvent, ...]:
+        if not team_ids or not event_types:
+            return ()
+        rows = await self._pool.fetch(
+            """
+            SELECT event.id, event.job_id, event.event_type, event.sequence,
+                   event.created_at
+              FROM portal_job_events AS event
+              JOIN portal_jobs AS job ON job.id = event.job_id
+             WHERE job.team_id = ANY($1::uuid[])
+               AND event.event_type = ANY($2::text[])
+             ORDER BY event.sequence DESC
+             LIMIT $3
+            """,
+            list(team_ids),
+            list(event_types),
+            limit,
+        )
+        return tuple(
+            JobEvent(
+                id=row["id"],
+                job_id=row["job_id"],
+                event_type=row["event_type"],
+                sequence=int(row["sequence"]),
+                created_at=row["created_at"],
+            )
+            for row in rows
+        )
 
     async def published_jobs(self, team_id: UUID) -> tuple[Job, ...]:
         async with self._pool.acquire() as connection:
@@ -909,6 +996,7 @@ class PostgresPortalRepository:
             raise SourceValidationError(msg)
         async with self._pool.acquire() as connection, connection.transaction():
             await self._lock_queue_gate(connection)
+            await self._sweep_expired_locked(connection)
             row = await connection.fetchrow(_CLAIM_ONE, worker_id, list(sources))
         if row is None:
             return None
@@ -997,25 +1085,48 @@ class PostgresPortalRepository:
             for row in promoted:
                 await self._event(connection, row["id"], "proceso.running", None)
 
+    async def _sweep_expired_locked(self, connection: Connection) -> None:
+        """Recover items whose worker stopped renewing the lease.
+
+        Runs in the claim transaction rather than a reaper process: every queue
+        transition already serializes on the queue-control gate, so a second
+        writer would contend for the same row and stall the queue when it died.
+        """
+        rows = await connection.fetch(_SWEEP_EXPIRED, MAX_LEASE_ATTEMPTS)
+        for job_id in {row["job_id"] for row in rows}:
+            await self._finish_if_drained_locked(connection, job_id)
+
     async def _finish_if_drained_locked(
         self, connection: Connection, job_id: UUID
     ) -> None:
-        finished = await connection.fetchval(
+        # A job that drained without publishing anything did not succeed, so it
+        # retires as failed rather than reporting an empty result as completed.
+        row = await connection.fetchrow(
             """
-            UPDATE portal_jobs
-               SET state = 'completed', finished_at = now(), updated_at = now()
-             WHERE id = $1
-               AND state = 'running'
+            UPDATE portal_jobs AS job
+               SET state = CASE
+                       WHEN EXISTS (
+                           SELECT 1 FROM portal_job_items
+                            WHERE job_id = $1 AND state = 'published'
+                       ) THEN 'completed' ELSE 'failed' END,
+                   terminal_reason = CASE
+                       WHEN EXISTS (
+                           SELECT 1 FROM portal_job_items
+                            WHERE job_id = $1 AND state = 'published'
+                       ) THEN job.terminal_reason ELSE 'sin_resultados' END,
+                   finished_at = now(), updated_at = now()
+             WHERE job.id = $1
+               AND job.state = 'running'
                AND NOT EXISTS (
                    SELECT 1 FROM portal_job_items
                     WHERE job_id = $1 AND state IN ('pending', 'running')
                )
-            RETURNING id
+            RETURNING job.state
             """,
             job_id,
         )
-        if finished is not None:
-            await self._terminal_intents(connection, job_id, JobState.COMPLETED)
+        if row is not None:
+            await self._terminal_intents(connection, job_id, JobState(row["state"]))
             await self._promote_locked(connection)
 
     async def _event(

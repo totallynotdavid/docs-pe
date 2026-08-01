@@ -56,7 +56,12 @@ TERMINAL_JOB_STATES = frozenset(
     {JobState.COMPLETED, JobState.FAILED, JobState.CANCELLED}
 )
 PUBLISHED_ITEM_STATES = frozenset({ItemState.PUBLISHED})
+# Job events a member is notified about. Progress events stay out of the feed.
+TERMINAL_JOB_EVENTS = ("proceso.completed", "proceso.failed", "proceso.cancelled")
 MAX_ACTIVE_JOBS = 5
+# Times an item may be handed to a worker before an expired lease retires it.
+# Mirrors fetch.domain.policy.MAX_ATTEMPTS, which bounds the same kind of retry.
+MAX_LEASE_ATTEMPTS = 4
 
 
 @dataclass(frozen=True)

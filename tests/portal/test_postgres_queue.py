@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import os
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
@@ -11,9 +13,19 @@ import asyncpg
 import pytest
 
 from portal.application.service import PortalService
-from portal.domain.models import InputLine, JobState, SubmitJob
+from portal.domain.models import (
+    MAX_LEASE_ATTEMPTS,
+    InputLine,
+    Job,
+    JobState,
+    SubmitJob,
+)
 from portal.migrations import apply_migrations
 from portal.repository.postgres import PostgresPortalRepository
+
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 
 POSTGRES_DSN = os.environ.get("PORTAL_TEST_DSN", "")
@@ -22,11 +34,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results() -> (
-    None
-):
-    """Exercise the real FOR UPDATE gate, FIFO promotion, and cancellation fence."""
-    database = f"portal_contract_{uuid4().hex}"
+@asynccontextmanager
+async def _portal_database(prefix: str) -> AsyncIterator[asyncpg.Pool]:
+    """Give one test a migrated database of its own, dropped afterwards."""
+    database = f"portal_{prefix}_{uuid4().hex}"
     maintenance_dsn, test_dsn = _database_dsns(POSTGRES_DSN, database)
     maintenance = await asyncpg.connect(maintenance_dsn)
     await maintenance.execute(f'CREATE DATABASE "{database}"')
@@ -35,110 +46,217 @@ async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results
         pool = await asyncpg.create_pool(test_dsn, min_size=1, max_size=12)
         try:
             await apply_migrations(pool)
-            actor_id, team_id, credential_id = await _seed_team(pool)
-            service = PortalService(PostgresPortalRepository(pool))
-            commands = [
-                SubmitJob(
-                    actor_id=actor_id,
-                    team_id=team_id,
-                    credential_version_id=credential_id,
-                    input_object_id=await _input_reference(pool, team_id, number),
-                    filename=f"entrada-{number}.csv",
-                    sources=("osiptel",),
-                    lines=(InputLine(1, "10412345678"),),
-                )
-                for number in range(10)
-            ]
-            jobs = await asyncio.gather(
-                *(service.submit(command) for command in commands)
-            )
-            repository = PostgresPortalRepository(pool)
-            service = PortalService(repository)
-            running = [job for job in jobs if job.state is JobState.RUNNING]
-            queued = sorted(
-                (job for job in jobs if job.state is JobState.QUEUED),
-                key=lambda job: job.queue_sequence,
-            )
-            assert len(running) == 5
-            assert [job.queue_sequence for job in queued] == [6, 7, 8, 9, 10]
-
-            claimed = await repository.claim("trabajador-prueba", ("osiptel",))
-            assert claimed is not None
-            partial_job = next(job for job in running if job.id != claimed.job_id)
-            result_reference = await _result_reference(pool, team_id)
-            await pool.execute(
-                """
-                UPDATE portal_job_items
-                   SET state = 'published', result_object_id = $1, published_at = now()
-                 WHERE job_id = $2
-                """,
-                result_reference,
-                partial_job.id,
-            )
-            cancelled = await service.cancel(actor_id, team_id, claimed.job_id)
-            assert cancelled.state is JobState.CANCELLED
-            assert (
-                await repository.publish(
-                    claimed.item_id,
-                    "trabajador-prueba",
-                    claimed.lease_fence,
-                    result_reference,
-                )
-                is False
-            )
-            assert queued[0].id == await pool.fetchval(
-                """
-                SELECT id FROM portal_jobs
-                 WHERE state = 'running'
-                 ORDER BY queue_sequence DESC
-                 LIMIT 1
-                """
-            )
-            assert (
-                await pool.fetchval(
-                    """
-                    SELECT result_object_id FROM portal_job_items
-                     WHERE job_id = $1 AND state = 'published'
-                    """,
-                    partial_job.id,
-                )
-                == result_reference
-            )
-            partial_cancelled = await service.cancel(actor_id, team_id, partial_job.id)
-            assert partial_cancelled.state is JobState.CANCELLED
-            assert (
-                await pool.fetchval("SELECT count(*) FROM portal_notification_outbox")
-                == 6
-            )
+            yield pool
         finally:
             await pool.close()
     finally:
         maintenance = await asyncpg.connect(maintenance_dsn)
         await maintenance.execute(f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)')
         await maintenance.close()
+
+
+async def _expire_leases(pool: asyncpg.Pool) -> None:
+    await pool.execute(
+        """
+        UPDATE portal_job_items
+           SET lease_expires_at = now() - interval '1 minute'
+         WHERE state = 'running'
+        """
+    )
+
+
+async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results() -> (
+    None
+):
+    """Exercise the real FOR UPDATE gate, FIFO promotion, and cancellation fence."""
+    async with _portal_database("contract") as pool:
+        actor_id, team_id, credential_id = await _seed_team(pool)
+        service = PortalService(PostgresPortalRepository(pool))
+        commands = [
+            SubmitJob(
+                actor_id=actor_id,
+                team_id=team_id,
+                credential_version_id=credential_id,
+                input_object_id=await _input_reference(pool, team_id, number),
+                filename=f"entrada-{number}.csv",
+                sources=("osiptel",),
+                lines=(InputLine(1, "10412345678"),),
+            )
+            for number in range(10)
+        ]
+        jobs = await asyncio.gather(*(service.submit(command) for command in commands))
+        repository = PostgresPortalRepository(pool)
+        service = PortalService(repository)
+        running = [job for job in jobs if job.state is JobState.RUNNING]
+        queued = sorted(
+            (job for job in jobs if job.state is JobState.QUEUED),
+            key=lambda job: job.queue_sequence,
+        )
+        assert len(running) == 5
+        assert [job.queue_sequence for job in queued] == [6, 7, 8, 9, 10]
+
+        claimed = await repository.claim("trabajador-prueba", ("osiptel",))
+        assert claimed is not None
+        partial_job = next(job for job in running if job.id != claimed.job_id)
+        result_reference = await _result_reference(pool, team_id)
+        await pool.execute(
+            """
+            UPDATE portal_job_items
+               SET state = 'published', result_object_id = $1, published_at = now()
+             WHERE job_id = $2
+            """,
+            result_reference,
+            partial_job.id,
+        )
+        cancelled = await service.cancel(actor_id, team_id, claimed.job_id)
+        assert cancelled.state is JobState.CANCELLED
+        assert (
+            await repository.publish(
+                claimed.item_id,
+                "trabajador-prueba",
+                claimed.lease_fence,
+                result_reference,
+            )
+            is False
+        )
+        assert queued[0].id == await pool.fetchval(
+            """
+            SELECT id FROM portal_jobs
+             WHERE state = 'running'
+             ORDER BY queue_sequence DESC
+             LIMIT 1
+            """
+        )
+        assert (
+            await pool.fetchval(
+                """
+                SELECT result_object_id FROM portal_job_items
+                 WHERE job_id = $1 AND state = 'published'
+                """,
+                partial_job.id,
+            )
+            == result_reference
+        )
+        partial_cancelled = await service.cancel(actor_id, team_id, partial_job.id)
+        assert partial_cancelled.state is JobState.CANCELLED
+        assert (
+            await pool.fetchval("SELECT count(*) FROM portal_notification_outbox") == 6
+        )
 
 
 async def test_postgresql_login_limit_uses_a_timestamp_window() -> None:
-    database = f"portal_login_{uuid4().hex}"
-    maintenance_dsn, test_dsn = _database_dsns(POSTGRES_DSN, database)
-    maintenance = await asyncpg.connect(maintenance_dsn)
-    await maintenance.execute(f'CREATE DATABASE "{database}"')
-    await maintenance.close()
-    try:
-        pool = await asyncpg.create_pool(test_dsn)
-        try:
-            await apply_migrations(pool)
-            repository = PostgresPortalRepository(pool)
-            now = datetime.now(UTC)
-            assert await repository.login_allowed(
-                "persona@example.test", "127.0.0.1", now
-            )
-        finally:
-            await pool.close()
-    finally:
-        maintenance = await asyncpg.connect(maintenance_dsn)
-        await maintenance.execute(f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)')
-        await maintenance.close()
+    async with _portal_database("login") as pool:
+        repository = PostgresPortalRepository(pool)
+        now = datetime.now(UTC)
+        assert await repository.login_allowed("persona@example.test", "127.0.0.1", now)
+
+
+async def test_an_expired_lease_returns_its_item_to_the_queue() -> None:
+    """A worker that stops renewing must not strand its item in 'running'."""
+    async with _portal_database("lease") as pool:
+        repository = PostgresPortalRepository(pool)
+        await _submit_one(pool, repository)
+
+        first = await repository.claim("trabajador-uno", ("osiptel",))
+        assert first is not None
+        assert await _attempts(pool, first.item_id) == 1
+
+        await _expire_leases(pool)
+        second = await repository.claim("trabajador-dos", ("osiptel",))
+
+        assert second is not None
+        assert second.item_id == first.item_id
+        assert await _attempts(pool, second.item_id) == 2
+
+
+async def test_a_repeatedly_expired_item_retires_and_fails_its_job() -> None:
+    """The cap stops an item cycling forever, and an empty job is not 'completed'."""
+    async with _portal_database("retire") as pool:
+        repository = PostgresPortalRepository(pool)
+        job = await _submit_one(pool, repository)
+
+        for _ in range(MAX_LEASE_ATTEMPTS):
+            assert await repository.claim("trabajador", ("osiptel",)) is not None
+            await _expire_leases(pool)
+
+        assert await repository.claim("trabajador", ("osiptel",)) is None
+        item = await pool.fetchrow(
+            "SELECT state, reason FROM portal_job_items WHERE job_id = $1", job.id
+        )
+        assert item["state"] == "failed"
+        assert item["reason"] == "lease_expired"
+
+        finished = await pool.fetchrow(
+            "SELECT state, terminal_reason FROM portal_jobs WHERE id = $1", job.id
+        )
+        assert finished["state"] == "failed"
+        assert finished["terminal_reason"] == "sin_resultados"
+
+
+async def test_published_search_finds_a_dni_inside_a_ruc_and_paginates() -> None:
+    """A RUC-10 embeds its owner's DNI, so a DNI search must return both rows."""
+    async with _portal_database("search") as pool:
+        repository = PostgresPortalRepository(pool)
+        job = await _submit_one(pool, repository)
+        reference = await _result_reference(pool, team_id=job.team_id)
+        await pool.execute(
+            """
+            UPDATE portal_job_items
+               SET document = '10123456789', state = 'published',
+                   result_object_id = $2, published_at = now()
+             WHERE job_id = $1
+            """,
+            job.id,
+            reference,
+        )
+        await pool.execute(
+            """
+            INSERT INTO portal_job_items
+                (id, job_id, team_id, ordinal, document, source, state,
+                 result_object_id, published_at)
+            VALUES ($1, $2, $3, 2, '12345678', 'osiptel', 'published', $4, now())
+            """,
+            uuid4(),
+            job.id,
+            job.team_id,
+            reference,
+        )
+
+        found, more = await repository.search_published(
+            job.team_id, "12345678", limit=20, offset=0
+        )
+        assert {result.document for result in found} == {"10123456789", "12345678"}
+        assert more is False
+
+        first_page, more = await repository.search_published(
+            job.team_id, "12345678", limit=1, offset=0
+        )
+        assert len(first_page) == 1
+        assert more is True
+
+
+async def _submit_one(pool: asyncpg.Pool, repository: PostgresPortalRepository) -> Job:
+    """Seed a team and admit a single running job holding one osiptel item."""
+    actor_id, team_id, credential_id = await _seed_team(pool)
+    return await PortalService(repository).submit(
+        SubmitJob(
+            actor_id=actor_id,
+            team_id=team_id,
+            credential_version_id=credential_id,
+            input_object_id=await _input_reference(pool, team_id, 0),
+            filename="entrada.csv",
+            sources=("osiptel",),
+            lines=(InputLine(1, "10412345678"),),
+        )
+    )
+
+
+async def _attempts(pool: asyncpg.Pool, item_id: UUID) -> int:
+    return int(
+        await pool.fetchval(
+            "SELECT attempts FROM portal_job_items WHERE id = $1", item_id
+        )
+    )
 
 
 def _database_dsns(dsn: str, database: str) -> tuple[str, str]:

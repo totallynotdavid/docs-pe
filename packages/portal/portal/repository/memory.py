@@ -20,6 +20,7 @@ from portal.domain.models import (
     NotificationIntent,
     PortalUser,
     ProxyProvider,
+    SearchResult,
     SubmissionPlan,
     SubmitJob,
     Team,
@@ -154,6 +155,38 @@ class InMemoryPortalRepository:
                 self._terminal(job)
                 self._promote_fifo()
             return job
+
+    async def search_published(
+        self, team_id: UUID, needle: str, *, limit: int, offset: int
+    ) -> tuple[tuple[SearchResult, ...], bool]:
+        wanted = needle.lower()
+        matches = [
+            SearchResult(job.id, job.filename, item.document)
+            for job in sorted(
+                (job for job in self.jobs.values() if job.team_id == team_id),
+                key=lambda job: job.queue_sequence,
+                reverse=True,
+            )
+            for item in job.items
+            if item.state is ItemState.PUBLISHED and wanted in item.document.lower()
+        ]
+        page = matches[offset : offset + limit]
+        return tuple(page), offset + limit < len(matches)
+
+    async def recent_job_events(
+        self, team_ids: tuple[UUID, ...], event_types: tuple[str, ...], *, limit: int
+    ) -> tuple[JobEvent, ...]:
+        teams = set(team_ids)
+        wanted = set(event_types)
+        matches = [
+            event
+            for event in self.events
+            if event.event_type in wanted
+            and (job := self.jobs.get(event.job_id)) is not None
+            and job.team_id in teams
+        ]
+        matches.sort(key=lambda event: event.sequence, reverse=True)
+        return tuple(matches[:limit])
 
     async def published_jobs(self, team_id: UUID) -> tuple[Job, ...]:
         return tuple(

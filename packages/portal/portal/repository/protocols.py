@@ -12,6 +12,7 @@ from portal.domain.models import (
     Job,
     JobEvent,
     PortalUser,
+    SearchResult,
     SubmissionPlan,
     SubmitJob,
     Team,
@@ -36,6 +37,14 @@ class PortalRepository(Protocol):
     async def cancel(self, job_id: UUID, team_id: UUID) -> Job | None: ...
 
     async def published_jobs(self, team_id: UUID) -> tuple[Job, ...]: ...
+
+    async def search_published(
+        self, team_id: UUID, needle: str, *, limit: int, offset: int
+    ) -> tuple[tuple[SearchResult, ...], bool]: ...
+
+    async def recent_job_events(
+        self, team_ids: tuple[UUID, ...], event_types: tuple[str, ...], *, limit: int
+    ) -> tuple[JobEvent, ...]: ...
 
     # Browser identity and administrative control plane. Keeping these on the
     # transactional repository ensures HTTP routes never make authorization

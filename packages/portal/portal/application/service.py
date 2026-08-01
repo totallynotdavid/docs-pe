@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from portal.domain.errors import NotFound, PermissionDenied
 from portal.domain.models import (
+    TERMINAL_JOB_EVENTS,
     CredentialState,
     InputLine,
     PortalUser,
@@ -176,39 +177,17 @@ class PortalService:
         page_size: int = 20,
     ) -> tuple[tuple[SearchResult, ...], bool]:
         await self.require_reader(actor_id, team_id)
-        needle = query.strip().lower()
+        needle = query.strip()
         if not needle:
             return (), False
-        published = await self._repository.published_jobs(team_id)
-        results: list[SearchResult] = []
-        for listed in published:
-            job = await self._repository.job(listed.id, team_id)
-            if job is None:
-                continue
-            results.extend(
-                SearchResult(job.id, job.filename, item.document)
-                for item in job.items
-                if item.state.value == "published" and needle in item.document.lower()
-            )
-        start = (page - 1) * page_size
-        selected = tuple(results[start : start + page_size])
-        return selected, start + page_size < len(results)
+        return await self._repository.search_published(
+            team_id, needle, limit=page_size, offset=(page - 1) * page_size
+        )
 
-    async def notifications(self, actor_id: UUID):
-        notifications: list[JobEvent] = []
-        for team in await self.teams(actor_id):
-            jobs, _ = await self.jobs(actor_id, team.id, page=1, page_size=100)
-            for job in jobs:
-                notifications.extend(
-                    event
-                    for event in await self._repository.job_events_after(
-                        job.id, team.id, 0
-                    )
-                    if event.event_type
-                    in {"proceso.completed", "proceso.failed", "proceso.cancelled"}
-                )
-        return tuple(
-            sorted(notifications, key=lambda event: event.sequence, reverse=True)
+    async def notifications(self, actor_id: UUID) -> tuple[JobEvent, ...]:
+        teams = await self.teams(actor_id)
+        return await self._repository.recent_job_events(
+            tuple(team.id for team in teams), TERMINAL_JOB_EVENTS, limit=100
         )
 
     async def submit_input(
