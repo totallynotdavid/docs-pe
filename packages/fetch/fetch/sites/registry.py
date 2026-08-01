@@ -18,6 +18,12 @@ SITES: dict[str, Site] = {
     OSIPTEL.name: OSIPTEL,
 }
 
+# The subset the portal may offer to a team. Derived from the sites themselves so
+# promoting one is a single flag, not an edit in two packages.
+STABLE_SITES: frozenset[str] = frozenset(
+    name for name, site in SITES.items() if site.stable
+)
+
 
 def get_sites(names: list[str]) -> list[Site]:
     if not names:

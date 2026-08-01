@@ -136,6 +136,10 @@ class Site:
     lookup: Callable[[httpx.AsyncClient, Doc], Awaitable[tuple[Row, ...]]]
     # Derived CSV views exported alongside the canonical rows, no extra fetch.
     projections: tuple[Projection, ...] = ()
+    # Whether the portal may offer this site to a team. Landing in this package is
+    # not the same as being ready for unattended, customer-facing runs, so the
+    # promotion is one explicit flag rather than a list the portal has to restate.
+    stable: bool = False
 
 
 @dataclass(frozen=True)

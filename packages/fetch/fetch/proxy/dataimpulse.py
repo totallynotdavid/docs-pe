@@ -4,13 +4,23 @@ import logging
 import uuid
 
 from dataclasses import dataclass
-from os import getenv
-
-from dotenv import load_dotenv
+from typing import TYPE_CHECKING
 
 from fetch.obs.events import SESSION_RELEASE_SKIPPED
 from fetch.obs.logging import kv
-from fetch.proxy.base import ProviderTuning, ProxySession
+from fetch.proxy.base import (
+    Field,
+    ProviderSpec,
+    ProviderTuning,
+    ProxySession,
+    country_code,
+    required,
+    whole_number,
+)
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 logger = logging.getLogger(__name__)
@@ -19,7 +29,7 @@ _GATEWAY_HOST = "gw.dataimpulse.com"
 # HTTP rotating port. Stickiness comes from the sessid in the username (see
 # new_session), so one port serves every lane instead of needing one per lane.
 _HTTP_PORT = "823"
-_DEFAULT_SESSTTL_MIN = 3
+_DEFAULT_SESSION_MINUTES = 3
 
 # DataImpulse's measured defaults for this workload.
 _TUNING = ProviderTuning(workers=18, ban_cooldown_s=30.0)
@@ -34,35 +44,45 @@ class DataImpulseConfig:
     host: str
 
 
-def load_dataimpulse_config(*, env_file: str) -> DataImpulseConfig:
-    load_dotenv(env_file, override=False)
+_FIELDS = (
+    Field("username", secret=True),
+    Field("password", secret=True),
+    # DataImpulse country codes are lowercase ISO-3166.
+    Field("country", default="pe"),
+    Field("session_minutes", default=str(_DEFAULT_SESSION_MINUTES)),
+)
 
-    user = getenv("DATAIMPULSE_USER", "")
-    password = getenv("DATAIMPULSE_PASS", "")
-    # OSIPTEL's WAF blocks foreign exits; DataImpulse country codes are
-    # lowercase ISO-3166, and an unset value would silently route through
-    # the wrong region.
-    country = getenv("DATAIMPULSE_COUNTRY", "").strip().lower()
-    sessttl_raw = getenv("DATAIMPULSE_SESSTTL", "").strip()
-    sessttl = int(sessttl_raw) if sessttl_raw else _DEFAULT_SESSTTL_MIN
 
-    if not user or not password:
-        msg = "missing DATAIMPULSE_USER or DATAIMPULSE_PASS"
-        raise RuntimeError(msg)
-    if not country:
-        msg = "DATAIMPULSE_COUNTRY must not be empty"
-        raise RuntimeError(msg)
-    if sessttl < 1:
-        msg = "DATAIMPULSE_SESSTTL must be >= 1 minute"
-        raise RuntimeError(msg)
+def _normalize(raw: Mapping[str, str]) -> dict[str, str]:
+    return {
+        "username": required(raw, "username"),
+        "password": required(raw, "password"),
+        "country": country_code(raw, "country", lowercase=True),
+        "session_minutes": str(
+            whole_number(raw, "session_minutes", minimum=1, maximum=1440)
+        ),
+    }
 
-    return DataImpulseConfig(
-        user=user,
-        password=password,
-        country=country,
-        sessttl=sessttl,
-        host=_GATEWAY_HOST,
+
+def _build(values: Mapping[str, str]) -> DataImpulseProvider:
+    return DataImpulseProvider(
+        DataImpulseConfig(
+            user=values["username"],
+            password=values["password"],
+            country=values["country"],
+            sessttl=int(values["session_minutes"]),
+            host=_GATEWAY_HOST,
+        )
     )
+
+
+DATAIMPULSE = ProviderSpec(
+    name="dataimpulse",
+    fields=_FIELDS,
+    tuning=_TUNING,
+    normalize=_normalize,
+    build=_build,
+)
 
 
 class DataImpulseProvider:

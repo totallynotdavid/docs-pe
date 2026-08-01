@@ -6,21 +6,35 @@ import logging
 import uuid
 
 from dataclasses import dataclass
-from os import getenv
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 import httpx
 
-from dotenv import load_dotenv
-
 from fetch.obs.events import STICKY_RELEASE_FAILED
 from fetch.obs.logging import kv
-from fetch.proxy.base import ProviderTuning, ProxySession
+from fetch.proxy.base import (
+    Field,
+    ProviderSpec,
+    ProviderTuning,
+    ProxySession,
+    country_code,
+    flag,
+    one_of,
+    optional,
+    required,
+    whole_number,
+)
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 logger = logging.getLogger(__name__)
 
 ProxyType = Literal["residential", "datacenter", "mix"]
+
+_PROXY_TYPES: tuple[str, ...] = ("residential", "datacenter", "mix")
 
 _GATEWAY_HOST_BY_NAME: dict[str, str] = {
     "fr": "proxy.geonode.io",
@@ -53,54 +67,61 @@ class GeoNodeConfig:
     lifetime: int
 
 
-def load_geonode_config(*, env_file: str) -> GeoNodeConfig:
-    load_dotenv(env_file, override=False)
+_FIELDS = (
+    Field("username", secret=True),
+    Field("password", secret=True),
+    Field("gateway", default="fr", choices=tuple(sorted(_GATEWAY_HOST_BY_NAME))),
+    Field("proxy_type", default="residential", choices=_PROXY_TYPES),
+    Field("country", default="PE"),
+    Field("state", required=False),
+    Field("city", required=False),
+    Field("asn", required=False),
+    Field("strict_off", required=False),
+    Field("lifetime_minutes", default="10"),
+)
 
-    user = getenv("GEONODE_USER", "")
-    password = getenv("GEONODE_PASS", "")
-    gateway = getenv("GEONODE_GATEWAY", "fr")
-    proxy_type_raw = getenv("GEONODE_TYPE", "residential")
-    country = getenv("GEONODE_COUNTRY", "")
-    state = getenv("GEONODE_STATE", "")
-    city = getenv("GEONODE_CITY", "")
-    asn = getenv("GEONODE_ASN", "")
-    strict_off = getenv("GEONODE_STRICT_OFF", "").lower() in {"1", "true", "yes"}
-    lifetime_raw = getenv("GEONODE_LIFETIME", "").strip()
-    lifetime = int(lifetime_raw) if lifetime_raw else 10
 
-    if not user or not password:
-        msg = "missing GEONODE_USER or GEONODE_PASS"
-        raise RuntimeError(msg)
-    if not country:
-        # OSIPTEL's WAF blocks foreign exits, so an unset country silently routes
-        # through the wrong region and fails every lookup. Fail loudly instead.
-        msg = "GEONODE_COUNTRY must be set (OSIPTEL requires Peru exits, e.g. PE)"
-        raise RuntimeError(msg)
-    if gateway not in _GATEWAY_HOST_BY_NAME:
-        msg = "GEONODE_GATEWAY must be one of " + "|".join(
-            sorted(_GATEWAY_HOST_BY_NAME)
+def _normalize(raw: Mapping[str, str]) -> dict[str, str]:
+    return {
+        "username": required(raw, "username"),
+        "password": required(raw, "password"),
+        "gateway": one_of(raw, "gateway", tuple(sorted(_GATEWAY_HOST_BY_NAME))),
+        "proxy_type": one_of(raw, "proxy_type", _PROXY_TYPES),
+        "country": country_code(raw, "country"),
+        "state": optional(raw, "state"),
+        "city": optional(raw, "city"),
+        "asn": optional(raw, "asn"),
+        "strict_off": flag(raw, "strict_off"),
+        "lifetime_minutes": str(
+            whole_number(raw, "lifetime_minutes", minimum=3, maximum=1440)
+        ),
+    }
+
+
+def _build(values: Mapping[str, str]) -> GeoNodeProvider:
+    return GeoNodeProvider(
+        GeoNodeConfig(
+            user=values["username"],
+            password=values["password"],
+            host=_GATEWAY_HOST_BY_NAME[values["gateway"]],
+            proxy_type=cast("ProxyType", values["proxy_type"]),
+            country=values["country"],
+            state=values.get("state", ""),
+            city=values.get("city", ""),
+            asn=values.get("asn", ""),
+            strict_off=bool(values.get("strict_off")),
+            lifetime=int(values["lifetime_minutes"]),
         )
-        raise RuntimeError(msg)
-    if proxy_type_raw not in {"residential", "datacenter", "mix"}:
-        msg = "GEONODE_TYPE must be one of residential|datacenter|mix"
-        raise RuntimeError(msg)
-    if lifetime < 3 or lifetime > 1440:
-        msg = "GEONODE_LIFETIME must be between 3 and 1440 minutes"
-        raise RuntimeError(msg)
-
-    proxy_type = cast("ProxyType", proxy_type_raw)
-    return GeoNodeConfig(
-        user=user,
-        password=password,
-        host=_GATEWAY_HOST_BY_NAME[gateway],
-        proxy_type=proxy_type,
-        country=country,
-        state=state,
-        city=city,
-        asn=asn,
-        strict_off=strict_off,
-        lifetime=lifetime,
     )
+
+
+GEONODE = ProviderSpec(
+    name="geonode",
+    fields=_FIELDS,
+    tuning=_TUNING,
+    normalize=_normalize,
+    build=_build,
+)
 
 
 def build_username(config: GeoNodeConfig, *, session_id: str) -> str:

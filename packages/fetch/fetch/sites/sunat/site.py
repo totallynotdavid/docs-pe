@@ -118,6 +118,7 @@ SUNAT = Site(
     endpoints=(_HOME,),
     ready=_ready,
     lookup=_lookup_tipo_documento,
+    stable=True,
 )
 
 SUNAT_REPS = Site(
@@ -131,4 +132,5 @@ SUNAT_REPS = Site(
     endpoints=(_HOME, IDENTITY),
     ready=_ready,
     lookup=_lookup_representantes,
+    stable=True,
 )

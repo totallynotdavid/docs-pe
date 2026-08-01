@@ -257,4 +257,5 @@ OSIPTEL = Site(
     lookup=_lookup,
     # Per-carrier line counts, folded from the stored rows at export time.
     projections=(_COUNTS,),
+    stable=True,
 )

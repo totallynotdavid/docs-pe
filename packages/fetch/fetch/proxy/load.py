@@ -6,21 +6,19 @@ from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 
-from fetch.proxy.dataimpulse import DataImpulseProvider, load_dataimpulse_config
-from fetch.proxy.geonode import GeoNodeProvider, load_geonode_config
+from fetch.domain.errors import ProxyConfigurationError
+from fetch.proxy.registry import PROVIDERS, spec_for
 
 
 if TYPE_CHECKING:
-    from fetch.proxy.base import ProxyProvider
+    from fetch.proxy.base import ProviderSpec, ProxyProvider
 
-
-_KNOWN_PROVIDERS = ("geonode", "dataimpulse")
 
 _SYNTAX = "geonode:30,dataimpulse:18"
 
 
 @dataclass(frozen=True)
-class _ProviderSpec:
+class _ProviderSpecRequest:
     name: str
     # None means "use the provider's own tuned default".
     workers: int | None
@@ -30,57 +28,58 @@ def load_proxy_providers(*, env_file: str) -> list[ProxyProvider]:
     load_dotenv(env_file, override=False)
     raw = getenv("PROXY_PROVIDER", "").strip()
     if not raw:
-        msg = f"PROXY_PROVIDER must be set (comma-separated, e.g. {_SYNTAX})"
-        raise RuntimeError(msg)
+        allowed = "|".join(sorted(PROVIDERS))
+        msg = f"PROXY_PROVIDER must be set (comma-separated {allowed}, e.g. {_SYNTAX})"
+        raise ProxyConfigurationError(msg)
 
-    specs = [_parse_spec(chunk) for chunk in raw.split(",") if chunk.strip()]
+    requests = [_parse(chunk) for chunk in raw.split(",") if chunk.strip()]
     seen: set[str] = set()
-    for spec in specs:
-        if spec.name not in _KNOWN_PROVIDERS:
-            allowed = "|".join(_KNOWN_PROVIDERS)
-            msg = f"PROXY_PROVIDER entry {spec.name!r} is not one of {allowed}"
-            raise RuntimeError(msg)
-        if spec.name in seen:
-            msg = f"PROXY_PROVIDER lists {spec.name!r} more than once"
-            raise RuntimeError(msg)
-        seen.add(spec.name)
+    for request in requests:
+        if request.name in seen:
+            msg = f"PROXY_PROVIDER lists {request.name!r} more than once"
+            raise ProxyConfigurationError(msg)
+        seen.add(request.name)
 
-    return [_build(spec, env_file=env_file) for spec in specs]
+    return [_build(request) for request in requests]
 
 
-def _parse_spec(chunk: str) -> _ProviderSpec:
+def values_from_environment(spec: ProviderSpec) -> dict[str, str]:
+    """Read a provider's configuration from `<PROVIDER>_<FIELD>` variables.
+
+    The field schema drives this, so a new vendor becomes configurable without
+    touching the loader.
+    """
+    raw = {
+        field.name: getenv(f"{spec.name}_{field.name}".upper(), field.default)
+        for field in spec.fields
+    }
+    return spec.normalize(raw)
+
+
+def _parse(chunk: str) -> _ProviderSpecRequest:
     # "geonode" takes the provider's default lane count, "geonode:30" overrides it.
-    # Lane counts live here, beside the provider list, so adding a provider stays a
-    # single entry rather than a new variable to keep in sync.
     name, sep, workers = chunk.strip().lower().partition(":")
     name = name.strip()
+    spec_for(name)
     if not sep:
-        return _ProviderSpec(name=name, workers=None)
+        return _ProviderSpecRequest(name=name, workers=None)
 
     workers = workers.strip()
-    if not workers.isdigit():
+    if not workers.isdigit() or int(workers) < 1:
         msg = (
             f"PROXY_PROVIDER lane count for {name!r} must be a positive integer, "
             f"got {workers!r} (syntax: {_SYNTAX})"
         )
-        raise RuntimeError(msg)
-    if int(workers) < 1:
-        msg = f"PROXY_PROVIDER lane count for {name!r} must be >= 1"
-        raise RuntimeError(msg)
-    return _ProviderSpec(name=name, workers=int(workers))
+        raise ProxyConfigurationError(msg)
+    return _ProviderSpecRequest(name=name, workers=int(workers))
 
 
-def _build(spec: _ProviderSpec, *, env_file: str) -> ProxyProvider:
-    provider = _construct_provider(spec.name, env_file=env_file)
-    if spec.workers is not None:
+def _build(request: _ProviderSpecRequest) -> ProxyProvider:
+    spec = spec_for(request.name)
+    provider = spec.build(values_from_environment(spec))
+    if request.workers is not None:
         # Lane count is deployment capacity, not a vendor default, so it is applied
         # here rather than inside each provider class -- a new provider then needs
         # no code to become tunable.
-        provider.tuning = replace(provider.tuning, workers=spec.workers)
+        provider.tuning = replace(provider.tuning, workers=request.workers)
     return provider
-
-
-def _construct_provider(name: str, *, env_file: str) -> ProxyProvider:
-    if name == "geonode":
-        return GeoNodeProvider(load_geonode_config(env_file=env_file))
-    return DataImpulseProvider(load_dataimpulse_config(env_file=env_file))

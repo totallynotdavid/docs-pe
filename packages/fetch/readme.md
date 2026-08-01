@@ -44,27 +44,31 @@ proxied, so a run fails fast if no provider is configured.
 PROXY_PROVIDER=geonode,dataimpulse
 
 # GeoNode: per-slot sticky ports (10000..10900); release via API on rotate.
-GEONODE_USER=<value>
-GEONODE_PASS=<value>
-GEONODE_GATEWAY=fr            # fr | fr_whitelist | us | sg
-GEONODE_TYPE=residential      # residential | datacenter | mix
-GEONODE_COUNTRY=PE            # uppercase, must be PE for OSIPTEL
+GEONODE_USERNAME=<value>
+GEONODE_PASSWORD=<value>
+GEONODE_GATEWAY=fr              # fr | fr_whitelist | us | sg
+GEONODE_PROXY_TYPE=residential  # residential | datacenter | mix
+GEONODE_COUNTRY=PE              # uppercase, must be PE for OSIPTEL
 GEONODE_STATE=
 GEONODE_CITY=
 GEONODE_ASN=
 GEONODE_STRICT_OFF=false
-GEONODE_LIFETIME=10           # minutes, 3..1440
+GEONODE_LIFETIME_MINUTES=10     # 3..1440
 
 # DataImpulse: stickiness via sessid in the username; sessions expire by sessttl.
-DATAIMPULSE_USER=<value>
-DATAIMPULSE_PASS=<value>
-DATAIMPULSE_COUNTRY=pe        # lowercase ISO-3166, must be pe
-DATAIMPULSE_SESSTTL=3         # minutes, >= 1
+DATAIMPULSE_USERNAME=<value>
+DATAIMPULSE_PASSWORD=<value>
+DATAIMPULSE_COUNTRY=pe          # lowercase ISO-3166, must be pe
+DATAIMPULSE_SESSION_MINUTES=3   # >= 1
 ```
+
+Variable names are not hand-written: each is `<PROVIDER>_<FIELD>` from that provider's
+`Field` schema in `fetch/proxy/registry.py:PROVIDERS`, which is also what renders the
+portal's credential form. Adding a vendor is one module plus one registry line.
 
 OSIPTEL's WAF blocks foreign exits, so `GEONODE_COUNTRY=PE` / `DATAIMPULSE_COUNTRY=pe`
 are required. SUNAT is not IP-bound but is still proxied to spread per-IP rate limits
-at scale. Both providers also need their `*_USER` and `*_PASS`.
+at scale. Both providers also need their `*_USERNAME` and `*_PASSWORD`.
 
 ## Run
 

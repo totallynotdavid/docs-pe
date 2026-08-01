@@ -25,5 +25,9 @@ class ProviderSchemaError(FetchError):
     pass
 
 
+class ProxyConfigurationError(FetchError):
+    """A proxy provider's configuration values are missing or out of range."""
+
+
 class RucNotFoundError(FetchError):
     pass
