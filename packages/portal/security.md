@@ -27,6 +27,10 @@ desde Administración. El arranque web no crea cuentas, equipos ni credenciales.
   procesos y credenciales de su propio equipo; administración del sitio gestiona
   personas y estructura sin obtener acceso implícito a datos de un equipo. El SSE
   vuelve a comprobar la sesión y la pertenencia antes de leer cada evento persistido.
+- Toda respuesta lleva `Content-Security-Policy: default-src 'self'` sin excepciones:
+  htmx y su extensión SSE se sirven desde `web/static` en la versión que fija
+  `package.json`, y ninguna plantilla usa script ni estilo en línea. Un CDN
+  comprometido deja de ser un camino hacia las credenciales de proxy del equipo.
 - Los datos de GeoNode y DataImpulse se normalizan del lado del servidor, se protegen
   antes de persistirse y no se muestran ni se registran. La interfaz nunca recibe
   material cifrado ni claves. El adaptador local usa AES-GCM con una clave inyectada

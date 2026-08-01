@@ -2,6 +2,7 @@
 uv = "0.11.29"
 python = "3.14.6"
 postgres = "18.4"
+node = "24.18.1"
 
 [tasks.install]
 run = "uv sync --all-packages --all-groups"
@@ -14,6 +15,10 @@ run = "uv pip list --outdated"
 
 [tasks.format]
 run = ["uv run ruff format", "uv run ruff check --fix"]
+
+[tasks."portal:assets"]
+description = "Refresh the vendored browser dependencies from the versions pinned in package.json"
+run = ["npm ci --no-audit --no-fund", "npm run vendor"]
 
 [tasks."portal:db:start"]
 description = "Start the local PostgreSQL cluster used by the portal"

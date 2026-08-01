@@ -113,6 +113,13 @@ header in `render_hx`. Serving a fragment from its own URL is what made `hx-push
 push an address that reloads without a layout. Those routes must keep sending
 `Vary: HX-Request`.
 
+Browser assets are vendored, not fetched: `package.json` pins htmx and `htmx-ext-sse`,
+`mise run portal:assets` copies them into `web/static`, and CI fails when the committed
+copy drifts. That is what lets every response carry `default-src 'self'` with no
+exceptions, so no template may use an inline `<script>` or a `style=` attribute — and
+`base.html`'s `htmx-config` meta turns off `includeIndicatorStyles`, because htmx
+otherwise injects an inline `<style>` the policy blocks.
+
 ## Sharp edges
 
 - `packages/browser/readme.md`'s file map is stale. It describes a direct-CDP backend

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import re
 
 import pytest
 
@@ -46,6 +47,27 @@ def test_a_deployment_without_a_queue_refuses_workers_instead_of_serving_them(
         )
 
     assert response.status_code == 503
+
+
+def test_every_response_carries_a_policy_that_trusts_only_this_origin() -> None:
+    """Self-hosting every asset is what lets the policy have no exceptions."""
+    with TestClient(create_app(PortalSettings(""))) as client:
+        policy = client.get("/login").headers["content-security-policy"]
+
+    assert "default-src 'self'" in policy
+    assert "unsafe-inline" not in policy and "unsafe-eval" not in policy
+
+
+def test_the_portal_serves_every_asset_a_page_asks_for() -> None:
+    """Under that policy a remote or missing asset is a page that does not work."""
+    with TestClient(create_app(PortalSettings(""))) as client:
+        page = client.get("/login")
+
+        assert re.search(r'(?:src|href)="(?:https?:)?//', page.text) is None
+        references = set(re.findall(r'(?:src|href)="(/estatico/[^"]+)"', page.text))
+        assert {"/estatico/htmx.min.js", "/estatico/htmx-ext-sse.min.js"} <= references
+        for reference in references:
+            assert client.get(reference).status_code == 200, reference
 
 
 async def test_csv_upload_accepts_a_valid_file_and_strips_its_directories() -> None:

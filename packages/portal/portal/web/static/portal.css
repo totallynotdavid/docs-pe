@@ -67,6 +67,8 @@ button:active, .boton:active { transform: scale(.98); }
 .boton-peligro { background: transparent; border-color: color-mix(in oklab, var(--destructive) 35%, var(--border)); color: var(--destructive); }
 .boton-peligro:hover { background: var(--color-red-5); color: var(--red-11, var(--destructive)); }
 .acciones { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; }
+.acciones--encima { margin-bottom: 18px; }
+.acciones--debajo { margin-top: 16px; }
 
 .lista-enlaces { list-style: none; margin: 0; padding: 0; }
 .lista-enlaces li { align-items: center; border-bottom: 1px solid var(--border); display: flex; gap: 16px; justify-content: space-between; min-height: 53px; padding: 9px 17px; }

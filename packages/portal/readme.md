@@ -74,7 +74,10 @@ sole path that applies schema changes or creates initial data.
 `portal.domain` contains source planning and state policy; `portal.repository` owns
 PostgreSQL transactions; `portal.worker` consumes only that PostgreSQL queue.
 `portal.web.static/tokens.css` establishes a light-only token layer so a later dark
-theme can replace tokens without changing page components.
+theme can replace tokens without changing page components. That directory also holds
+the browser dependencies themselves: `package.json` pins htmx and its SSE extension,
+`mise run portal:assets` copies them in, and CI fails when the committed copy drifts
+from the pinned version.
 
 `portal.storage.port` accepts immutable, provider-neutral object references, never a
 local process path. `portal.integrations.port` describes notification delivery, but

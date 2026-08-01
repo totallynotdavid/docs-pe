@@ -27,6 +27,7 @@ from portal.settings import DatabaseConfigured, PortalSettings, ReadinessProbe
 from portal.storage.files import FileObjectStorage
 from portal.storage.memory import InMemoryObjectStorage, UnconfiguredObjectStorage
 from portal.web.errors import install_error_handlers
+from portal.web.headers import SecurityHeaders
 from portal.web.routes import admin, auth, home, jobs, operations, search, teams, worker
 
 
@@ -104,6 +105,7 @@ def create_app(
         StaticFiles(directory=Path(__file__).with_name("static")),
         name="estatico",
     )
+    app.add_middleware(SecurityHeaders)
     if settings.is_production:
         app.add_middleware(
             TrustedHostMiddleware,

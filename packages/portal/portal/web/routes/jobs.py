@@ -60,6 +60,11 @@ SOURCE_OPTIONS = (
 
 PROGRESS_POLL_SECONDS = 0.5
 
+# A finished job will never speak again, so the stream says so before closing.
+# `sse-close` in `job_detail.html` reads this and drops the connection, instead of
+# leaving the browser to reconnect to a terminal job for as long as the tab lives.
+_STREAM_CLOSED = sse_event(event="fin", data="")
+
 
 async def _form_context(
     session: BrowserSession, service: PortalService, team_id: UUID, *, error: str
@@ -195,10 +200,12 @@ async def _progress_stream(
                 data=render_fragment("fragments/job_progress.html", job=job),
             )
             if job.state in TERMINAL_JOB_STATES:
+                yield _STREAM_CLOSED
                 return
         if await request.is_disconnected():
             return
         if (await service.job(actor_id, team_id, job_id)).state in TERMINAL_JOB_STATES:
+            yield _STREAM_CLOSED
             return
         await asyncio.sleep(PROGRESS_POLL_SECONDS)
 

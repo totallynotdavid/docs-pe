@@ -191,11 +191,15 @@ async def test_roles_cross_team_isolation_submission_and_terminal_rendering() ->
         )
         assert stream.status_code == 200
         assert "event: progreso" in stream.text and "Completado" in stream.text
+        # A terminal job says so, because `sse-close="fin"` is what stops the
+        # browser reconnecting to it for as long as the tab stays open.
+        assert stream.text.endswith("event: fin\ndata: \n\n")
         reconnect = leader_client.get(
             f"/equipos/{team_id}/procesos/{excluded_job}/progreso",
             headers={"Last-Event-ID": "1"},
         )
-        assert reconnect.status_code == 200 and reconnect.text == ""
+        assert reconnect.status_code == 200
+        assert reconnect.text == "event: fin\ndata: \n\n"
 
         active_job = _submit_job(leader_client, team_id, credential_id, "10412345678")
         assert await repository.cancel(active_job, team_id)
