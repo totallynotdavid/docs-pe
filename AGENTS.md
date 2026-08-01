@@ -15,9 +15,8 @@ mise run build        # PyInstaller single binary for fetch
 mise run portal:dev   # start local PostgreSQL, migrate, bootstrap, run the portal
 ```
 
-`mise run check` runs one mypy process per package on purpose: every workspace member
-has its own `tests/` package, so a single `mypy .` sees several modules named `tests`
-and refuses.
+`mise run check` runs one mypy process per package on purpose: test module basenames
+repeat across packages, so a single `mypy .` refuses to run.
 
 Focused work:
 

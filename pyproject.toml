@@ -68,6 +68,8 @@ section-order = ["future", "standard-library", "third-party", "first-party", "lo
 # intentionally enforced elsewhere in the workspace but make this integration
 # layer less readable without increasing safety.
 "packages/portal/**/*.py" = ["B008", "C901", "EM101", "EM102", "N818", "TC001", "TC002", "TC003", "TRY003"]
+# An __init__.py here would name every package's test root "tests".
+"packages/*/tests/**/*.py" = ["INP001"]
 
 [[tool.mypy.overrides]]
 module = ["asyncpg", "fetch.*"]
@@ -80,7 +82,6 @@ asyncio_mode = "auto"
 # importlib mode lets each package's own tests/ dir coexist without test-module
 # name clashes across packages.
 addopts = "--import-mode=importlib"
-consider_namespace_packages = true
 testpaths = [
     "packages/fetch/tests",
     "packages/browser/tests",

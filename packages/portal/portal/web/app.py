@@ -108,6 +108,21 @@ def csv_input_lines(content: bytes) -> tuple[InputLine, ...]:
         raise ValueError(msg) from error
 
 
+async def read_csv_upload(input_file: UploadFile | None) -> tuple[str, bytes]:
+    """Validate an uploaded CSV and return its name, stripped of directories."""
+    if input_file is None or not input_file.filename:
+        raise ValueError("seleccione un archivo CSV")
+    uploaded_filename = Path(input_file.filename).name
+    if not uploaded_filename.lower().endswith(".csv"):
+        raise ValueError("seleccione un archivo con extensión .csv")
+    content = await input_file.read(MAX_CSV_UPLOAD_BYTES + 1)
+    if len(content) > MAX_CSV_UPLOAD_BYTES:
+        raise ValueError("el archivo CSV no puede superar los 10 MB")
+    if not content:
+        raise ValueError("el archivo CSV está vacío")
+    return uploaded_filename, content
+
+
 class ReadinessProbe(Protocol):
     """Small infrastructure boundary so readiness never depends on a UI route."""
 
@@ -471,16 +486,7 @@ def create_app(
     ) -> Response:
         user = await mutation_user(request, csrf_token)
         try:
-            if input_file is None or not input_file.filename:
-                raise ValueError("seleccione un archivo CSV")
-            uploaded_filename = Path(input_file.filename).name
-            if not uploaded_filename.lower().endswith(".csv"):
-                raise ValueError("seleccione un archivo con extensión .csv")
-            content = await input_file.read(MAX_CSV_UPLOAD_BYTES + 1)
-            if len(content) > MAX_CSV_UPLOAD_BYTES:
-                raise ValueError("el archivo CSV no puede superar los 10 MB")
-            if not content:
-                raise ValueError("el archivo CSV está vacío")
+            uploaded_filename, content = await read_csv_upload(input_file)
             job = await service(request).submit_input(
                 actor_id=user.id,
                 team_id=team_id,

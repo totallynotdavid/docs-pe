@@ -183,8 +183,9 @@ async def _seed_team(pool: asyncpg.Pool) -> tuple[UUID, UUID, UUID]:
         await connection.execute(
             """
             INSERT INTO portal_team_proxy_credential_versions
-                (id, credential_id, team_id, version, provider, config_ciphertext, key_id, created_by)
-            VALUES ($1, $2, $3, 1, 'prueba', $4, 'clave-prueba', $5)
+                (id, credential_id, team_id, version, provider, config_ciphertext,
+                 key_id, lifecycle, is_active, created_by)
+            VALUES ($1, $2, $3, 1, 'geonode', $4, 'clave-prueba', 'active', true, $5)
             """,
             credential_id,
             credential_root_id,

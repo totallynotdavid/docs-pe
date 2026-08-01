@@ -49,8 +49,7 @@ description = "Start PostgreSQL, migrate, bootstrap, then run the portal"
 depends = ["portal:bootstrap"]
 run = "uv run --env-file .env osiptel-portal"
 
-# One mypy process per package: each workspace member has its own tests/ package,
-# so a single `mypy .` sees two modules named "tests" and refuses to run.
+# Test module basenames repeat across packages, so a single `mypy .` refuses to run.
 [tasks.check]
 run = [
   "uv run mypy packages/fetch",
