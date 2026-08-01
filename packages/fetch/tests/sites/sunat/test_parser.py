@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from fetch.domain.errors import ProviderSchemaError
+from fetch.domain.errors import ProviderSchemaError, RucNotFoundError
 from fetch.sites.sunat.parser import (
     SunatRecord,
     clean,
@@ -152,6 +152,29 @@ def test_a_missing_document_row_for_a_normal_contributor_is_still_drift() -> Non
 )
 def test_tipo_documento_a_missing_document_row_is_a_valid_empty(page: str) -> None:
     assert parse_tipo_documento(page) is None
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "El número de RUC 10436389651 consultado no es válido.",
+        # The accents may arrive escaped rather than raw.
+        "El n&uacute;mero de RUC 10436389651 consultado no es v&aacute;lido.",
+    ],
+)
+def test_an_unregistered_ruc_is_not_found_rather_than_drift(sentence: str) -> None:
+    # SUNAT serves this on a normal result page. Reporting it as drift would retry
+    # a RUC that can never resolve until its attempts ran out.
+    page = (
+        f"<html><body><h2>Resultado de la Búsqueda</h2><p>{sentence}</p></body></html>"
+    )
+    with pytest.raises(RucNotFoundError, match="not valid"):
+        parse_tipo_documento(page)
+
+
+def test_a_valid_record_is_not_mistaken_for_an_unregistered_ruc() -> None:
+    record = parse_tipo_documento(_result_page("DNI  19187661  - JUAN PEREZ"))
+    assert record is not None
 
 
 def test_tipo_documento_an_unrecognized_page_raises() -> None:

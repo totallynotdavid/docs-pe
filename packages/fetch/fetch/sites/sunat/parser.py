@@ -5,7 +5,7 @@ import re
 
 from dataclasses import dataclass
 
-from fetch.domain.errors import ProviderSchemaError
+from fetch.domain.errors import ProviderSchemaError, RucNotFoundError
 
 
 @dataclass(frozen=True)
@@ -38,12 +38,19 @@ _SUCESION_PREFIX_RE = re.compile(r"^SUCESI[ÓO]N\s+INDIVISA\s+", re.IGNORECASE)
 
 _RESULT_MARKER = "Resultado de la B"
 _ERROR_MARKERS = ("Pagina de Error", "Surgieron problemas")
+# SUNAT answers an unregistered RUC with a result page that says the number "no es
+# valido". That is an answer, not a fault: the RUC will never resolve, so retrying
+# only burns attempts. Matched up to the accent, which may arrive raw or escaped.
+_NOT_REGISTERED_RE = re.compile(r"RUC\s+\d+\s+consultado no es v", re.IGNORECASE)
 
 
 def parse_tipo_documento(page: str) -> SunatRecord | None:
     # None means a well-formed page carries no usable record, which the site's
     # allows_empty=False then reports as drift.
     ensure_no_error_page(page)
+    if _NOT_REGISTERED_RE.search(page):
+        msg = "sunat reports the ruc is not valid"
+        raise RucNotFoundError(msg)
     if _RESULT_MARKER not in page:
         msg = "sunat response is not a result page"
         raise ProviderSchemaError(msg)
