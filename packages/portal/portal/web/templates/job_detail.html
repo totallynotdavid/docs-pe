@@ -1,8 +1,25 @@
 {% extends "base.html" %}
 {% block title %}{{ job.filename }} · Worker{% endblock %}
 {% block titlebar %}{{ job.filename }}{% endblock %}
-{% block header_actions %}{% if team.role.value == 'team_leader' and not es_terminal(job) %}<form action="/equipos/{{ team.id }}/procesos/{{ job.id }}/cancelar" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="boton-peligro" type="submit">Cancelar consulta</button></form>{% endif %}{% endblock %}
+{% block header_actions %}
+  {% if team.role.value == 'team_leader' and not es_terminal(job) %}
+    <form action="/equipos/{{ team.id }}/procesos/{{ job.id }}/cancelar"
+          method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="boton-peligro" type="submit">Cancelar consulta</button>
+    </form>
+  {% endif %}
+{% endblock %}
 {% block content %}
-<h1 class="solo-lector">Tarea {{ job.filename }}</h1>
-<section class="panel"><div class="panel-cuerpo"><div id="progreso-proceso" aria-live="polite" aria-atomic="true"{% if not es_terminal(job) %} hx-ext="sse" sse-connect="/equipos/{{ team.id }}/procesos/{{ job.id }}/progreso" sse-swap="progreso" sse-close="fin"{% endif %}>{% include "fragments/job_progress.html" %}</div></div></section>
+  <h1 class="solo-lector">Tarea {{ job.filename }}</h1>
+  <section class="panel">
+    <div class="panel-cuerpo">
+      <div id="progreso-proceso"
+           aria-live="polite"
+           aria-atomic="true"
+           {% if not es_terminal(job) %} hx-ext="sse" sse-connect="/equipos/{{ team.id }}/procesos/{{ job.id }}/progreso" sse-swap="progreso" sse-close="fin" {% endif %}>
+        {% include "fragments/job_progress.html" %}
+      </div>
+    </div>
+  </section>
 {% endblock %}

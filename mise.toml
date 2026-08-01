@@ -14,7 +14,11 @@ run = "uv sync -U"
 run = "uv pip list --outdated"
 
 [tasks.format]
-run = ["uv run ruff format", "uv run ruff check --fix"]
+run = [
+  "uv run ruff format",
+  "uv run ruff check --fix",
+  "uv run djlint packages/portal/portal/web/templates --reformat --quiet",
+]
 
 [tasks."portal:assets"]
 description = "Refresh the vendored browser dependencies from the versions pinned in package.json"
@@ -55,7 +59,10 @@ depends = ["portal:bootstrap"]
 run = "uv run --env-file .env osiptel-portal"
 
 [tasks.check]
-run = "uv run mypy ."
+run = [
+  "uv run mypy .",
+  "uv run djlint packages/portal/portal/web/templates --check",
+]
 
 [tasks.test]
 run = "uv run pytest"

@@ -1,11 +1,12 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
-{% from "icons.html" import icon %}
+  {% from "icons.html" import icon %}
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Worker{% endblock %}</title>
-    <link rel="stylesheet" href="/estatico/portal.css?v=portal-workflow-20260731-1">
+    <link rel="stylesheet"
+          href="/estatico/portal.css?v=portal-workflow-20260731-1">
     <meta name="htmx-config" content='{"includeIndicatorStyles": false}'>
     <script defer src="/estatico/htmx.min.js"></script>
     <script defer src="/estatico/htmx-ext-sse.min.js"></script>
@@ -14,29 +15,52 @@
   <body{% if not user %} class="sesion-publica"{% endif %}>
     <a class="skip-link" href="#contenido">Saltar al contenido</a>
     {% if user %}
-    <div class="app-shell">
-      <aside class="sidebar">
-        <a class="marca" href="/"><span class="marca-sello" aria-hidden="true">W</span> Worker</a>
-        {% if not setup %}
-        <nav class="navegacion" aria-label="Navegación principal">
-          <p class="nav-etiqueta">Espacio de trabajo</p>
-          <a class="nav-enlace" href="/">{{ icon('equipos') }} Equipos</a>
-          <a class="nav-enlace" href="/notificaciones">{{ icon('actividad') }} Actividad</a>
-          {% if user.is_site_admin %}<a class="nav-enlace nav-enlace--admin" href="/administracion/equipos">{{ icon('administracion') }} Administración</a>{% endif %}
-        </nav>
-        {% endif %}
-        <div class="cuenta" data-cuenta>
-          <button class="cuenta-activador" type="button" aria-expanded="false" aria-controls="menu-cuenta" data-cuenta-activador><span class="avatar">{{ user.email[0] }}</span><span>Mi cuenta</span>{{ icon('abajo', 14) }}</button>
-          <div class="cuenta-menu" id="menu-cuenta" hidden data-cuenta-menu>
-            <span class="cuenta-email">{{ user.email }}</span>
-            <form action="/logout" method="post" class="salida"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">{{ icon('salir', 14) }} Cerrar sesión</button></form>
+      <div class="app-shell">
+        <aside class="sidebar">
+          <a class="marca" href="/"><span class="marca-sello" aria-hidden="true">W</span> Worker</a>
+          {% if not setup %}
+            <nav class="navegacion" aria-label="Navegación principal">
+              <p class="nav-etiqueta">Espacio de trabajo</p>
+              <a class="nav-enlace" href="/">{{ icon("equipos") }} Equipos</a>
+              <a class="nav-enlace" href="/notificaciones">{{ icon("actividad") }} Actividad</a>
+              {% if user.is_site_admin %}
+                <a class="nav-enlace nav-enlace--admin" href="/administracion/equipos">{{ icon("administracion") }} Administración</a>
+              {% endif %}
+            </nav>
+          {% endif %}
+          <div class="cuenta" data-cuenta>
+            <button class="cuenta-activador"
+                    type="button"
+                    aria-expanded="false"
+                    aria-controls="menu-cuenta"
+                    data-cuenta-activador><span class="avatar">{{ user.email[0] }}</span><span>Mi cuenta</span>{{ icon('abajo', 14) }}</button>
+            <div class="cuenta-menu" id="menu-cuenta" hidden data-cuenta-menu>
+              <span class="cuenta-email">{{ user.email }}</span>
+              <form action="/logout" method="post" class="salida">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit">{{ icon('salir', 14) }} Cerrar sesión</button>
+              </form>
+            </div>
           </div>
+        </aside>
+        <div class="workspace">
+          <header class="barra-superior">
+            <span class="titulo-barra">{% block titlebar %}Worker{% endblock %}</span>
+            <div class="acciones-barra">
+              {% block header_actions %}{% endblock %}
+            </div>
+          </header>
+          <main id="contenido" class="contenido">
+            {% block content %}{% endblock %}
+          </main>
         </div>
-      </aside>
-      <div class="workspace">
-        <header class="barra-superior"><span class="titulo-barra">{% block titlebar %}Worker{% endblock %}</span><div class="acciones-barra">{% block header_actions %}{% endblock %}</div></header>
+      </div>
+    {% else %}
+      {# The signed-out pages render without the shell. Replaying the block keeps
+         every tag closed inside its own branch. #}
+      <main id="contenido" class="contenido">
+        {{ self.content() }}
+      </main>
     {% endif %}
-    <main id="contenido" class="contenido">{% block content %}{% endblock %}</main>
-    {% if user %}</div></div>{% endif %}
   </body>
 </html>

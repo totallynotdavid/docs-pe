@@ -1,11 +1,24 @@
 {% if jobs %}
-<ul class="lista-enlaces">
-  {% for job in jobs %}<li><a href="/equipos/{{ team.id }}/procesos/{{ job.id }}">{{ job.filename }}</a><span>{{ job.state|estado }}</span></li>{% endfor %}
-</ul>
-{% else %}<p class="estado-vacio">No hay tareas todavía.</p>{% endif %}
+  <ul class="lista-enlaces">
+    {% for job in jobs %}
+      <li>
+        <a href="/equipos/{{ team.id }}/procesos/{{ job.id }}">{{ job.filename }}</a>
+        <span>{{ job.state|estado }}</span>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="estado-vacio">No hay tareas todavía.</p>
+{% endif %}
 {% if page > 1 or page * 20 < total %}
-<nav class="paginacion" aria-label="Paginación de tareas">
-  {% if page > 1 %}<a hx-get="/equipos/{{ team.id }}?page={{ page - 1 }}" hx-target="#lista-procesos">Anterior</a>{% endif %}
-  {% if page * 20 < total %}<a hx-get="/equipos/{{ team.id }}?page={{ page + 1 }}" hx-target="#lista-procesos">Siguiente</a>{% endif %}
-</nav>
+  <nav class="paginacion" aria-label="Paginación de tareas">
+    {% if page > 1 %}
+      <a hx-get="/equipos/{{ team.id }}?page={{ page - 1 }}"
+         hx-target="#lista-procesos">Anterior</a>
+    {% endif %}
+    {% if page * 20 < total %}
+      <a hx-get="/equipos/{{ team.id }}?page={{ page + 1 }}"
+         hx-target="#lista-procesos">Siguiente</a>
+    {% endif %}
+  </nav>
 {% endif %}

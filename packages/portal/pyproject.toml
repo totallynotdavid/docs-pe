@@ -33,4 +33,10 @@ fetch = { workspace = true }
 include = ["portal*"]
 
 [tool.setuptools.package-data]
-portal = ["migrations/*.sql", "web/static/*.css", "web/static/*.woff2", "web/templates/*.html", "web/templates/fragments/*.html"]
+portal = ["migrations/*.sql", "web/static/*.css", "web/static/*.js", "web/static/*.woff2", "web/templates/*.html", "web/templates/fragments/*.html"]
+
+# djLint resolves its configuration from the nearest pyproject.toml above the
+# templates it is given, which is this one rather than the workspace root.
+[tool.djlint]
+profile = "jinja"
+indent = 2

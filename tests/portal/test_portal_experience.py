@@ -162,7 +162,7 @@ def test_new_job_makes_source_outcomes_visible_without_exposing_setup_details() 
     assert "Recibirás: DNI y nombre de la persona." in page.text
     assert "Así se verá el resultado" in page.text
     assert "DNI" in page.text and "Nombre" in page.text
-    assert 'value="sunat" checked' in page.text
+    assert re.search(r'value="sunat"\s+checked', page.text)
     assert "Nombre de la consulta" not in page.text
     assert "versión 1" not in page.text
 
@@ -291,7 +291,7 @@ def test_one_url_serves_both_the_page_and_the_fragment_htmx_swaps_into_it() -> N
             fragment = client.get(url, headers={"HX-Request": "true"})
 
             assert page.status_code == fragment.status_code == 200
-            assert "<!doctype html>" in page.text
-            assert "<!doctype html>" not in fragment.text
+            assert "<!DOCTYPE html>" in page.text
+            assert "<!DOCTYPE html>" not in fragment.text
             # Without Vary a shared cache could replay the fragment to a browser.
             assert page.headers["vary"] == fragment.headers["vary"] == "HX-Request"

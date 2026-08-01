@@ -1,9 +1,60 @@
 {% extends "base.html" %}
 {% block title %}Administración · Worker{% endblock %}
 {% block titlebar %}Administración · Equipos{% endblock %}
-{% block header_actions %}<a class="boton boton--secundario" href="/administracion/usuarios">Personas</a>{% endblock %}
+{% block header_actions %}
+  <a class="boton boton--secundario" href="/administracion/usuarios">Personas</a>
+{% endblock %}
 {% block content %}
-<h1 class="solo-lector">Administración de equipos</h1>
-<section class="panel"><div class="panel-cabecera"><div><h2>Crear equipo</h2><p>Asigna una persona responsable desde el inicio.</p></div></div><div class="panel-cuerpo">{% if error %}<p class="mensaje mensaje--error" role="alert">{{ error }}</p>{% endif %}<form action="/administracion/equipos" method="post" class="formulario"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Nombre<input name="name" maxlength="120" required placeholder="Ej. Equipo Lima"></label><label>Dirección del equipo<input name="slug" pattern="[a-z0-9][a-z0-9-]{1,62}" required placeholder="equipo-lima"><span class="ayuda">Solo minúsculas, números y guiones.</span></label><label>Persona responsable<select name="leader_email" required><option value="" selected disabled>Selecciona una persona</option>{% for person in users %}<option value="{{ person.email }}">{{ person.email }}</option>{% endfor %}</select></label><button type="submit">Crear equipo</button></form></div></section>
-<section class="panel"><div class="panel-cabecera"><div><h2>Equipos existentes</h2></div></div><ul class="lista-enlaces">{% for team in teams %}<li><span>{{ team.name }}</span><span class="meta">{{ team.slug }}</span></li>{% else %}<li class="estado-vacio">Aún no hay equipos.</li>{% endfor %}</ul></section>
+  <h1 class="solo-lector">Administración de equipos</h1>
+  <section class="panel">
+    <div class="panel-cabecera">
+      <div>
+        <h2>Crear equipo</h2>
+        <p>Asigna una persona responsable desde el inicio.</p>
+      </div>
+    </div>
+    <div class="panel-cuerpo">
+      {% if error %}<p class="mensaje mensaje--error" role="alert">{{ error }}</p>{% endif %}
+      <form action="/administracion/equipos" method="post" class="formulario">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label>
+          Nombre
+          <input name="name" maxlength="120" required placeholder="Ej. Equipo Lima">
+        </label>
+        <label>
+          Dirección del equipo
+          <input name="slug"
+                 pattern="[a-z0-9][a-z0-9-]{1,62}"
+                 required
+                 placeholder="equipo-lima">
+          <span class="ayuda">Solo minúsculas, números y guiones.</span>
+        </label>
+        <label>
+          Persona responsable
+          <select name="leader_email" required>
+            <option value="" selected disabled>Selecciona una persona</option>
+            {% for person in users %}<option value="{{ person.email }}">{{ person.email }}</option>{% endfor %}
+          </select>
+        </label>
+        <button type="submit">Crear equipo</button>
+      </form>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="panel-cabecera">
+      <div>
+        <h2>Equipos existentes</h2>
+      </div>
+    </div>
+    <ul class="lista-enlaces">
+      {% for team in teams %}
+        <li>
+          <span>{{ team.name }}</span>
+          <span class="meta">{{ team.slug }}</span>
+        </li>
+      {% else %}
+        <li class="estado-vacio">Aún no hay equipos.</li>
+      {% endfor %}
+    </ul>
+  </section>
 {% endblock %}

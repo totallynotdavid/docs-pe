@@ -133,6 +133,11 @@ otherwise injects an inline `<style>` the policy blocks.
 - Ruff runs with a wide `extend-select` and `fix = true`. `portal` has a deliberate
   per-file ignore list in the root `pyproject.toml`; extend it rather than sprinkling
   `noqa`.
+- djLint indents the portal templates and normalizes their attributes, but it will not
+  break a line that mixes markup with inline `{% %}` — pointing it at a template written
+  as one long line only wraps attributes at arbitrary columns and leaves that line in
+  place. Write the element tree by hand; djLint then holds it. Its config lives in
+  `packages/portal/pyproject.toml`, which is the nearest one above the templates.
 - The repo root holds many untracked run artifacts (`*.csv`, `*.log`,
   `*_out.state.sqlite3`) plus leftover `robot/`, `tests/`, and `.old-state-backup/`
   directories that contain no tracked source. The codebase is `packages/*`.

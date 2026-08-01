@@ -72,6 +72,9 @@ jobs:
       - name: Lint
         run: uv run ruff check
 
+      - name: Template format check
+        run: uv run djlint packages/portal/portal/web/templates --check
+
       - name: Type check
         run: uv run mypy .
 

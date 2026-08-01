@@ -1,1 +1,11 @@
-{% if notifications %}<ul class="lista-enlaces">{% for notification in notifications %}<li><span>{{ notification.event_type|notificacion }}</span></li>{% endfor %}</ul>{% else %}<p class="estado-vacio">No hay notificaciones.</p>{% endif %}
+{% if notifications %}
+  <ul class="lista-enlaces">
+    {% for notification in notifications %}
+      <li>
+        <span>{{ notification.event_type|notificacion }}</span>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="estado-vacio">No hay notificaciones.</p>
+{% endif %}
