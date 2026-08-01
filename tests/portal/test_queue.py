@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import asyncio
 
-from portal.application.service import PortalService
+from typing import TYPE_CHECKING
+
 from portal.domain.models import ACTIVE_JOB_STATES, JobState
-from portal.repository.memory import InMemoryPortalRepository
 from portal.testing import command, leader
+
+
+if TYPE_CHECKING:
+    from portal.application.service import PortalService
+    from portal.repository.memory import InMemoryPortalRepository
 
 
 async def test_five_process_admission_is_exact_under_concurrent_submissions(

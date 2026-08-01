@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
+from tests.paths import REPO_ROOT
 
 
 def test_postgresql_schema_captures_queue_and_durable_boundaries() -> None:
     migration = (
-        Path(__file__).parents[1] / "portal/migrations/001_portal_foundation.sql"
+        REPO_ROOT / "packages/portal/portal/migrations/001_portal_foundation.sql"
     )
     sql = migration.read_text(encoding="utf-8")
 

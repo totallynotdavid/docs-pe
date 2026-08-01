@@ -61,7 +61,7 @@ fallback. In production, inject either as a deployment secret (never commit it);
 dedicated secret-manager/KMS adapter can replace it later. No cloud provider is
 selected here.
 
-Run the focused suite with `uv run pytest packages/portal/tests`, format with
+Run the focused suite with `uv run pytest tests/portal`, format with
 `uv run ruff format packages/portal`, lint with `uv run ruff check packages/portal`,
 and type-check with `uv run mypy packages/portal`.
 

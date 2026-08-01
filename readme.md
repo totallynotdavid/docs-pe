@@ -28,7 +28,7 @@ The toolchain (uv, python, ruff) is pinned in `mise.toml`. Run tasks from the re
 mise install          # install the toolchain
 mise run install      # sync all packages and dev dependencies
 mise run format       # ruff format + ruff check --fix
-mise run check        # mypy, one pass per package
+mise run check        # mypy across the workspace
 mise run test         # pytest across all packages
 mise run build        # build the fetch standalone binary
 mise run portal:dev   # start PostgreSQL, migrate/bootstrap the portal, then run it

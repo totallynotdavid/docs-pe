@@ -9,29 +9,31 @@ the repo root:
 mise install          # install the toolchain
 mise run install      # uv sync --all-packages --all-groups
 mise run format       # ruff format + ruff check --fix
-mise run check        # mypy, one process per package
+mise run check        # mypy across the workspace
 mise run test         # pytest across all packages
 mise run build        # PyInstaller single binary for fetch
 mise run portal:dev   # start local PostgreSQL, migrate, bootstrap, run the portal
 ```
 
-`mise run check` runs one mypy process per package on purpose: test module basenames
-repeat across packages, so a single `mypy .` refuses to run.
-
 Focused work:
 
 ```sh
-uv run pytest packages/fetch/tests/sites/osiptel/test_lookup.py::test_name
-uv run pytest packages/portal/tests        # or packages/browser/tests, etc.
+uv run pytest tests/fetch/sites/osiptel/test_lookup.py::test_name
+uv run pytest tests/portal        # or tests/browser, etc.
 uv run mypy packages/portal
 uv run ruff check packages/portal
 ```
 
-pytest is configured once in the root `pyproject.toml`: `asyncio_mode = "auto"` (async
-tests are plain `async def test_*`, no decorator) and `--import-mode=importlib` (so each
-package's `tests/` can coexist without module-name clashes).
+Tests live in one `tests/` package at the repo root, with one subpackage per
+workspace member. Keeping a single `tests` package is what lets `mypy .` and `pytest`
+each run as one process: four directories all named `tests` collide on that module
+name, and every workaround for it (per-package mypy, a non-default pytest import
+mode, an `INP001` ignore) disappears once the name is unique.
 
-The real PostgreSQL contract tests in `packages/portal/tests/test_postgres_queue.py`
+pytest is configured once in the root `pyproject.toml`: `asyncio_mode = "auto"`, so
+async tests are plain `async def test_*` with no decorator.
+
+The real PostgreSQL contract tests in `tests/portal/test_postgres_queue.py`
 **skip silently** unless `PORTAL_TEST_DSN` is set. A green `mise run test` does not mean
 the queue contract ran.
 

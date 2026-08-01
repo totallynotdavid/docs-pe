@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from browser.errors import BrowserError
@@ -9,8 +7,10 @@ from browser.sites.portabilidad.parse import parse_result
 from browser.sites.registry import SITES
 from browser.subject import Subject
 
+from tests.paths import REPO_ROOT
 
-_SAMPLE = Path(__file__).resolve().parents[3] / "example" / "returned.html"
+
+_SAMPLE = REPO_ROOT / "example" / "returned.html"
 
 # A not-ported number still returns a valid card: Receptor "-", and the current
 # carrier falls back to the original assignee.

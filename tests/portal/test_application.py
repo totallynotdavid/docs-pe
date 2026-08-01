@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
 
-from portal.application.service import PortalService
 from portal.domain.errors import PermissionDenied, SourceValidationError
 from portal.domain.models import DeliveryChannel, JobState, TeamRole
-from portal.repository.memory import InMemoryPortalRepository
 from portal.testing import command, leader
+
+
+if TYPE_CHECKING:
+    from portal.application.service import PortalService
+    from portal.repository.memory import InMemoryPortalRepository
 
 
 async def test_team_member_cannot_submit_a_process(
