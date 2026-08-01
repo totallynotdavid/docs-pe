@@ -14,9 +14,16 @@ Sites (--sites flag, pick one):
                as a taxpayer and taxes it like a natural person) has NO Tipo de Documento block,
                so those rows carry an empty tipo_doc/num_doc and take nombre from the RUC row
                instead. They are ~0.1% of a RUC-10 batch and cluster in the LOW RUC ranges, so a
-               sorted shard "a" gets nearly all of them (surco: 183 on shard a vs 5 on shard b).
+               sorted shard "a" gets nearly all of them (surco: 215 on shard a vs 4 on shard b).
                They yield a name but no DNI, so they drop out of any osiptel follow-up.
                A missing document block for any OTHER contributor type is still drift and errors.
+               tipo_doc is not always DNI: surco's 235,233 rows were 235,003 DNI (8 digits),
+               10 CE (carne de extranjeria, 9 digits) and 1 C. FFPP (6 digits). Filter on
+               tipo_doc == "DNI" when building an osiptel follow-up, not on num_doc length.
+               A RUC SUNAT has no record of comes back as a normal result page reading
+               "El numero de RUC N consultado no es valido" -> reported as not_found, terminal.
+               Before 2026-08-01 that was mis-reported as provider_schema_error and burned all
+               four attempts; if you see that code on an old run, re-run it before investigating.
   sunat_reps   RUC-20 (empresa) -> legal reps (razon_social, doc_type, num_doc, nombre, cargo, fecha_desde).
 
 Env file: --env-file .env (GEONODE_COUNTRY=PE is mandatory for osiptel — foreign exits get
@@ -76,6 +83,10 @@ CONCURRENCY lives entirely in PROXY_PROVIDER, as "name[:lanes]" per entry:
      sunat    geonode:20,dataimpulse:20 on both boxes -> 74 docs/s, ~0.1% failures (all the
               known SUCESION INDIVISA class). geonode:25 alone on both boxes -> 30.6 docs/s.
      osiptel  geonode:30 on both boxes (60 lanes) -> 27,220 docs/hr with zero failures.
+              geonode:30,dataimpulse:20 (100 lanes) adds ~0.5% upstream_not_ready. Those are
+              retryable and split EVENLY across the two providers (9 di / 11 gn), so it is
+              OSIPTEL rate-limiting the extra lanes, not a bad provider. Check that split
+              before blaming an account: a provider-specific fault lands lopsided.
    geonode shows NO per-lane degradation from 15 -> 60 lanes (7.9s/lookup at 60 vs 9.5s at 15),
    and its sticky ports allow 901 slots, so ports are never the limit. None of these are
    ceilings — raise them while watching the DB error_codes, not the log.
@@ -93,8 +104,14 @@ CONCURRENCY lives entirely in PROXY_PROVIDER, as "name[:lanes]" per entry:
    on these jobs; latency and lane count are.
 
 5. CHECK ALIVE
-   ssh dubu@<host> 'pgrep -af "bin/fetch --input <job>_a" | grep -v pgrep'
-   Match on "bin/fetch", not "fetch --input <tag>" — the latter also matches your own ssh/pgrep command line and gives a false ALIVE.
+   ssh dubu@<host> 'pgrep -af "bin/fetch --input <job>_a" | grep -cv pgrep'
+   The -a is load-bearing. Bare `pgrep -f PATTERN | grep -v pgrep` CANNOT WORK: without -a
+   pgrep prints only PIDs, so the grep has no command line to filter and drops nothing, while
+   the remote shell carrying PATTERN in its own argv matches and is counted. alive then never
+   reaches 0 and a "wait until the run is done" loop hangs forever on a job that finished
+   (cost a Phase B watcher that never fired). With -a the command lines are printed and the
+   grep does its job. Matching on "bin/fetch" rather than "fetch --input <tag>" is still right,
+   but it is not sufficient on its own.
 
 6. CHECK PROGRESS (DB is truth, not the CSV or the log tail)
    ssh dubu@<host> 'cd ~/git/phone-numbers-by-carrier && ~/.local/bin/mise exec -- uv run python -c "
@@ -178,6 +195,21 @@ CONCURRENCY lives entirely in PROXY_PROVIDER, as "name[:lanes]" per entry:
     mv <job>.csv results/<job>/                      # original input
     cp <job>_out.<site>.csv results/<job>/            # + .counts/.errors/.not_found
     Repo root should have zero loose *.csv when done.
+
+COMPLETED JOBS (reconciled end-to-end, in results/<job>/)
+  barranca_dni  osiptel  50,455 docs -> 50,455 ok, 0 failed.
+                41,458 docs with lines + 8,997 zero-line = 50,455. 107,536 rows.
+  surco         sunat    235,236 RUC-10 -> 235,233 rows + 3 not_found, 0 errors.
+                Ran as 2 x 117,618 at geonode:20,dataimpulse:20 in ~1h50m (74 docs/s).
+                226 docs first came back as errors; ALL were the two parser gaps fixed on
+                2026-08-01 (223 sucesion indivisa, 3 unregistered RUC). A 226-doc re-run on
+                the fixed code recovered every one in ~30s. tipo_contribuyente is populated
+                only on those 223 rows — the other 235,010 predate the column and were not
+                worth ~1.5h of re-fetching, since it is only load-bearing where tipo_doc is
+                blank (it is the sole record of WHY a row has no document number).
+                surco_dni.csv is the derived Phase C feed: 235,002 distinct DNIs, tipo_doc
+                == "DNI" only. 72,625 have a leading zero — always handle as text, never int.
+                One DNI (08762469) legitimately holds two RUC-10s; dedupe rather than debug.
 
 GOTCHAS
 - Servers share ONE GeoNode account and ONE DataImpulse account. A 407 on every lane = account
