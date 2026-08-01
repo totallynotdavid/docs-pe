@@ -7,10 +7,23 @@ from browser.sites.portabilidad.parse import parse_result
 from browser.sites.registry import SITES
 from browser.subject import Subject
 
-from tests.paths import REPO_ROOT
 
-
-_SAMPLE = REPO_ROOT / "example" / "returned.html"
+# Captured verbatim from consulta.portabilidad.pe for a ported number.
+_PORTED_HTML = """
+<div class="card">
+  <div class="card-header"><strong>Número consultado</strong></div>
+  <div class="card-body">
+    <table class="table table-striped"><tbody>
+      <tr><td><strong>Número:</strong></td><td>980080023</td></tr>
+      <tr><td><strong>Receptor:</strong></td><td>América Móvil Perú S.A.C. (Claro)</td></tr>
+      <tr><td><strong>Cedente:</strong></td><td>Telefónica del Perú S.A.A.</td></tr>
+      <tr><td><strong>Asignatario Original:</strong></td><td>Telefónica del Perú S.A.A.</td></tr>
+      <tr><td><strong>Fecha de la ventana:</strong></td><td>2024-01-01</td></tr>
+      <tr><td><strong>Estado:</strong></td><td>Número portado</td></tr>
+    </tbody></table>
+  </div>
+</div>
+"""
 
 # A not-ported number still returns a valid card: Receptor "-", and the current
 # carrier falls back to the original assignee.
@@ -32,9 +45,7 @@ _NOT_PORTED_HTML = """
 
 
 def test_parses_ported_number_from_the_real_sample() -> None:
-    result = parse_result(
-        _SAMPLE.read_text(encoding="utf-8"), expected_number="980080023"
-    )
+    result = parse_result(_PORTED_HTML, expected_number="980080023")
     assert result["receptor"] == "América Móvil Perú S.A.C. (Claro)"
     assert result["estado"] == "Número portado"
     assert result["current_carrier"] == "América Móvil Perú S.A.C. (Claro)"
