@@ -7,7 +7,8 @@ from uuid import UUID, uuid4
 from fastapi.testclient import TestClient
 from portal.domain.models import CredentialVersion, TeamRole
 from portal.repository.memory import InMemoryPortalRepository
-from portal.web.app import PortalSettings, create_app
+from portal.settings import PortalSettings
+from portal.web.app import create_app
 from portal.web.security import hash_password
 
 
@@ -254,27 +255,39 @@ async def test_htmx_search_notifications_partial_results_and_pagination() -> Non
         await repository.complete(job_id)
 
         search = client.get(
-            f"/equipos/{team_id}/buscar/fragmento?q=104", headers={"HX-Request": "true"}
+            f"/equipos/{team_id}/buscar?q=104", headers={"HX-Request": "true"}
         )
         assert search.status_code == 200
         assert "10412345678" in search.text and "registros.csv" in search.text
         partial = client.get(
-            f"/equipos/{team_id}/buscar/fragmento?q=999", headers={"HX-Request": "true"}
+            f"/equipos/{team_id}/buscar?q=999", headers={"HX-Request": "true"}
         )
         assert "No hay resultados" in partial.text
         for number in range(20):
             _submit_job(client, team_id, credential_id, f"inválido-{number}")
         first_page = client.get(
-            f"/equipos/{team_id}/procesos/fragmento?page=1",
-            headers={"HX-Request": "true"},
+            f"/equipos/{team_id}?page=1", headers={"HX-Request": "true"}
         )
-        jobs = client.get(
-            f"/equipos/{team_id}/procesos/fragmento?page=2",
-            headers={"HX-Request": "true"},
-        )
+        jobs = client.get(f"/equipos/{team_id}?page=2", headers={"HX-Request": "true"})
         assert "Siguiente" in first_page.text and "Anterior" in jobs.text
-        notifications = client.get(
-            "/notificaciones/fragmento", headers={"HX-Request": "true"}
-        )
+        notifications = client.get("/notificaciones", headers={"HX-Request": "true"})
         assert notifications.status_code == 200
         assert "Tarea completada" in notifications.text
+
+
+def test_one_url_serves_both_the_page_and_the_fragment_htmx_swaps_into_it() -> None:
+    """A pushed htmx URL must reload as a whole page, not as a bare fragment."""
+    repository, _, _, _, team_id, credential_id = _experience()
+    with _client(repository) as client:
+        assert _login(client, "lider@osiptel.test").status_code == 303
+        _submit_job(client, team_id, credential_id, "10412345678")
+
+        for url in (f"/equipos/{team_id}", f"/equipos/{team_id}/buscar?q=104"):
+            page = client.get(url)
+            fragment = client.get(url, headers={"HX-Request": "true"})
+
+            assert page.status_code == fragment.status_code == 200
+            assert "<!doctype html>" in page.text
+            assert "<!doctype html>" not in fragment.text
+            # Without Vary a shared cache could replay the fragment to a browser.
+            assert page.headers["vary"] == fragment.headers["vary"] == "HX-Request"

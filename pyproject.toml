@@ -66,8 +66,10 @@ section-order = ["future", "standard-library", "third-party", "first-party", "lo
 # The portal keeps domain-specific HTTP exceptions and explicit endpoint
 # declarations close to their transaction boundaries. These rules are
 # intentionally enforced elsewhere in the workspace but make this integration
-# layer less readable without increasing safety.
-"packages/portal/**/*.py" = ["B008", "C901", "EM101", "EM102", "N818", "TC001", "TC002", "TC003", "TRY003"]
+# layer less readable without increasing safety. RUF029 is different: FastAPI
+# runs a sync dependency in a threadpool, so `async` is a dispatch contract
+# rather than a claim that the body awaits something.
+"packages/portal/**/*.py" = ["B008", "C901", "EM101", "EM102", "N818", "RUF029", "TC001", "TC002", "TC003", "TRY003"]
 
 [[tool.mypy.overrides]]
 module = ["asyncpg", "fetch.*"]

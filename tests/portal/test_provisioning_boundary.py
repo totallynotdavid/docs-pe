@@ -6,7 +6,8 @@ import re
 from fastapi.testclient import TestClient
 from portal.domain.models import TeamRole
 from portal.repository.memory import InMemoryPortalRepository
-from portal.web.app import PortalSettings, create_app
+from portal.settings import PortalSettings
+from portal.web.app import create_app
 from portal.web.security import hash_password
 
 

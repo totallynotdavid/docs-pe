@@ -2,9 +2,35 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from fastapi import Request
+from fastapi.responses import HTMLResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from portal.domain.models import CredentialState, Job, JobState, TeamRole
+
+
+# Template names are positional-only so that a context key never shadows one.
+def render_fragment(name: str, /, **context: object) -> str:
+    """Render a template to markup, for embedding rather than responding."""
+    return _TEMPLATES.get_template(name).render(**context)
+
+
+def render(name: str, /, **context: object) -> HTMLResponse:
+    """Render a template. Templates receive data, never the request."""
+    return HTMLResponse(render_fragment(name, **context))
+
+
+def render_hx(
+    request: Request, page: str, fragment: str, /, **context: object
+) -> HTMLResponse:
+    """Serve one URL as a whole page, or as the fragment htmx swaps into it.
+
+    `Vary` stops a cache from replaying a bare fragment into a navigation.
+    """
+    swap = request.headers.get("hx-request") == "true"
+    response = render(fragment if swap else page, **context)
+    response.headers["Vary"] = "HX-Request"
+    return response
 
 
 def template_environment() -> Environment:
@@ -69,3 +95,6 @@ def _credential_state_label(state: CredentialState) -> str:
         CredentialState.FAILED: "No validada",
         CredentialState.RETIRED: "Retirada",
     }[state]
+
+
+_TEMPLATES = template_environment()

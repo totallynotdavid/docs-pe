@@ -10,6 +10,7 @@ from portal.domain.models import (
     CredentialState,
     CredentialVersion,
     Job,
+    JobCredential,
     JobEvent,
     PortalUser,
     SearchResult,
@@ -163,3 +164,9 @@ class WorkerQueue(Protocol):
     async def publish(
         self, item_id: UUID, worker_id: str, fence: int, result_object_id: UUID
     ) -> bool: ...
+
+    async def credential_for_job(self, job_id: UUID) -> JobCredential | None: ...
+
+    async def item_team(self, item_id: UUID) -> UUID | None: ...
+
+    async def add_object_reference(self, reference: ObjectReference) -> None: ...

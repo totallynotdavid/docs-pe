@@ -7,7 +7,7 @@ import secrets
 
 from binascii import Error as BinasciiError
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -26,6 +26,17 @@ class SecretProtector(Protocol):
     """Port for a deployment-managed secret/KMS implementation."""
 
     async def protect(self, values: dict[str, str]) -> ProtectedSecret: ...
+
+
+@runtime_checkable
+class SecretRevealer(Protocol):
+    """Decryption half of a protector, held only by the worker control plane.
+
+    Kept apart from `SecretProtector` so that storing a credential never implies
+    the ability to read one back.
+    """
+
+    def reveal(self, ciphertext: bytes) -> dict[str, str]: ...
 
 
 class UnavailableSecretProtector:

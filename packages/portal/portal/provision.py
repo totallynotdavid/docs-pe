@@ -13,7 +13,7 @@ from portal.credentials.secrets import (
 from portal.domain.models import CredentialState, ProxyProvider, TeamRole
 from portal.migrations import apply_migrations
 from portal.repository.postgres import PostgresPortalRepository
-from portal.web.app import PortalSettings
+from portal.settings import PortalSettings
 from portal.web.security import hash_password
 
 

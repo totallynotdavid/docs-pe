@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import os
 
 from contextlib import asynccontextmanager
@@ -10,9 +11,11 @@ from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
 import asyncpg
+import httpx
 import pytest
 
 from portal.application.service import PortalService
+from portal.credentials.secrets import DevelopmentAesGcmSecretProtector
 from portal.domain.models import (
     MAX_LEASE_ATTEMPTS,
     InputLine,
@@ -22,10 +25,14 @@ from portal.domain.models import (
 )
 from portal.migrations import apply_migrations
 from portal.repository.postgres import PostgresPortalRepository
+from portal.settings import PortalSettings
+from portal.web.app import create_app
 
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+    from fastapi import FastAPI
 
 
 POSTGRES_DSN = os.environ.get("PORTAL_TEST_DSN", "")
@@ -53,6 +60,22 @@ async def _portal_database(prefix: str) -> AsyncIterator[asyncpg.Pool]:
         maintenance = await asyncpg.connect(maintenance_dsn)
         await maintenance.execute(f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)')
         await maintenance.close()
+
+
+@asynccontextmanager
+async def _portal_client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
+    """Drive the app on the test's own event loop.
+
+    `TestClient` runs the app in a second loop, and an asyncpg pool belongs to
+    the loop that created it, so the two cannot share one database.
+    """
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client,
+    ):
+        yield client
 
 
 async def _expire_leases(pool: asyncpg.Pool) -> None:
@@ -235,9 +258,64 @@ async def test_published_search_finds_a_dni_inside_a_ruc_and_paginates() -> None
         assert more is True
 
 
-async def _submit_one(pool: asyncpg.Pool, repository: PostgresPortalRepository) -> Job:
+async def test_the_worker_api_leases_an_item_and_publishes_its_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The worker's only view of the queue is this pair of authenticated calls."""
+    monkeypatch.setenv("PORTAL_WORKER_BOOTSTRAP_TOKEN", "ficha-de-prueba")
+    protector = DevelopmentAesGcmSecretProtector(
+        base64.urlsafe_b64encode(b"c" * 32).decode("ascii")
+    )
+    secret = await protector.protect({"username": "equipo", "password": "clave"})
+    async with _portal_database("worker") as pool:
+        repository = PostgresPortalRepository(pool)
+        job = await _submit_one(pool, repository, ciphertext=secret.ciphertext)
+        app = create_app(
+            PortalSettings(""), repository=repository, secret_protector=protector
+        )
+        headers = {
+            "Authorization": "Bearer ficha-de-prueba",
+            "X-Portal-Worker": "trabajador-uno",
+        }
+        async with _portal_client(app) as client:
+            anonymous = await client.post("/api/worker/claim", json={"sources": []})
+            assert anonymous.status_code == 401
+
+            response = await client.post(
+                "/api/worker/claim", json={"sources": ["osiptel"]}, headers=headers
+            )
+            claimed = response.json()
+            assert claimed["document"] == "10412345678"
+            assert claimed["credential"]["config"] == {
+                "username": "equipo",
+                "password": "clave",
+            }
+
+            published = await client.post(
+                "/api/worker/publish",
+                json={
+                    "item_id": claimed["item_id"],
+                    "fence": claimed["fence"],
+                    "content": base64.b64encode(b'{"lineas": []}').decode("ascii"),
+                },
+                headers=headers,
+            )
+
+        assert published.json() == {"published": True}
+        finished = await pool.fetchrow(
+            "SELECT state FROM portal_jobs WHERE id = $1", job.id
+        )
+        assert finished["state"] == "completed"
+
+
+async def _submit_one(
+    pool: asyncpg.Pool,
+    repository: PostgresPortalRepository,
+    *,
+    ciphertext: bytes = b"cifrado",
+) -> Job:
     """Seed a team and admit a single running job holding one osiptel item."""
-    actor_id, team_id, credential_id = await _seed_team(pool)
+    actor_id, team_id, credential_id = await _seed_team(pool, ciphertext=ciphertext)
     return await PortalService(repository).submit(
         SubmitJob(
             actor_id=actor_id,
@@ -266,7 +344,9 @@ def _database_dsns(dsn: str, database: str) -> tuple[str, str]:
     return maintenance, test
 
 
-async def _seed_team(pool: asyncpg.Pool) -> tuple[UUID, UUID, UUID]:
+async def _seed_team(
+    pool: asyncpg.Pool, *, ciphertext: bytes = b"cifrado"
+) -> tuple[UUID, UUID, UUID]:
     actor_id, team_id, credential_id = uuid4(), uuid4(), uuid4()
     credential_root_id = uuid4()
     async with pool.acquire() as connection:
@@ -308,7 +388,7 @@ async def _seed_team(pool: asyncpg.Pool) -> tuple[UUID, UUID, UUID]:
             credential_id,
             credential_root_id,
             team_id,
-            b"cifrado",
+            ciphertext,
             actor_id,
         )
     return actor_id, team_id, credential_id

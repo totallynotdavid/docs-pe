@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from portal.migrations import apply_migrations
-from portal.web.app import PortalSettings
+from portal.settings import PortalSettings
 
 
 async def migrate() -> None:

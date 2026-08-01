@@ -102,6 +102,17 @@ submission/cancellation) → `domain` (source planning, state policy) → `repos
 never creates schema, users, teams, or credentials — explicit provisioning is the only
 path that does.
 
+Inside `web`, `create_app` only builds state and includes the routers in `web/routes/`.
+Session, CSRF and adapter lookups are `Depends()` callables in `web/deps.py`, and
+`web/errors.py` maps `NotFound` to 404 and every other `PortalError` to 403 once. A route
+that lets a `PortalError` escape is denying the request; a route that catches one is
+re-rendering its form with a message.
+
+A page and the fragment htmx swaps into it share one URL, chosen by the `HX-Request`
+header in `render_hx`. Serving a fragment from its own URL is what made `hx-push-url`
+push an address that reloads without a layout. Those routes must keep sending
+`Vary: HX-Request`.
+
 ## Sharp edges
 
 - `packages/browser/readme.md`'s file map is stale. It describes a direct-CDP backend

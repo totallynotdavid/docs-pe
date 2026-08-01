@@ -5,7 +5,7 @@
 {% else %}<p class="estado-vacio">No hay tareas todavía.</p>{% endif %}
 {% if page > 1 or page * 20 < total %}
 <nav class="paginacion" aria-label="Paginación de tareas">
-  {% if page > 1 %}<a hx-get="/equipos/{{ team.id }}/procesos/fragmento?page={{ page - 1 }}" hx-target="#lista-procesos">Anterior</a>{% endif %}
-  {% if page * 20 < total %}<a hx-get="/equipos/{{ team.id }}/procesos/fragmento?page={{ page + 1 }}" hx-target="#lista-procesos">Siguiente</a>{% endif %}
+  {% if page > 1 %}<a hx-get="/equipos/{{ team.id }}?page={{ page - 1 }}" hx-target="#lista-procesos">Anterior</a>{% endif %}
+  {% if page * 20 < total %}<a hx-get="/equipos/{{ team.id }}?page={{ page + 1 }}" hx-target="#lista-procesos">Siguiente</a>{% endif %}
 </nav>
 {% endif %}

@@ -166,6 +166,18 @@ class ClaimedWork:
     lease_fence: int
 
 
+@dataclass(frozen=True)
+class JobCredential:
+    """The proxy credential a job's items must be fetched through.
+
+    Stays encrypted until the boundary that hands work to a worker, so the
+    repository never holds plaintext proxy passwords.
+    """
+
+    provider: str
+    config_ciphertext: bytes
+
+
 @dataclass
 class Job:
     id: UUID

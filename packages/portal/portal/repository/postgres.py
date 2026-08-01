@@ -16,6 +16,7 @@ from portal.domain.models import (
     ExcludedInput,
     ItemState,
     Job,
+    JobCredential,
     JobEvent,
     JobItem,
     JobState,
@@ -1021,6 +1022,27 @@ class PostgresPortalRepository:
                 return False
             await self._finish_if_drained_locked(connection, job_id)
         return True
+
+    async def credential_for_job(self, job_id: UUID) -> JobCredential | None:
+        row = await self._pool.fetchrow(
+            """
+            SELECT version.provider, version.config_ciphertext
+              FROM portal_jobs AS job
+              JOIN portal_team_proxy_credential_versions AS version
+                ON version.id = job.credential_version_id
+             WHERE job.id = $1
+            """,
+            job_id,
+        )
+        if row is None:
+            return None
+        return JobCredential(row["provider"], bytes(row["config_ciphertext"]))
+
+    async def item_team(self, item_id: UUID) -> UUID | None:
+        team_id: UUID | None = await self._pool.fetchval(
+            "SELECT team_id FROM portal_job_items WHERE id = $1", item_id
+        )
+        return team_id
 
     async def _insert_team_and_leader(
         self, connection: Connection, team: Team, created_by: UUID, leader_id: UUID

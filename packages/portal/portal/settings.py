@@ -1,0 +1,67 @@
+from __future__ import annotations
+
+import os
+
+from dataclasses import dataclass
+from typing import Protocol
+from urllib.parse import urlparse
+
+
+@dataclass(frozen=True)
+class PortalSettings:
+    database_dsn: str
+    environment: str = "development"
+    public_origin: str = "http://testserver"
+    cookie_secure: bool = False
+    tls_terminated_upstream: bool = False
+
+    @classmethod
+    def from_environment(cls) -> PortalSettings:
+        environment = os.environ.get("PORTAL_ENVIRONMENT", "development").lower()
+        origin = os.environ.get("PORTAL_PUBLIC_ORIGIN", "")
+        secure = os.environ.get("PORTAL_COOKIE_SECURE", "").lower()
+        tls_terminated_upstream = (
+            os.environ.get("PORTAL_TLS_TERMINATED_UPSTREAM", "").lower() == "true"
+        )
+        return cls(
+            database_dsn=os.environ.get("PORTAL_DATABASE_DSN", ""),
+            environment=environment,
+            public_origin=origin
+            or ("" if environment == "production" else "http://testserver"),
+            cookie_secure=secure == "true" if secure else environment == "production",
+            tls_terminated_upstream=tls_terminated_upstream,
+        )
+
+    def validate(self) -> None:
+        if not self.is_production:
+            return
+        if not self.database_dsn:
+            msg = "PORTAL_DATABASE_DSN es obligatorio en producción"
+            raise RuntimeError(msg)
+        if not self.cookie_secure or urlparse(self.public_origin).scheme != "https":
+            msg = "producción requiere HTTPS y cookies Secure"
+            raise RuntimeError(msg)
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment == "production"
+
+    @property
+    def session_cookie(self) -> str:
+        return "__Host-portal-id" if self.cookie_secure else "portal-id"
+
+
+class ReadinessProbe(Protocol):
+    """Small infrastructure boundary so readiness never depends on a UI route."""
+
+    async def ready(self) -> bool: ...
+
+
+class DatabaseConfigured:
+    """Foundation readiness probe; deployments can replace it with an asyncpg ping."""
+
+    def __init__(self, settings: PortalSettings) -> None:
+        self._settings = settings
+
+    async def ready(self) -> bool:
+        return bool(self._settings.database_dsn)

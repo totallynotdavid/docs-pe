@@ -32,7 +32,7 @@ from portal.web.security import (
 if TYPE_CHECKING:
     from uuid import UUID
 
-    from portal.domain.models import CredentialVersion, Job, JobEvent
+    from portal.domain.models import BrowserSession, CredentialVersion, Job, JobEvent
     from portal.repository.protocols import PortalRepository
     from portal.storage.port import ObjectStorage
 
@@ -103,7 +103,7 @@ class PortalService:
             return None
         return await self._repository.session_user(token_hash(token), datetime.now(UTC))
 
-    async def browser_session(self, token: str | None):
+    async def browser_session(self, token: str | None) -> BrowserSession | None:
         if not token:
             return None
         return await self._repository.browser_session(
@@ -112,11 +112,16 @@ class PortalService:
 
     async def verify_browser_csrf(
         self, token: str | None, submitted: str | None
-    ) -> PortalUser:
+    ) -> BrowserSession:
+        """Return the session behind a valid form post, not just its user.
+
+        Handlers that re-render a form after a failure need the session's CSRF
+        token, and re-reading the session to get it would race with logout.
+        """
         session = await self.browser_session(token)
         if session is None or not valid_csrf(submitted, session.csrf_token):
             raise PermissionDenied("la verificación CSRF no es válida")
-        return session.user
+        return session
 
     async def issue_login_csrf(self) -> str:
         token = new_csrf_token()

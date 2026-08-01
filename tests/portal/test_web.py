@@ -6,12 +6,9 @@ import pytest
 
 from fastapi import UploadFile
 from fastapi.testclient import TestClient
-from portal.web.app import (
-    MAX_CSV_UPLOAD_BYTES,
-    PortalSettings,
-    create_app,
-    read_csv_upload,
-)
+from portal.settings import PortalSettings
+from portal.web.app import create_app
+from portal.web.uploads import MAX_CSV_UPLOAD_BYTES, read_csv_upload
 
 
 class NotReady:
@@ -31,6 +28,24 @@ def test_health_and_readiness_are_small_operational_boundaries() -> None:
 
     assert response.status_code == 503
     assert response.json() == {"estado": "no_listo"}
+
+
+def test_a_deployment_without_a_queue_refuses_workers_instead_of_serving_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only a PostgreSQL deployment can lease work, so the rest must say so."""
+    monkeypatch.setenv("PORTAL_WORKER_BOOTSTRAP_TOKEN", "ficha")
+    with TestClient(create_app(PortalSettings(""))) as client:
+        response = client.post(
+            "/api/worker/claim",
+            json={"sources": ["osiptel"]},
+            headers={
+                "Authorization": "Bearer ficha",
+                "X-Portal-Worker": "trabajador-uno",
+            },
+        )
+
+    assert response.status_code == 503
 
 
 async def test_csv_upload_accepts_a_valid_file_and_strips_its_directories() -> None:
