@@ -1,5 +1,4 @@
 __pycache__/
-.pytest_cache/
 
 build/
 dist/
@@ -7,13 +6,14 @@ dist/
 node_modules/
 
 downloaded_files/
-*.csv
 .env*
 !.env.example
 
-*.log
+# Run artifacts live under runs/ so a fixture CSV elsewhere stays committable.
+runs/
+logs/
+var/
+.old-state-backup/
+
 *.pid
 *.pgid
-*.state.sqlite3
-*.state.sqlite3-shm
-*.state.sqlite3-wal
