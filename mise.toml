@@ -29,18 +29,26 @@ description = "Start the local PostgreSQL cluster used by the portal"
 run = """
 data_dir="$PWD/var/postgres"
 
-if mise x postgres -- pg_isready -h 127.0.0.1 -p 5432 -U postgres -q; then
-  exit 0
-fi
-
 if [ ! -f "$data_dir/PG_VERSION" ]; then
   mkdir -p "$data_dir"
   mise x postgres -- initdb -D "$data_dir" -U postgres \\
     --auth-host=trust --auth-local=trust --no-instructions
 fi
 
-mise x postgres -- pg_ctl -D "$data_dir" -l "$data_dir/server.log" \\
-  -o "-h 127.0.0.1 -p 5432" start
+if ! mise x postgres -- pg_isready -h 127.0.0.1 -p 5432 -U postgres -q; then
+  mise x postgres -- pg_ctl -D "$data_dir" -l "$data_dir/server.log" \\
+    -o "-h 127.0.0.1 -p 5432" -w start
+fi
+
+# var/postgres is disposable -- initdb recreates it and portal:bootstrap refills
+# it -- so fsyncing buys nothing and costs 8x on every database a test creates.
+# These three are SIGHUP settings, so reloading applies them to a cluster that
+# was already running; that is why this runs on every start rather than at initdb.
+mise x postgres -- psql -q -h 127.0.0.1 -p 5432 -U postgres -d postgres \\
+  -c "ALTER SYSTEM SET fsync = 'off'" \\
+  -c "ALTER SYSTEM SET synchronous_commit = 'off'" \\
+  -c "ALTER SYSTEM SET full_page_writes = 'off'" \\
+  -c "SELECT pg_reload_conf()" > /dev/null
 """
 
 [tasks."portal:migrate"]

@@ -45,7 +45,10 @@ collection hook, `uv run pytest tests/fetch` still works with no cluster at all 
 test that wants a database demands one.
 
 Each test gets a freshly migrated database of its own and drops it afterwards, so they
-are safe to run in parallel and never share state.
+are safe to run in parallel and never share state. `portal:db:start` turns off `fsync`,
+`synchronous_commit` and `full_page_writes`: `var/postgres` is disposable, and paying
+for durability made creating those databases roughly 8x more expensive (23s → 6s across
+`tests/portal`). Do not copy that setting anywhere a database is meant to survive.
 
 ## Architecture
 

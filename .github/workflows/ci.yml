@@ -78,6 +78,19 @@ jobs:
       - name: Type check
         run: uv run mypy .
 
+      # The service container is thrown away with the job, so durability only costs
+      # time: every database a portal test creates is ~8x cheaper without it. A
+      # `services:` block cannot pass server flags, hence a step rather than a flag.
+      - name: Trade durability for speed on the throwaway cluster
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d postgres \
+            -c "ALTER SYSTEM SET fsync = 'off'" \
+            -c "ALTER SYSTEM SET synchronous_commit = 'off'" \
+            -c "ALTER SYSTEM SET full_page_writes = 'off'" \
+            -c "SELECT pg_reload_conf()"
+
       - name: Test
         env:
           PORTAL_TEST_DSN: postgresql://postgres:postgres@127.0.0.1:5432/postgres
