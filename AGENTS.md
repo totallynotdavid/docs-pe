@@ -33,12 +33,19 @@ mode, an `INP001` ignore) disappears once the name is unique.
 pytest is configured once in the root `pyproject.toml`: `asyncio_mode = "auto"`, so
 async tests are plain `async def test_*` with no decorator.
 
-**The whole of `tests/portal` skips silently unless `PORTAL_TEST_DSN` is set.** There is
-no in-memory repository to fall back on, so a green `mise run test` without it means the
-portal was not tested at all -- 33 tests, not one file. `mise run portal:db:start` then
-`PORTAL_TEST_DSN=postgresql://postgres@127.0.0.1:5432/postgres mise run test` runs them;
-CI always does. Each test gets a freshly migrated database of its own and drops it
-afterwards, so they are safe to run in parallel and never share state.
+`mise run test` runs everything, portal included: it depends on `portal:db:start`, and
+`tests/portal/conftest.py` defaults to that cluster, so no `PORTAL_TEST_DSN` is needed.
+CI sets the variable to override the default; nothing else has to.
+
+**A missing database fails the run, it does not skip it.** The portal is
+PostgreSQL-only with no in-memory repository to degrade into, so a green run has to
+mean the portal really ran. The `portal_cluster` session fixture dials the DSN once and
+calls `pytest.exit` with the command to fix it. Because that is a fixture rather than a
+collection hook, `uv run pytest tests/fetch` still works with no cluster at all — only a
+test that wants a database demands one.
+
+Each test gets a freshly migrated database of its own and drops it afterwards, so they
+are safe to run in parallel and never share state.
 
 ## Architecture
 

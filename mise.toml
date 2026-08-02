@@ -65,6 +65,8 @@ run = [
 ]
 
 [tasks.test]
+description = "Run every test, including the portal suite, against local PostgreSQL"
+depends = ["portal:db:start"]
 run = "uv run pytest"
 
 [tasks.build]

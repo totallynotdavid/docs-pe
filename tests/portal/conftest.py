@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import os
 
@@ -28,21 +29,37 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
 
-POSTGRES_DSN = os.environ.get("PORTAL_TEST_DSN", "")
+# The cluster `mise run portal:db:start` brings up. PORTAL_TEST_DSN overrides it,
+# which is how CI points the suite at its service container.
+POSTGRES_DSN = (
+    os.environ.get("PORTAL_TEST_DSN") or "postgresql://postgres@127.0.0.1:5432/postgres"
+)
 SECRET_KEY = base64.urlsafe_b64encode(b"c" * 32).decode("ascii")
 
 
-def pytest_collection_modifyitems(
-    config: pytest.Config, items: list[pytest.Item]
-) -> None:
-    """Skip the whole package at once when no database is configured."""
-    del config
-    if POSTGRES_DSN:
-        return
-    skip = pytest.mark.skip(reason="set PORTAL_TEST_DSN to run the portal suite")
-    for item in items:
-        if "tests/portal/" in item.nodeid.replace(os.sep, "/"):
-            item.add_marker(skip)
+@pytest.fixture(scope="session")
+def portal_cluster() -> str:
+    """Stop the run with instructions rather than skipping the portal silently.
+
+    A missing database used to mark the whole package skipped at collection, so a
+    green run said nothing about whether the portal had been tested. Asking for it
+    here instead means only a test that wants a database demands one: `pytest
+    tests/fetch` still runs without a cluster, because nothing requests this.
+    """
+
+    async def ping() -> None:
+        connection = await asyncpg.connect(POSTGRES_DSN, timeout=5)
+        await connection.close()
+
+    try:
+        asyncio.run(ping())
+    except OSError as error:
+        pytest.exit(
+            f"PostgreSQL is not reachable at {POSTGRES_DSN} ({error}). "
+            "Run `mise run test`, or `mise run portal:db:start` first.",
+            returncode=1,
+        )
+    return POSTGRES_DSN
 
 
 def _database_dsns(dsn: str, database: str) -> tuple[str, str]:
@@ -61,10 +78,12 @@ class PortalDatabase:
 
 
 @pytest.fixture
-async def portal_db(request: pytest.FixtureRequest) -> AsyncIterator[PortalDatabase]:
+async def portal_db(
+    request: pytest.FixtureRequest, portal_cluster: str
+) -> AsyncIterator[PortalDatabase]:
     prefix = request.node.name[:20].replace("[", "_").replace("]", "")
     database = f"portal_{prefix}_{uuid4().hex}".lower()
-    maintenance_dsn, test_dsn = _database_dsns(POSTGRES_DSN, database)
+    maintenance_dsn, test_dsn = _database_dsns(portal_cluster, database)
     maintenance = await asyncpg.connect(maintenance_dsn)
     await maintenance.execute(f'CREATE DATABASE "{database}"')
     await maintenance.close()
