@@ -1,229 +1,354 @@
-# Entel debt lookup: how the site works
+# Entel debt lookup
 
-Field record for `miperfil.entel.pe/PE_Web_Cobro_Online_EU/` ("Paga tu deuda"),
-investigated 2026-07-17. Both
+Internal notes for `miperfil.entel.pe/PE_Web_Cobro_Online_EU/` ("Paga tu
+deuda").
+
+The behavior documented here was tested through both
 [`packages/browser`](../packages/browser/readme.md) and
-[`packages/capture`](../packages/capture/readme.md) drive this site, and each
-holds its own copy of the recipe. This file is the shared understanding behind
-both.
+[`packages/capture`](../packages/capture/readme.md).
 
-The site is an OutSystems Reactive app. Debt comes from one server action gated
-by reCAPTCHA v3.
+The site is an OutSystems Reactive application. Debt lookup is handled by a
+server action protected by reCAPTCHA v3.
 
-## Every rejection looks identical
+## Rejection response
 
-A rejected lookup returns HTTP 200 with `HasErrorDebt: true`,
-`DebtTotal: "0.0"`, an empty account list, and a blank `DocumentNumber`. That
-one shape covers a bad token, a spent token, an expired token, an empty
-`RecaptchaId`, and a dead session. There is no error code and no score anywhere
-in the response.
+Rejected lookups return HTTP 200 with:
 
-Almost every difficulty with this site follows from that fact: a single reply
-cannot tell you which thing went wrong, so every question has to be answered by
-a controlled experiment.
+- `HasErrorDebt: true`
+- `DebtTotal: "0.0"`
+- an empty account list
+- an empty `DocumentNumber`
 
-`HasErrorDebt: false` with `DebtTotal: "0.0"` is genuinely no debt. The flag
-decides, never the amount.
+The same response is returned for:
 
-## The mechanism: mint on Step 1
+- an invalid token
+- a reused token
+- an expired token
+- an empty `RecaptchaId`
+- an invalid session
 
-The app sends its debt request over `XMLHttpRequest`, not `fetch`, so a
-`window.fetch` hook intercepts nothing. Filling the form normally advances from
-the document screen (Step 1) to a payment screen (Step 2) and fires the request
-during that transition.
+The response does not include an error code or reCAPTCHA score. A single
+rejected request therefore does not reveal why it failed. Causes must be
+isolated through controlled comparisons.
 
+A successful lookup with no debt returns:
+
+```text
+HasErrorDebt: false
+DebtTotal: "0.0"
 ```
-Token minted while the page is still on Step 1   ->  ACCEPTED
-Token minted after the app reaches Step 2        ->  REJECTED
+
+Use `HasErrorDebt`, not `DebtTotal`, to distinguish rejection from a valid
+zero-debt result.
+
+## Token timing
+
+The application sends the debt request through `XMLHttpRequest`, not `fetch`.
+Hooking `window.fetch` does not intercept it.
+
+Submitting the form normally moves the application from the document screen,
+Step 1, to the payment screen, Step 2. The debt request is sent during this
+transition.
+
+```text
+Token minted while the page remains on Step 1  -> accepted
+Token minted after the page reaches Step 2     -> rejected
 ```
 
-So the whole trick is to hold the page on Step 1. Hooking
-`XMLHttpRequest.prototype.send`, capturing the `Step2/DataActionGetData` body as
-a template, and returning without forwarding it does exactly that. The debt call
-never leaves the browser and the loading spinner hangs forever. **That hang is
-the success state.** Driving the form once this way only captures the template,
-so the document used to drive it does not matter.
+The working approach is:
 
-With the template captured, each lookup is one fresh token and one POST from
-inside the page: roughly 0.8 to 1.4 s, no page reload, no decay across lookups,
-no cleanup between them.
+1. Hook `XMLHttpRequest.prototype.send`.
+2. Capture the `Step2/DataActionGetData` request body.
+3. Prevent that request from being sent.
+4. Leave the application on Step 1.
+5. Mint a fresh token and submit a new request from inside the page.
 
-Removing only the block, in the same browser minutes later, yields 0 of 5. That
-is the strongest single-variable result on record here.
+The intercepted request leaves the loading spinner active indefinitely. This is
+expected: the application is waiting for a request that was intentionally
+blocked.
 
-## Endpoint contract
+The first form submission is only used to capture the request template. The
+document entered during that submission does not matter.
 
-```
+After capturing the template, each lookup requires:
+
+- one fresh reCAPTCHA token
+- one in-page POST
+- no page reload
+- no cleanup between requests
+
+Observed lookup time was approximately 0.8 to 1.4 seconds.
+
+In the same browser session, removing only the Step 2 block produced 0
+successful responses out of 5 attempts.
+
+## Endpoint
+
+```http
 POST .../screenservices/PE_Web_Cobro_Online_CW/OnlinePayment/OnlinePayment_Step2/DataActionGetData
 Content-Type: application/json; charset=UTF-8
 ```
 
-Request fields that matter:
+Relevant request fields:
 
-| Field                                 | Value                                               |
-| ------------------------------------- | --------------------------------------------------- |
-| `screenData.variables.DocumentType`   | `"RUC"` or `"DNI"`, read as a plain string          |
-| `screenData.variables.DocumentNumber` | the document                                        |
-| `screenData.variables.RecaptchaId`    | `"0"`, required and validated server-side           |
-| `clientVariables.TokenCaptchaV3`      | the fresh token                                     |
-| `viewName`                            | `"OnlinePaymentFlow.OnlinePayment"`                 |
-| `versionInfo.moduleVersion`           | rotates; `GET .../moduleservices/moduleversioninfo` |
+| Field                                 | Value                                                     |
+| ------------------------------------- | --------------------------------------------------------- |
+| `screenData.variables.DocumentType`   | `"RUC"` or `"DNI"`                                        |
+| `screenData.variables.DocumentNumber` | Document number                                           |
+| `screenData.variables.RecaptchaId`    | `"0"`                                                     |
+| `clientVariables.TokenCaptchaV3`      | Fresh reCAPTCHA token                                     |
+| `viewName`                            | `"OnlinePaymentFlow.OnlinePayment"`                       |
+| `versionInfo.moduleVersion`           | Retrieved from `GET .../moduleservices/moduleversioninfo` |
 
-Because `DocumentType` is read as a plain string, a template captured with any
-one kind serves both: override the field per lookup instead of re-driving the
-dropdown.
+`DocumentType` is read as a plain string. A template captured with one document
+type can be reused for the other by replacing this field.
 
-`RecaptchaId` must be the string `"0"`, which is also the reCAPTCHA widget id.
-Blocking `OnlinePayment_WB/DataActionGetData` makes the app post
-`RecaptchaId: ""`, and the lookup then fails even in a real browser with a real
-app-minted token: that call is what sets up the widget. A hand-built body fails
-for the same reason, so capture the template from a live request.
+`RecaptchaId` must be the string `"0"`. It matches the reCAPTCHA widget id.
 
-The large `PaymeForm` block in the body appears inert.
+Blocking `OnlinePayment_WB/DataActionGetData` causes the application to submit
+an empty `RecaptchaId`. The debt lookup then fails even when the token was
+minted by the real application. That request appears to initialize the widget.
 
-### reCAPTCHA
+A manually constructed body fails for the same reason. Capture the complete
+request body from a live application request instead.
 
-- Site key `6LdUZwUcAAAAAC_K3DlqC_WHKbDwXfYXZrV0Xrx5`, action `"SearchDebt"`,
-  confirmed live by hooking `grecaptcha.execute`.
-- The widget id is the string `"0"`, not the number, and it matches
-  `RecaptchaId`.
-- Tokens run about 1300 characters and expire near 120 s. Single use is assumed
-  from general reCAPTCHA behaviour and has not been measured against Entel.
-- A token is consumed when Entel calls `siteverify`. A request rejected earlier
-  in the pipeline, such as a CSRF 403, does not consume it.
-- `"reCAPTCHA has already been rendered in this element"` is Entel's own
-  double-render bug. Harmless.
+The large `PaymeForm` section appears to have no effect on the debt lookup.
 
-### CSRF
+## reCAPTCHA
 
-HTTP 403 with `{"exception":{"message":"Invalid Login"}}` is a missing
-anti-forgery token, not a captcha problem. Bootstrap is: GET the app root, GET
-`moduleversioninfo`, POST once and take the 403 plus its `Set-Cookie`, read
-`crf` out of `nr2Users`, then resend with an `X-CSRFToken` header. `nr2Users` is
-URL-encoded, with `%3d` for `=` and `%3b` for `;`. Only `nr2Users` is readable
-from `document.cookie`; `osVisit`, `osVisitor`, and `nr1Users` are HttpOnly and
-need CDP.
+Observed values:
 
-## What decides acceptance: browser reputation
+- Site key: `6LdUZwUcAAAAAC_K3DlqC_WHKbDwXfYXZrV0Xrx5`
+- Action: `"SearchDebt"`
+- Widget id: `"0"`
+- Token length: approximately 1300 characters
+- Token lifetime: approximately 120 seconds
 
-A real everyday Chrome profile clears the borderline documents that a cold
-automated browser cannot. Hand-driven real Chrome returned 6 of 6 and then 5 of
-5 on 2026-07-17, and 0 of 5 with the block removed in the same browser and hour.
-A cold automated browser running the identical recipe scored 0 of 5 across every
-profile and exit tried.
+The site key and action were confirmed by intercepting `grecaptcha.execute`.
 
-Whether a person or a script clicks makes no difference. What matters is the
-browser Google has observed over time. This is why `packages/capture` exists.
+Single-use behavior is expected from reCAPTCHA but was not independently
+measured against Entel.
 
-### Ruled out
+A token is consumed when Entel submits it to Google's verification service. A
+request rejected earlier, such as a CSRF 403, does not appear to consume it.
 
-Each was tested directly and changed nothing about acceptance:
+The following browser message is produced by Entel's own duplicate-render
+behavior and did not prevent operation:
 
-- **TLS fingerprint.** `httpx` and `curl_cffi` behaved the same as the in-page
-  path.
-- **`navigator.webdriver` and the usual stealth surface**, via
-  playwright-stealth.
-- **User-Agent and UA-CH** brand strings spoofed to Windows Chrome.
-- **WebGL vendor and renderer** spoofed to Intel, plus `deviceMemory` and
-  `languages`.
-- **A real GPU.** None exists under WSL anyway; SwiftShader is sufficient.
-- **The `_GRECAPTCHA` cookie.** Injecting a real high-reputation browser's
-  cookie survived on every domain yet scored 0 of 6, while that real Chrome
-  passed the same documents in the same minute. Reputation is bound server-side
-  to the browser Google observed. It does not travel in a copied cookie value.
-- **Exit IP.** Two fresh clean Peru residential exits failed identically, and
-  the working Chrome shared the probe host's public IP.
-- **Cookie and profile state.** `clear_cookies` plus reload changed nothing, a
-  reused `user_data_dir` failed twice, and UC mode issues a fresh profile per
-  run regardless.
-- **Token quality.** With the block verified in place, tokens measured 1316 to
-  1358 characters with a distinct head per call and a 164 to 255 ms mint. Entel
-  accepts none of them. The rejection is server-side on a valid, fresh, unspent
-  token.
-- **Human against programmatic input** in the same browser: the same
-  intermittent rate.
-
-The disposable-key reCAPTCHA harness is not diagnostic here. An untrained
-free-tier key returns coarse buckets and reported 0.9 for every configuration,
-so it cannot see Entel's trained model.
-
-### CDP input is distinguishable, and `isTrusted` is not sufficient
-
-Same browser, same site, same form, same IP, only the input path differing:
-
-```
-CDP-driven (sb.cdp.click / send_keys, isTrusted: true)  ->  HasErrorDebt: true
-OS-level (PyAutoGUI through a real X display)           ->  real debt, 3/3
+```text
+reCAPTCHA has already been rendered in this element
 ```
 
-A CDP click reports `isTrusted: true` and is rejected anyway. Independently, the
-OutSystems input mask also drops CDP `send_keys`, landing only the first
-character, while accepting PyAutoGUI keystrokes cleanly.
+## CSRF
 
-### Still unresolved
+A response like this indicates a missing anti-forgery token, not a reCAPTCHA
+rejection:
 
-What differs between the passing and failing case is unidentified. Every input
-to the request that can be controlled from this side has been matched to the
-passing run.
+```http
+HTTP 403
 
-The same automated browser passed 3 of 3 and 4 of 4 one morning and 0 of 4 that
-afternoon, so it degraded during the day rather than being rejected by build.
-Those cliffs followed bursts of rapidly minted rejected tokens, and those bursts
-came from probes missing the Step 2 block, which were minting tokens that could
-never pass. **Whether a correct blocking loop degrades at all is unmeasured.** A
-browser-level reputation surviving profile wipes, IP changes, and cookie clears
-would fit the observations, but so would other explanations, and nothing
-separates them yet.
+{"exception":{"message":"Invalid Login"}}
+```
 
-### The token does not survive being moved to a plain HTTP client
+Bootstrap sequence:
 
-One clean controlled observation: block the app's Step 2 XHR so the token is
-never spent at `siteverify`, capture the app's exact body plus that unspent
-token, and replay from `httpx` with the full cookie jar taken through CDP. The
-replay returned `HasErrorDebt: true` while a normal in-browser lookup in the
-same session seconds later returned a real amount. Session and IP were healthy.
+1. GET the application root.
+2. GET `moduleversioninfo`.
+3. Send the first POST.
+4. Read the 403 response and its `Set-Cookie` headers.
+5. Extract `crf` from `nr2Users`.
+6. Resend with the `X-CSRFToken` header.
 
-So "mint in a browser, call from `httpx`" does not work as-is. Something binds
-the token to the browser context, and whether that something is TLS is
-unresolved. This is what caps throughput and what keeps Entel out of
-`packages/fetch`.
+`nr2Users` is URL-encoded:
 
-## Environment
+- `%3d` represents `=`
+- `%3b` represents `;`
 
-Xvfb is sufficient. A PyAutoGUI-driven form on a headless virtual display
-returns real debt, so XTEST input through Xvfb is not distinguishable by
-reCAPTCHA. That is what makes per-worker displays and horizontal fanout
-possible.
+Only `nr2Users` is available through `document.cookie`.
 
-PyAutoGUI types into whatever window holds OS focus, so a shared display
-corrupts runs silently. One drive left an input holding `2` instead of a
-document, and another typed nothing at all, because a human was typing
-elsewhere. Give each session its own display.
+The following cookies are HttpOnly and require CDP access:
 
-It also clicks screen coordinates, so anything below the fold needs
-`scrollIntoView({block: "center"})` first. The dropdown options render near
-y=1157 on a 1080p display.
+- `osVisit`
+- `osVisitor`
+- `nr1Users`
 
-On WSL, SeleniumBase's `xvfb=True` cannot work: WSLg mounts `/tmp/.X11-unix`
-read-only without the sticky bit, so no X server can bind a socket there and
-`chmod` cannot change it. Start the display manually instead, and run
-SeleniumBase with `headed=True`:
+## Acceptance differences
+
+A normal, previously used Chrome profile accepted documents that a fresh
+automated browser rejected.
+
+Observed on 2026-07-17:
+
+- manually driven everyday Chrome: 6 of 6, then 5 of 5
+- same Chrome with the Step 2 block removed: 0 of 5
+- fresh automated browsers using the same request flow: 0 of 5 across the tested
+  profiles and network exits
+
+This suggests that acceptance depends on browser-level signals beyond the
+visible request body. The exact signal remains unidentified.
+
+Whether a person or script initiates the request is not sufficient by itself to
+explain the difference. Input method also affects results, as described below.
+
+`packages/capture` exists to run the flow through an established browser
+profile.
+
+## Ruled-out variables
+
+The following were tested without changing acceptance:
+
+- TLS client choice: `httpx`, `curl_cffi`, and the in-page path behaved the
+  same.
+- `navigator.webdriver` and common stealth properties through
+  `playwright-stealth`.
+- Windows Chrome User-Agent and UA-CH values.
+- Intel WebGL vendor and renderer values.
+- `deviceMemory` and `languages`.
+- Hardware GPU availability. SwiftShader was sufficient for successful runs.
+- The `_GRECAPTCHA` cookie. Copying it from a working browser did not transfer
+  acceptance.
+- Exit IP. Two Peru residential exits failed, while a working browser shared the
+  probe host's public IP.
+- Cookie clearing and profile reuse.
+- Token length, uniqueness, and mint time.
+- Human versus programmatic form interaction within the same browser.
+
+Measured rejected tokens:
+
+- length: 1316 to 1358 characters
+- mint time: 164 to 255 ms
+- distinct token prefix on each request
+
+These tokens were fresh and unspent, but Entel still rejected them.
+
+A disposable reCAPTCHA test key was not useful for diagnosis. It returned the
+same coarse score for every tested configuration and did not reflect Entel's
+trained model.
+
+## CDP input versus OS input
+
+A controlled comparison used the same browser, site, form, and IP.
+
+```text
+CDP input with `isTrusted: true`  -> HasErrorDebt: true
+PyAutoGUI input through X11       -> accepted, 3 of 3
+```
+
+A CDP-generated click reports `isTrusted: true`, but that alone does not make it
+equivalent to OS-level input.
+
+The OutSystems input mask also treated the input methods differently:
+
+- CDP `send_keys` entered only the first character.
+- PyAutoGUI entered the complete value.
+
+## Replaying through a plain HTTP client
+
+A token minted in the browser could not be moved successfully to `httpx`.
+
+Controlled sequence:
+
+1. Block the Step 2 XHR.
+2. Capture the application's exact request body.
+3. Preserve the fresh, unspent token.
+4. Export the complete browser cookie jar through CDP.
+5. Replay the request through `httpx`.
+
+The replay returned:
+
+```text
+HasErrorDebt: true
+```
+
+A normal in-browser request in the same session returned a real debt amount
+seconds later.
+
+The session and IP were therefore still valid.
+
+The flow "mint in browser, request through `httpx`" does not work without
+reproducing some additional browser-bound property. Whether that property is
+TLS-related remains unresolved.
+
+This limits throughput and prevents the current Entel implementation from moving
+into `packages/fetch`.
+
+## Display and input environment
+
+Xvfb is sufficient.
+
+A PyAutoGUI-driven form running on a headless virtual display returned real
+debt. XTEST input through Xvfb was therefore accepted in the tested environment.
+
+PyAutoGUI sends input to whichever window currently has OS focus. Sharing a
+display between sessions can silently corrupt runs.
+
+Observed failures included:
+
+- an input containing only `2`
+- an input receiving no text
+- another window receiving the keystrokes
+
+Each worker should use its own display.
+
+PyAutoGUI uses screen coordinates. Elements below the viewport should first be
+centered:
+
+```js
+element.scrollIntoView({ block: "center" });
+```
+
+On a 1080p display, dropdown options rendered near `y=1157` before scrolling.
+
+## WSL
+
+SeleniumBase's `xvfb=True` does not work under the tested WSLg environment.
+
+WSLg mounts `/tmp/.X11-unix` read-only without the sticky bit. A new X server
+cannot create a Unix socket there, and `chmod` cannot change the directory.
+
+Start Xvfb manually:
 
 ```sh
 Xvfb :99 -screen 0 1920x1080x24 -listen tcp -nolisten unix
 export DISPLAY=127.0.0.1:99
 ```
 
-`-nolisten unix` is the trick: the server never touches `/tmp/.X11-unix`.
-`XAUTHORITY` must point at a file that exists, but it can be an empty one.
+Then run SeleniumBase with `headed=True`.
 
-On a normal server `SB(uc=True, xvfb=True)` works, with one known issue:
-`activate_cdp_mode()` spawns a second virtual display and does not pass
-`xvfb_metrics` through, so `xvfb_metrics="1920,1080"` silently yields 1366x768
-and PyAutoGUI then raises "cannot click on point ... outside screen"
-(SeleniumBase discussion #3664).
+`-nolisten unix` prevents Xvfb from accessing `/tmp/.X11-unix`.
 
-UC mode strips the proxy-auth extension, so an authenticated upstream proxy
-yields blank pages. `browser/local_proxy.py` terminates the auth locally: Chrome
-talks to an unauthenticated `127.0.0.1` relay that attaches the upstream
-credentials itself.
+`XAUTHORITY` must point to an existing file, but the file may be empty.
+
+## SeleniumBase
+
+On a normal Linux server, this works:
+
+```python
+SB(uc=True, xvfb=True)
+```
+
+One known issue affects the display size.
+
+`activate_cdp_mode()` creates a second virtual display without forwarding
+`xvfb_metrics`. As a result:
+
+```python
+xvfb_metrics="1920,1080"
+```
+
+may still produce a 1366x768 display. PyAutoGUI then fails when asked to click
+outside that smaller screen.
+
+This behavior is documented in SeleniumBase discussion
+[#3664](https://github.com/seleniumbase/SeleniumBase/discussions/3664).
+
+UC mode also removes the proxy authentication extension. An authenticated
+upstream proxy therefore produces blank pages.
+
+`browser/local_proxy.py` handles this by running a local unauthenticated relay:
+
+```text
+Chrome -> 127.0.0.1 relay -> authenticated upstream proxy
+```
+
+The relay adds the upstream credentials itself.
