@@ -31,7 +31,7 @@ run = "docker build --file packages/portal/Dockerfile --tag osiptel-portal ."
 [tasks."portal:db:start"]
 description = "Start the local PostgreSQL cluster used by the portal"
 run = """
-data_dir="$PWD/var/postgres"
+data_dir="$PWD/.data/postgres"
 
 if [ ! -f "$data_dir/PG_VERSION" ]; then
   mkdir -p "$data_dir"
@@ -44,8 +44,8 @@ if ! mise x postgres -- pg_isready -h 127.0.0.1 -p 5432 -U postgres -q; then
     -o "-h 127.0.0.1 -p 5432" -w start
 fi
 
-# var/postgres is disposable -- initdb recreates it and portal:bootstrap refills
-# it -- so fsyncing buys nothing and costs 8x on every database a test creates.
+# .data/postgres is disposable: initdb recreates it and portal:bootstrap refills
+# it, so fsyncing buys nothing and costs 8x on every database a test creates.
 # These three are SIGHUP settings, so reloading applies them to a cluster that
 # was already running; that is why this runs on every start rather than at initdb.
 mise x postgres -- psql -q -h 127.0.0.1 -p 5432 -U postgres -d postgres \\
