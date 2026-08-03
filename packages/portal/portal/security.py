@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import hashlib
 import hmac
 import secrets
@@ -9,8 +7,7 @@ from urllib.parse import urlparse
 from pwdlib import PasswordHash
 
 
-# FastAPI's documented password-hashing helper chooses Argon2id when its extra is
-# installed. It also keeps the implementation and parameters out of this app.
+# Uses Argon2id when the recommended extra is installed.
 _password_hash = PasswordHash.recommended()
 _DUMMY_HASH = _password_hash.hash("portal-not-a-real-password")
 
@@ -24,7 +21,7 @@ def verify_password(password: str, encoded: str) -> bool:
 
 
 def verify_dummy_password(password: str) -> None:
-    """Keep unknown-account login work comparable to a failed known-account login."""
+    """Keep unknown-account work comparable to a failed known-account login."""
     _password_hash.verify(password, _DUMMY_HASH)
 
 
@@ -45,12 +42,17 @@ def valid_csrf(submitted: str | None, expected: str) -> bool:
 
 
 def same_origin(
-    *, origin: str | None, referer: str | None, trusted_origin: str
+    *,
+    origin: str | None,
+    referer: str | None,
+    trusted_origin: str,
 ) -> bool:
-    """Validate browser mutation provenance using an exact scheme/host/port match."""
     supplied = origin or referer
+
     if not supplied:
         return False
+
     actual = urlparse(supplied)
     expected = urlparse(trusted_origin)
+
     return (actual.scheme, actual.netloc) == (expected.scheme, expected.netloc)

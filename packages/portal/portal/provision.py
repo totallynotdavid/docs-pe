@@ -4,6 +4,8 @@ import argparse
 import asyncio
 import os
 
+import asyncpg
+
 from fetch.proxy.registry import PROVIDERS, spec_for
 
 from portal.application.provisioning import ProvisioningService
@@ -39,11 +41,6 @@ def _environment_value(name: str) -> str:
 
 
 def _proxy_values(provider: str) -> dict[str, str]:
-    """Read a provider's fields from `PORTAL_PROVISION_<PROVIDER>_<FIELD>`.
-
-    Driven by the field schema, so provisioning a newly added vendor needs no
-    change here.
-    """
     spec = spec_for(provider)
     values: dict[str, str] = {}
     for field in spec.fields:
@@ -58,73 +55,90 @@ def _proxy_values(provider: str) -> dict[str, str]:
 async def provision(args: argparse.Namespace) -> None:
     settings = PortalSettings.from_environment()
     settings.validate()
-    password = _environment_value(args.admin_password_env)
-    import asyncpg
 
+    password = _environment_value(args.admin_password_env)
     pool = await asyncpg.create_pool(settings.database_dsn)
+
     try:
         await apply_migrations(pool)
-        auth_repository = PostgresAuthRepository(pool)
-        team_repository = PostgresTeamRepository(pool)
-        credential_repository = PostgresCredentialRepository(pool)
-        administrator = await auth_repository.provision_site_admin(
-            args.admin_email, hash_password(password)
+
+        auth_repo = PostgresAuthRepository(pool)
+        team_repo = PostgresTeamRepository(pool)
+        credential_repo = PostgresCredentialRepository(pool)
+
+        administrator = await auth_repo.provision_site_admin(
+            args.admin_email,
+            hash_password(password),
         )
+
         service = ProvisioningService(
-            auth_repository,
-            team_repository,
-            credential_repository,
+            auth_repo,
+            team_repo,
+            credential_repo,
             AesGcmSecretProtector.from_environment(),
         )
-        team_count, initial_team_id = await team_repository.installation_status()
+
+        team_count, initial_team_id = await team_repo.installation_status()
+
         if team_count == 0:
             team = await service.create_first_team(
-                administrator.id, name=args.team_name, slug=args.team_slug
+                administrator.id,
+                name=args.team_name,
+                slug=args.team_slug,
             )
-            team_status = "created"
+            print(f"Team: {team.name} · {team.slug} (created)")
         else:
-            existing_team = await team_repository.team_by_slug(
-                args.team_slug.strip().lower()
+            team = await team_repo.team_by_slug(args.team_slug.strip().lower())
+            if team is None or team.id != initial_team_id:
+                raise RuntimeError(
+                    "the installation already has a different initial team"
+                )
+
+            await team_repo.add_member(
+                team.id,
+                administrator.id,
+                TeamRole.TEAM_LEADER,
             )
-            if existing_team is None or initial_team_id != existing_team.id:
-                msg = "the installation already has a different initial team"
-                raise RuntimeError(msg)
-            team = existing_team
-            await team_repository.add_member(
-                team.id, administrator.id, TeamRole.TEAM_LEADER
-            )
-            team_status = "verified"
+            print(f"Team: {team.name} · {team.slug} (verified)")
+
         print(f"Administrator: {administrator.email} (ready)")
-        print(f"Team: {team.name} · {team.slug} ({team_status})")
+
         if args.proxy_provider:
-            provider = str(args.proxy_provider)
-            existing = await credential_repository.credentials_for_team(team.id)
+            label = args.proxy_label.strip()
+
             active = next(
                 (
                     credential
-                    for credential in existing
-                    if credential.label == args.proxy_label.strip()
+                    for credential in await credential_repo.credentials_for_team(
+                        team.id
+                    )
+                    if credential.label == label
                     and credential.state is CredentialState.ACTIVE
                 ),
                 None,
             )
+
             if active is None:
                 credential = await service.configure_proxy(
                     administrator.id,
                     team_id=team.id,
-                    label=args.proxy_label,
-                    provider=provider,
-                    values=_proxy_values(provider),
+                    label=label,
+                    provider=args.proxy_provider,
+                    values=_proxy_values(args.proxy_provider),
                 )
-                print(f"Proxy: {credential.label} · {provider} (validated and active)")
+                print(
+                    f"Proxy: {credential.label} · {args.proxy_provider} "
+                    "(validated and active)"
+                )
             else:
-                print(f"Proxy: {active.label} · {provider} (verified)")
+                print(f"Proxy: {active.label} · {args.proxy_provider} (verified)")
     finally:
         await pool.close()
 
 
 def main() -> None:
     args = _arguments().parse_args()
+
     try:
         asyncio.run(provision(args))
     except Exception as error:

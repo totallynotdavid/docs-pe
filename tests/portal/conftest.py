@@ -32,6 +32,8 @@ from portal.web.app import create_app
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
 
+    import httpx2
+
     from fastapi import FastAPI
 
 
@@ -337,7 +339,7 @@ def login(
     client: TestClient,
     email: str,
     password: str = PASSWORD,
-) -> httpx.Response:
+) -> httpx2.Response:
     page = client.get("/login")
 
     return client.post(
