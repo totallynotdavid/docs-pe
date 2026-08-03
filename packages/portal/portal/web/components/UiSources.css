@@ -1,4 +1,7 @@
-.fuentes { display: grid; gap: 8px; }
+.fuentes {
+  display: grid;
+  gap: 8px;
+}
 
 .fuente {
   border: 1px solid var(--border);
@@ -6,7 +9,9 @@
   cursor: pointer;
   display: block !important;
   padding: 12px;
-  transition: background var(--motion-fast), border-color var(--motion-fast);
+  transition:
+    background var(--motion-fast),
+    border-color var(--motion-fast);
 }
 
 .fuente__control {
@@ -17,26 +22,45 @@
   width: auto !important;
 }
 
-.fuente__contenido { display: grid; gap: 3px; overflow: hidden; }
+.fuente__contenido {
+  display: grid;
+  gap: 3px;
+  overflow: hidden;
+}
 
-.fuente__cabecera { align-items: baseline; display: flex; flex-wrap: wrap; gap: 8px; }
+.fuente__cabecera {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 
-.fuente__nombre { color: var(--foreground); font-weight: var(--font-weight-semibold); }
+.fuente__nombre {
+  color: var(--foreground);
+  font-weight: var(--font-weight-semibold);
+}
 
-.fuente__aplica { color: var(--foreground-tertiary); font-size: 11px; }
+.fuente__aplica {
+  color: var(--foreground-tertiary);
+  font-size: 11px;
+}
 
 .fuente__resultado {
   color: var(--foreground-secondary);
   font-size: var(--font-size-caption);
 }
 
-.fuente__muestra { border-top: 1px solid var(--border); gap: 5px; padding-top: 8px; }
+.fuente__muestra {
+  border-top: 1px solid var(--border);
+  gap: 5px;
+  padding-top: 8px;
+}
 
 .fuente__muestra-titulo {
   color: var(--foreground-tertiary);
   font-size: 10px;
   font-weight: var(--font-weight-semibold);
-  letter-spacing: .06em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -55,6 +79,13 @@
   min-width: 340px;
 }
 
-.fuente__tabla b { color: var(--foreground-tertiary); font-weight: var(--font-weight-medium); }
+.fuente__tabla b {
+  color: var(--foreground-tertiary);
+  font-weight: var(--font-weight-medium);
+}
 
-.fuente__tabla i { color: var(--foreground); font-style: normal; white-space: nowrap; }
+.fuente__tabla i {
+  color: var(--foreground);
+  font-style: normal;
+  white-space: nowrap;
+}

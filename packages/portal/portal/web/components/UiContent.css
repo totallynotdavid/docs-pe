@@ -6,5 +6,7 @@
 }
 
 @media (max-width: 720px) {
-  .contenido { padding: 26px 16px 48px; }
+  .contenido {
+    padding: 26px 16px 48px;
+  }
 }

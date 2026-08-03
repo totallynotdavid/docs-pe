@@ -1,23 +1,38 @@
-.flujo-consulta { max-width: 680px; }
+.flujo-consulta {
+  max-width: 680px;
+}
 
-.flujo-consulta__encabezado { margin-bottom: 30px; }
+.flujo-consulta__encabezado {
+  margin-bottom: 30px;
+}
 
 .flujo-consulta__encabezado h1 {
   font-size: 24px;
-  letter-spacing: -.03em;
+  letter-spacing: -0.03em;
   line-height: 1.1;
   margin: 0;
 }
 
-.flujo-consulta__encabezado p { color: var(--foreground-secondary); margin-top: 7px; }
+.flujo-consulta__encabezado p {
+  color: var(--foreground-secondary);
+  margin-top: 7px;
+}
 
 /* Doubled up so this beats `.formulario` regardless of which stylesheet the
    asset collector happens to emit first. */
-.formulario.formulario-consulta { gap: 0; max-width: none; }
+.formulario.formulario-consulta {
+  gap: 0;
+  max-width: none;
+}
 
-.paso-consulta { padding: 0 0 30px; }
+.paso-consulta {
+  padding: 0 0 30px;
+}
 
-.paso-consulta + .paso-consulta { border-top: 1px solid var(--border); padding-top: 30px; }
+.paso-consulta + .paso-consulta {
+  border-top: 1px solid var(--border);
+  padding-top: 30px;
+}
 
 .paso-consulta__encabezado {
   align-items: flex-start;
@@ -41,7 +56,10 @@
   width: 20px;
 }
 
-.paso-consulta__encabezado h2 { font-size: var(--font-size-body); line-height: 20px; }
+.paso-consulta__encabezado h2 {
+  font-size: var(--font-size-body);
+  line-height: 20px;
+}
 
 .paso-consulta__encabezado p {
   color: var(--foreground-secondary);
@@ -61,7 +79,9 @@
   border-color: var(--foreground-secondary);
 }
 
-.formulario-consulta .fuentes { margin-bottom: 0; }
+.formulario-consulta .fuentes {
+  margin-bottom: 0;
+}
 
 .formulario-consulta .fuente:hover {
   background: var(--background-transparent-lighter);
@@ -73,9 +93,14 @@
   border-color: var(--foreground);
 }
 
-.formulario-consulta .fuente__muestra { display: none; margin-top: 8px; }
+.formulario-consulta .fuente__muestra {
+  display: none;
+  margin-top: 8px;
+}
 
-.formulario-consulta .fuente:has(input:checked) .fuente__muestra { display: grid; }
+.formulario-consulta .fuente:has(input:checked) .fuente__muestra {
+  display: grid;
+}
 
 .consulta-accion {
   align-items: center;
@@ -91,7 +116,10 @@
   font-size: var(--font-size-caption);
 }
 
-.consulta-accion__conexion strong { color: var(--foreground); font-weight: var(--font-weight-medium); }
+.consulta-accion__conexion strong {
+  color: var(--foreground);
+  font-weight: var(--font-weight-medium);
+}
 
 .consulta-accion__selector {
   align-items: center !important;
@@ -100,4 +128,7 @@
   gap: 8px !important;
 }
 
-.consulta-accion__selector select { min-height: 31px; width: auto; }
+.consulta-accion__selector select {
+  min-height: 31px;
+  width: auto;
+}

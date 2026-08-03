@@ -1,5 +1,14 @@
-.acciones { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; }
+.acciones {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 
-.acciones--encima { margin-bottom: 18px; }
+.acciones--encima {
+  margin-bottom: 18px;
+}
 
-.acciones--debajo { margin-top: 16px; }
+.acciones--debajo {
+  margin-top: 16px;
+}

@@ -14,10 +14,13 @@
   padding: 20px;
   position: relative;
   text-align: center;
-  transition: background var(--motion-fast), border-color var(--motion-fast);
+  transition:
+    background var(--motion-fast),
+    border-color var(--motion-fast);
 }
 
-.archivo-csv:hover, .archivo-csv--arrastrando {
+.archivo-csv:hover,
+.archivo-csv--arrastrando {
   background: var(--color-blue-5);
   border-color: var(--color-blue-11);
 }
@@ -31,7 +34,10 @@
   width: 100%;
 }
 
-.archivo-csv__icono { color: var(--foreground-secondary); display: flex; }
+.archivo-csv__icono {
+  color: var(--foreground-secondary);
+  display: flex;
+}
 
 .archivo-csv__titulo {
   color: var(--foreground);

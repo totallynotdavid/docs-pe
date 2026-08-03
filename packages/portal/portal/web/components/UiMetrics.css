@@ -9,9 +9,15 @@
   border-radius: var(--radius-sm);
 }
 
-.metricas div { background: var(--background); padding: 13px; }
+.metricas div {
+  background: var(--background);
+  padding: 13px;
+}
 
-.metricas dt { color: var(--foreground-tertiary); font-size: 11px; }
+.metricas dt {
+  color: var(--foreground-tertiary);
+  font-size: 11px;
+}
 
 .metricas dd {
   font-size: var(--font-size-heading-sm);
@@ -20,5 +26,7 @@
 }
 
 @media (max-width: 720px) {
-  .metricas { grid-template-columns: 1fr; }
+  .metricas {
+    grid-template-columns: 1fr;
+  }
 }

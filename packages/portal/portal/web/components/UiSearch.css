@@ -22,10 +22,16 @@
   width: 100%;
 }
 
-.busqueda input:focus { border-color: var(--foreground-tertiary); }
+.busqueda input:focus {
+  border-color: var(--foreground-tertiary);
+}
 
 @media (max-width: 720px) {
-  .busqueda { grid-template-columns: 1fr; }
+  .busqueda {
+    grid-template-columns: 1fr;
+  }
 
-  .busqueda button { width: 100%; }
+  .busqueda button {
+    width: 100%;
+  }
 }

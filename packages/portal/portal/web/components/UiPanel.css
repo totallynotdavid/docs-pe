@@ -2,11 +2,13 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 1px 2px color(display-p3 0 0 0 / .025);
+  box-shadow: 0 1px 2px color(display-p3 0 0 0 / 0.025);
   overflow: hidden;
 }
 
-.panel + .panel { margin-top: 16px; }
+.panel + .panel {
+  margin-top: 16px;
+}
 
 .panel-cabecera {
   align-items: center;
@@ -17,7 +19,9 @@
   padding: 15px 17px;
 }
 
-.panel-cabecera h2 { font-size: var(--font-size-body); }
+.panel-cabecera h2 {
+  font-size: var(--font-size-body);
+}
 
 .panel-cabecera p {
   color: var(--foreground-secondary);
@@ -25,4 +29,6 @@
   margin-top: 3px;
 }
 
-.panel-cuerpo { padding: 17px; }
+.panel-cuerpo {
+  padding: 17px;
+}

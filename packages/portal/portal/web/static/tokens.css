@@ -5,18 +5,15 @@
   font-weight: 100 900;
   src: url("/estatico/inter-latin-wght-normal.woff2") format("woff2-variations");
   unicode-range:
-    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
-    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
-    U+2215, U+FEFF, U+FFFD;
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 :root {
-  --font-sans:
-    "Inter Variable", Inter, "Segoe UI", "Helvetica Neue", Helvetica, Arial,
-    sans-serif;
+  --font-sans: "Inter Variable", Inter, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono:
-    "IBM Plex Mono", "SFMono-Regular", Menlo, Monaco, Consolas,
-    "Liberation Mono", "Courier New", monospace;
+    "IBM Plex Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --motion-fast: 150ms;
   --font-11: 0.846rem;
@@ -82,11 +79,9 @@
   --radius-md: 8px;
   --radius-sm: 4px;
   --shadow-elevation-1:
-    0 2px 4px 0 color(display-p3 0 0 0 / 0.039),
-    0 0 4px 0 color(display-p3 0 0 0 / 0.078);
+    0 2px 4px 0 color(display-p3 0 0 0 / 0.039), 0 0 4px 0 color(display-p3 0 0 0 / 0.078);
   --shadow-elevation-3:
-    0 0 8px 0 color(display-p3 0 0 0 / 0.161),
-    0 8px 64px -16px color(display-p3 0 0 0 / 0.478),
+    0 0 8px 0 color(display-p3 0 0 0 / 0.161), 0 8px 64px -16px color(display-p3 0 0 0 / 0.478),
     0 24px 56px -16px color(display-p3 0 0 0 / 0.078);
   --focus-ring-shadow:
     0 0 0 1px color-mix(in oklab, var(--ring) 70%, transparent),
@@ -131,8 +126,7 @@
     --color-red-5: color(display-p3 0.348 0.11 0.142);
     --color-red-11: color(display-p3 1 0.57 0.55);
     --shadow-elevation-3:
-      2px 4px 16px 0 color(display-p3 0 0 0 / 0.12),
-      0 2px 4px 0 color(display-p3 0 0 0 / 0.04);
+      2px 4px 16px 0 color(display-p3 0 0 0 / 0.12), 0 2px 4px 0 color(display-p3 0 0 0 / 0.04);
   }
 }
 

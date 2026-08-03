@@ -1,4 +1,5 @@
-button, .boton {
+button,
+.boton {
   align-items: center;
   background: var(--primary);
   border: 1px solid var(--primary);
@@ -12,15 +13,21 @@ button, .boton {
   justify-content: center;
   padding: 0 11px;
   text-decoration: none;
-  transition: background var(--motion-fast), transform 100ms;
+  transition:
+    background var(--motion-fast),
+    transform 100ms;
 }
 
-button:hover, .boton:hover {
+button:hover,
+.boton:hover {
   background: color-mix(in oklab, var(--primary) 88%, white);
   color: var(--primary-foreground);
 }
 
-button:active, .boton:active { transform: scale(.98); }
+button:active,
+.boton:active {
+  transform: scale(0.98);
+}
 
 .boton--secundario {
   background: var(--background);
@@ -28,7 +35,10 @@ button:active, .boton:active { transform: scale(.98); }
   color: var(--foreground);
 }
 
-.boton--secundario:hover { background: var(--secondary); color: var(--foreground); }
+.boton--secundario:hover {
+  background: var(--secondary);
+  color: var(--foreground);
+}
 
 .boton--peligro {
   background: transparent;

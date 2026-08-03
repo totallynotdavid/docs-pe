@@ -1,5 +1,9 @@
 /* The signed-out card is not a panel: it keeps the rounded clip and nothing else. */
-.acceso { border-radius: var(--radius-md); overflow: hidden; text-align: center; }
+.acceso {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  text-align: center;
+}
 
 .acceso__marca {
   align-items: center;
@@ -15,7 +19,10 @@
   width: 48px;
 }
 
-.acceso h1 { font-size: 24px; margin: 16px 0 7px; }
+.acceso h1 {
+  font-size: 24px;
+  margin: 16px 0 7px;
+}
 
 .acceso__descripcion {
   color: var(--foreground-secondary);
@@ -23,6 +30,10 @@
   margin-bottom: 24px;
 }
 
-.acceso .formulario { text-align: left; }
+.acceso .formulario {
+  text-align: left;
+}
 
-.acceso .formulario button { margin-top: 4px; }
+.acceso .formulario button {
+  margin-top: 4px;
+}

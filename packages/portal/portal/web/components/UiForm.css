@@ -1,4 +1,8 @@
-.formulario { display: grid; gap: 15px; max-width: 620px; }
+.formulario {
+  display: grid;
+  gap: 15px;
+  max-width: 620px;
+}
 
 .formulario label {
   color: var(--foreground-secondary);
@@ -15,7 +19,9 @@
   line-height: 1.35;
 }
 
-.formulario input, .formulario textarea, .formulario select {
+.formulario input,
+.formulario textarea,
+.formulario select {
   background: var(--background);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -25,7 +31,11 @@
   width: 100%;
 }
 
-.formulario textarea { min-height: 190px; padding: 9px; resize: vertical; }
+.formulario textarea {
+  min-height: 190px;
+  padding: 9px;
+  resize: vertical;
+}
 
 .formulario input:focus,
 .formulario textarea:focus,
@@ -57,4 +67,7 @@
   gap: 6px;
 }
 
-.opcion input { min-height: auto; width: auto; }
+.opcion input {
+  min-height: auto;
+  width: auto;
+}

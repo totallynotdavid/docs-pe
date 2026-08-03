@@ -14,10 +14,19 @@
   font-weight: var(--font-weight-semibold);
 }
 
-.acciones-barra { align-items: center; display: flex; gap: 8px; }
+.acciones-barra {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
 
 @media (max-width: 720px) {
-  .barra-superior { height: 42px; padding: 0 16px; }
+  .barra-superior {
+    height: 42px;
+    padding: 0 16px;
+  }
 
-  .acciones-barra .boton { min-width: 0; }
+  .acciones-barra .boton {
+    min-width: 0;
+  }
 }

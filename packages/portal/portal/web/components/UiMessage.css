@@ -6,4 +6,7 @@
   padding: 9px 11px;
 }
 
-.mensaje--error { background: var(--color-red-5); color: var(--color-red-11); }
+.mensaje--error {
+  background: var(--color-red-5);
+  color: var(--color-red-11);
+}

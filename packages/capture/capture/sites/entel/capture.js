@@ -45,7 +45,7 @@
   async function lookup(ruc) {
     const started = performance.now();
     const tokenStarted = performance.now();
-    const token = await grecaptcha.execute("0", {action: "SearchDebt"});
+    const token = await grecaptcha.execute("0", { action: "SearchDebt" });
     const mintMs = Math.round(performance.now() - tokenStarted);
     const body = JSON.parse(JSON.stringify(window.__entelCaptureTemplate));
     body.screenData.variables.DocumentNumber = ruc;
@@ -78,13 +78,15 @@
             serverHasError: data.HasErrorDebt,
             debtTotal: data.Debt ? data.Debt.DebtTotal : null,
             responseHeaders: Object.fromEntries(response.headers.entries()),
-            resourceTiming: resource ? {
-              duration: Math.round(resource.duration),
-              transferSize: resource.transferSize,
-              encodedBodySize: resource.encodedBodySize,
-              decodedBodySize: resource.decodedBodySize,
-              nextHopProtocol: resource.nextHopProtocol,
-            } : null,
+            resourceTiming: resource
+              ? {
+                  duration: Math.round(resource.duration),
+                  transferSize: resource.transferSize,
+                  encodedBodySize: resource.encodedBodySize,
+                  decodedBodySize: resource.decodedBodySize,
+                  nextHopProtocol: resource.nextHopProtocol,
+                }
+              : null,
           },
         })
       : null;
@@ -118,9 +120,9 @@
       try {
         result = await lookup(next.ruc);
       } catch (error) {
-        result = {ruc: next.ruc, exception: String(error && error.message || error)};
+        result = { ruc: next.ruc, exception: String((error && error.message) || error) };
       }
-      await relay("/result", {method: "POST", body: JSON.stringify(result)});
+      await relay("/result", { method: "POST", body: JSON.stringify(result) });
       completed += 1;
       const total = result.debt ? result.debt.DebtTotal : null;
       const line = `${next.ruc}: err=${result.hasError} total=${total}`;
@@ -133,7 +135,8 @@
   let button = document.getElementById("entel-capture-go");
   if (!button) {
     const panel = document.createElement("div");
-    panel.style = "position:fixed;top:50px;right:20px;z-index:2147483647;" +
+    panel.style =
+      "position:fixed;top:50px;right:20px;z-index:2147483647;" +
       "background:white;color:#111;padding:12px;max-width:520px;" +
       "max-height:70vh;overflow:auto;border:2px solid #087f23";
     button = document.createElement("button");

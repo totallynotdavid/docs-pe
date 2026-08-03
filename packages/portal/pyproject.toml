@@ -8,16 +8,16 @@ version = "0.1.0"
 requires-python = ">=3.11"
 description = "Team-scoped portal control plane backed only by PostgreSQL."
 dependencies = [
-    "asyncpg>=0.30.0",
-    "cryptography>=44.0.0",
-    "fastapi>=0.135.0",
-    "fetch",
-    "httpx>=0.28.0",
-    "jinja2>=3.1.0",
-    "jinjax>=0.65",
-    "pwdlib[argon2]>=0.3.0",
-    "python-multipart>=0.0.20",
-    "uvicorn>=0.41.0",
+  "asyncpg>=0.30.0",
+  "cryptography>=44.0.0",
+  "fastapi>=0.135.0",
+  "fetch",
+  "httpx>=0.28.0",
+  "jinja2>=3.1.0",
+  "jinjax>=0.65",
+  "pwdlib[argon2]>=0.3.0",
+  "python-multipart>=0.0.20",
+  "uvicorn>=0.41.0",
 ]
 
 [project.scripts]
@@ -34,7 +34,15 @@ fetch = { workspace = true }
 include = ["portal*"]
 
 [tool.setuptools.package-data]
-portal = ["migrations/*.sql", "web/components/*.css", "web/components/*.jinja", "web/pages/*.jinja", "web/static/*.css", "web/static/*.js", "web/static/*.woff2"]
+portal = [
+  "migrations/*.sql",
+  "web/components/*.css",
+  "web/components/*.jinja",
+  "web/pages/*.jinja",
+  "web/static/*.css",
+  "web/static/*.js",
+  "web/static/*.woff2",
+]
 
 # djLint resolves its configuration from the nearest pyproject.toml above the
 # templates it is given, which is this one rather than the workspace root.

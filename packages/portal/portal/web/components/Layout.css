@@ -1,6 +1,10 @@
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
-html { font-size: 13px; }
+html {
+  font-size: 13px;
+}
 
 body {
   margin: 0;
@@ -13,11 +17,21 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-a { color: inherit; text-underline-offset: 3px; }
+a {
+  color: inherit;
+  text-underline-offset: 3px;
+}
 
-button, input, textarea, select { font: inherit; }
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
 
-button { cursor: pointer; }
+button {
+  cursor: pointer;
+}
 
 button:focus-visible,
 a:focus-visible,
@@ -31,11 +45,13 @@ select:focus-visible {
 h2 {
   font-size: var(--font-size-heading-sm);
   font-weight: var(--font-weight-semibold);
-  letter-spacing: -.015em;
+  letter-spacing: -0.015em;
   margin: 0;
 }
 
-p { margin: 0; }
+p {
+  margin: 0;
+}
 
 .subtitulo {
   color: var(--foreground-secondary);
@@ -82,7 +98,9 @@ p { margin: 0; }
   min-height: 100dvh;
 }
 
-.workspace { min-width: 0; }
+.workspace {
+  min-width: 0;
+}
 
 /* The signed-out pages drop the shell and centre a single card instead. */
 body.sesion-publica {
@@ -93,8 +111,13 @@ body.sesion-publica {
   padding: 16px;
 }
 
-body.sesion-publica .contenido { max-width: 400px; padding: 0; }
+body.sesion-publica .contenido {
+  max-width: 400px;
+  padding: 0;
+}
 
 @media (max-width: 720px) {
-  .app-shell { display: block; }
+  .app-shell {
+    display: block;
+  }
 }

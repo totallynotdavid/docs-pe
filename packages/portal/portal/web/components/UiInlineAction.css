@@ -10,4 +10,7 @@
   text-align: left;
 }
 
-.accion-en-linea button:hover { color: var(--foreground); text-decoration: underline; }
+.accion-en-linea button:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+}

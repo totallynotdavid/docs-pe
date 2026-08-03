@@ -2,8 +2,16 @@
   if (window.__entelCaptureDiagnostics) return "already-installed";
 
   const fontCandidates = [
-    "Arial", "Calibri", "Cambria", "Consolas", "Courier New", "Helvetica",
-    "Noto Sans", "Segoe UI", "Times New Roman", "Ubuntu",
+    "Arial",
+    "Calibri",
+    "Cambria",
+    "Consolas",
+    "Courier New",
+    "Helvetica",
+    "Noto Sans",
+    "Segoe UI",
+    "Times New Roman",
+    "Ubuntu",
   ];
 
   function safeCall(callback, fallback = null) {
@@ -19,28 +27,29 @@
   }
 
   function webglSignals() {
-    return safeCall(() => {
-      const canvas = document.createElement("canvas");
-      const context = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
-      if (!context) return {available: false};
-      const extension = context.getExtension("WEBGL_debug_renderer_info");
-      return {
-        available: true,
-        vendor: context.getParameter(context.VENDOR),
-        renderer: context.getParameter(context.RENDERER),
-        unmaskedVendor: extension
-          ? context.getParameter(extension.UNMASKED_VENDOR_WEBGL)
-          : null,
-        unmaskedRenderer: extension
-          ? context.getParameter(extension.UNMASKED_RENDERER_WEBGL)
-          : null,
-      };
-    }, {available: false});
+    return safeCall(
+      () => {
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+        if (!context) return { available: false };
+        const extension = context.getExtension("WEBGL_debug_renderer_info");
+        return {
+          available: true,
+          vendor: context.getParameter(context.VENDOR),
+          renderer: context.getParameter(context.RENDERER),
+          unmaskedVendor: extension ? context.getParameter(extension.UNMASKED_VENDOR_WEBGL) : null,
+          unmaskedRenderer: extension
+            ? context.getParameter(extension.UNMASKED_RENDERER_WEBGL)
+            : null,
+        };
+      },
+      { available: false },
+    );
   }
 
   function templateSummary(template) {
     if (!template || typeof template !== "object") return null;
-    const variables = template.screenData && template.screenData.variables || {};
+    const variables = (template.screenData && template.screenData.variables) || {};
     const clients = template.clientVariables || {};
     return {
       versionInfo: template.versionInfo || null,
@@ -56,18 +65,27 @@
   async function userAgentData() {
     if (!navigator.userAgentData) return null;
     const values = await safeCall(
-      () => navigator.userAgentData.getHighEntropyValues([
-        "architecture", "bitness", "brands", "formFactors", "fullVersionList",
-        "mobile", "model", "platform", "platformVersion", "uaFullVersion",
-        "wow64",
-      ]),
+      () =>
+        navigator.userAgentData.getHighEntropyValues([
+          "architecture",
+          "bitness",
+          "brands",
+          "formFactors",
+          "fullVersionList",
+          "mobile",
+          "model",
+          "platform",
+          "platformVersion",
+          "uaFullVersion",
+          "wow64",
+        ]),
       null,
     );
     return values && typeof values.then === "function" ? await values : values;
   }
 
   async function permissionState(name) {
-    const result = await safeCall(() => navigator.permissions.query({name}), null);
+    const result = await safeCall(() => navigator.permissions.query({ name }), null);
     const resolved = result && typeof result.then === "function" ? await result : result;
     return resolved ? resolved.state : null;
   }
@@ -82,8 +100,8 @@
     const automationGlobals = Object.getOwnPropertyNames(window)
       .filter((name) => /cdc_|selenium|webdriver|driver|automation/i.test(name))
       .sort();
-    const webdriverDescriptor = safeCall(
-      () => Object.getOwnPropertyDescriptor(Navigator.prototype, "webdriver"),
+    const webdriverDescriptor = safeCall(() =>
+      Object.getOwnPropertyDescriptor(Navigator.prototype, "webdriver"),
     );
     return {
       schemaVersion: 1,
@@ -107,9 +125,7 @@
         language: navigator.language,
         languages: [...navigator.languages],
         webdriver: navigator.webdriver,
-        webdriverGetter: webdriverDescriptor
-          ? functionShape(webdriverDescriptor.get)
-          : null,
+        webdriverGetter: webdriverDescriptor ? functionShape(webdriverDescriptor.get) : null,
         hardwareConcurrency: navigator.hardwareConcurrency,
         deviceMemory: navigator.deviceMemory || null,
         maxTouchPoints: navigator.maxTouchPoints,
@@ -155,11 +171,9 @@
         executeType: typeof (window.grecaptcha && window.grecaptcha.execute),
         enterpriseAvailable: Boolean(window.grecaptcha && window.grecaptcha.enterprise),
       },
-      template: templateSummary(
-        window.__entelBridgeTemplate || window.__entelTemplate || null,
-      ),
+      template: templateSummary(window.__entelBridgeTemplate || window.__entelTemplate || null),
       details,
     };
   };
   return "installed";
-})()
+})();
