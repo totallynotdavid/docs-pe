@@ -11,38 +11,16 @@ from fastapi import UploadFile
 from fastapi.testclient import TestClient
 from portal.domain.errors import InputValidationError, Reason
 from portal.messages import message_for
-from portal.settings import PortalSettings
-from portal.web.app import create_app
 from portal.web.render import COMPONENTS_DIR, PAGES_DIR
 from portal.web.uploads import MAX_CSV_UPLOAD_BYTES, read_csv_upload
-
-from tests.portal.conftest import SECRET_KEY, PortalDatabase
 
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
 
-class NotReady:
-    async def ready(self) -> bool:
-        return False
-
-
 def _upload(name: str, content: bytes) -> UploadFile:
     return UploadFile(file=io.BytesIO(content), filename=name)
-
-
-def test_health_and_readiness_are_small_operational_boundaries(
-    portal_db: PortalDatabase, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("PORTAL_SECRET_PROTECTION_KEY", SECRET_KEY)
-    app = create_app(PortalSettings(portal_db.dsn), NotReady())
-    with TestClient(app) as client:
-        assert client.get("/salud").json() == {"estado": "saludable"}
-        response = client.get("/listo")
-
-    assert response.status_code == 503
-    assert response.json() == {"estado": "no_listo"}
 
 
 def test_every_response_carries_a_policy_that_trusts_only_this_origin(

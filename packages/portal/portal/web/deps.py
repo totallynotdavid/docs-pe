@@ -8,14 +8,9 @@ from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
 from portal.domain.models import BrowserSession
 from portal.security import same_origin
-from portal.settings import PortalSettings, ReadinessProbe
+from portal.settings import PortalSettings
 from portal.storage.port import ObjectStorage
 from portal.web.errors import LoginRequired
-
-
-def _readiness(request: Request) -> ReadinessProbe:
-    probe: ReadinessProbe = request.app.state.readiness
-    return probe
 
 
 def _settings(request: Request) -> PortalSettings:
@@ -38,7 +33,6 @@ def _storage(request: Request) -> ObjectStorage:
     return storage
 
 
-Readiness = Annotated[ReadinessProbe, Depends(_readiness)]
 Settings = Annotated[PortalSettings, Depends(_settings)]
 Service = Annotated[PortalService, Depends(_service)]
 Provisioning = Annotated[ProvisioningService, Depends(_provisioning)]

@@ -19,7 +19,7 @@ from portal.repository.auth import PostgresAuthRepository
 from portal.repository.credentials import PostgresCredentialRepository
 from portal.repository.jobs import PostgresJobRepository
 from portal.repository.teams import PostgresTeamRepository
-from portal.settings import DatabaseConfigured, PortalSettings, ReadinessProbe
+from portal.settings import PortalSettings
 from portal.storage.files import FileObjectStorage
 from portal.web.errors import install_error_handlers
 from portal.web.headers import SecurityHeaders
@@ -29,16 +29,13 @@ from portal.web.routes import (
     auth,
     home,
     jobs,
-    operations,
     search,
     teams,
     worker,
 )
 
 
-def create_app(
-    settings: PortalSettings | None = None, readiness: ReadinessProbe | None = None
-) -> FastAPI:
+def create_app(settings: PortalSettings | None = None) -> FastAPI:
     """Create the server-rendered portal.
 
     One repository and one object store. The portal is PostgreSQL-only, so a missing
@@ -74,7 +71,6 @@ def create_app(
 
     app = FastAPI(title="Worker", version="0.2.0", lifespan=lifespan)
     app.state.settings = settings
-    app.state.readiness = readiness or DatabaseConfigured(settings)
     # Component stylesheets live under the static prefix but are served by a route,
     # so they have to be matched before the mount that would otherwise swallow them.
     app.include_router(assets.router)
@@ -93,7 +89,6 @@ def create_app(
             app.add_middleware(HTTPSRedirectMiddleware)
     install_error_handlers(app)
     for router in (
-        operations.router,
         auth.router,
         home.router,
         jobs.router,
