@@ -14,66 +14,65 @@ from portal.messages import choice_label, field_label, provider_label
 
 COMPONENTS_DIR = Path(__file__).with_name("components")
 PAGES_DIR = Path(__file__).with_name("pages")
-
-# Where a component's own stylesheet is served from. The catalog turns every
-# `{#css UiPanel.css #}` into a link under this prefix.
 COMPONENT_ASSETS_URL = "/estatico/componentes/"
 
 
-# Component names are positional-only so that a context key never shadows one.
 def render_fragment(name: str, /, **context: Any) -> str:
-    """Render a component to markup, for embedding rather than responding."""
     return _CATALOG.render(name, **context)
 
 
 def render(name: str, /, **context: Any) -> HTMLResponse:
-    """Render a component. Components receive data, never the request."""
     return HTMLResponse(render_fragment(name, **context))
 
 
 def render_hx(
-    request: Request, page: str, fragment: str, /, **context: Any
+    request: Request,
+    page: str,
+    fragment: str,
+    /,
+    **context: Any,
 ) -> HTMLResponse:
-    """Serve one URL as a whole page, or as the fragment htmx swaps into it.
-
-    `Vary` stops a cache from replaying a bare fragment into a navigation.
-    """
     swap = request.headers.get("hx-request") == "true"
     response = render(fragment if swap else page, **context)
+
+    # Prevent caches from serving an htmx fragment as a full page.
     response.headers["Vary"] = "HX-Request"
+
     return response
 
 
 def component_catalog() -> Catalog:
-    """Build the catalog: `components/` are shared, `pages/` are the entry points.
-
-    Both folders share one namespace, so a page names a component directly. The
-    environment must be handed over pre-built: a catalog only inherits autoescaping
-    from one it is given.
-    """
     environment = Environment(autoescape=True)
+
     environment.filters["job_state"] = _state_label
     environment.filters["role_name"] = _role_label
     environment.filters["notification"] = _notification_label
     environment.filters["credential_state"] = _credential_state_label
-    environment.globals["is_terminal"] = lambda job: (
-        job.state
-        in {
-            JobState.COMPLETED,
-            JobState.FAILED,
-            JobState.CANCELLED,
-        }
-    )
+
+    environment.globals["is_terminal"] = _is_terminal
     environment.globals["job_summary"] = _job_summary
-    # The schema is the engine's; only the wording is ours.
     environment.globals["field_label"] = field_label
     environment.globals["choice_label"] = choice_label
     environment.globals["provider_label"] = provider_label
 
-    catalog = Catalog(jinja_env=environment, root_url=COMPONENT_ASSETS_URL)
+    # Components and pages share one namespace. Passing the environment directly
+    # preserves its autoescaping and registered filters.
+    catalog = Catalog(
+        jinja_env=environment,
+        root_url=COMPONENT_ASSETS_URL,
+    )
     catalog.add_folder(COMPONENTS_DIR)
     catalog.add_folder(PAGES_DIR)
+
     return catalog
+
+
+def _is_terminal(job: Job) -> bool:
+    return job.state in {
+        JobState.COMPLETED,
+        JobState.FAILED,
+        JobState.CANCELLED,
+    }
 
 
 def _state_label(state: JobState) -> str:
@@ -98,6 +97,7 @@ def _role_label(role: TeamRole | None) -> str:
 def _job_summary(job: Job) -> str:
     if job.terminal_reason == "todos_los_registros_excluidos":
         return "La tarea terminó sin registros válidos."
+
     return f"Tarea {job.filename}: {_state_label(job.state)}."
 
 

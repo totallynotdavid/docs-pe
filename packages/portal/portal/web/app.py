@@ -36,11 +36,6 @@ from portal.web.routes import (
 
 
 def create_app(settings: PortalSettings | None = None) -> FastAPI:
-    """Create the server-rendered portal.
-
-    One repository and one object store. The portal is PostgreSQL-only, so a missing
-    DSN fails at startup.
-    """
     settings = settings or PortalSettings.from_environment()
     settings.validate()
 
@@ -49,21 +44,30 @@ def create_app(settings: PortalSettings | None = None) -> FastAPI:
         import asyncpg
 
         pool = await asyncpg.create_pool(settings.database_dsn)
+
         auth_repository = PostgresAuthRepository(pool)
         team_repository = PostgresTeamRepository(pool)
         credential_repository = PostgresCredentialRepository(pool)
         job_repository = PostgresJobRepository(pool)
         protector = AesGcmSecretProtector.from_environment()
+
         app.state.pool = pool
         app.state.worker_queue = job_repository
         app.state.service = PortalService(
-            auth_repository, team_repository, credential_repository, job_repository
+            auth_repository,
+            team_repository,
+            credential_repository,
+            job_repository,
         )
         app.state.provisioning = ProvisioningService(
-            auth_repository, team_repository, credential_repository, protector
+            auth_repository,
+            team_repository,
+            credential_repository,
+            protector,
         )
         app.state.secret_protector = protector
         app.state.storage = FileObjectStorage(settings.object_root)
+
         try:
             yield
         finally:
@@ -71,23 +75,28 @@ def create_app(settings: PortalSettings | None = None) -> FastAPI:
 
     app = FastAPI(title="Worker", version="0.2.0", lifespan=lifespan)
     app.state.settings = settings
-    # Component stylesheets live under the static prefix but are served by a route,
-    # so they have to be matched before the mount that would otherwise swallow them.
+
+    # Register component assets before the static mount.
     app.include_router(assets.router)
     app.mount(
         "/estatico",
         StaticFiles(directory=Path(__file__).with_name("static")),
         name="estatico",
     )
+
     app.add_middleware(SecurityHeaders)
+
     if settings.is_production:
         app.add_middleware(
             TrustedHostMiddleware,
             allowed_hosts=[urlparse(settings.public_origin).hostname or "localhost"],
         )
+
         if not settings.tls_terminated_upstream:
             app.add_middleware(HTTPSRedirectMiddleware)
+
     install_error_handlers(app)
+
     for router in (
         auth.router,
         home.router,
@@ -98,6 +107,7 @@ def create_app(settings: PortalSettings | None = None) -> FastAPI:
         worker.router,
     ):
         app.include_router(router)
+
     return app
 
 

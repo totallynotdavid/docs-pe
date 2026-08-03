@@ -40,7 +40,6 @@ Storage = Annotated[ObjectStorage, Depends(_storage)]
 
 
 def require_same_origin(request: Request, settings: Settings) -> None:
-    """Reject a cross-site form post before any handler runs."""
     if not same_origin(
         origin=request.headers.get("origin"),
         referer=request.headers.get("referer"),
@@ -53,23 +52,29 @@ RequireSameOrigin = Depends(require_same_origin)
 
 
 async def _optional_session(
-    request: Request, service: Service, settings: Settings
+    request: Request,
+    service: Service,
+    settings: Settings,
 ) -> BrowserSession | None:
-    return await service.browser_session(request.cookies.get(settings.session_cookie))
+    return await service.browser_session(
+        request.cookies.get(settings.session_cookie),
+    )
 
 
 OptionalSession = Annotated[BrowserSession | None, Depends(_optional_session)]
 
 
-async def _page_session(session: OptionalSession) -> BrowserSession:
+def _page_session(session: OptionalSession) -> BrowserSession:
     if session is None:
         raise LoginRequired
+
     return session
 
 
-async def _api_session(session: OptionalSession) -> BrowserSession:
+def _api_session(session: OptionalSession) -> BrowserSession:
     if session is None:
         raise HTTPException(status_code=401, detail="autenticación requerida")
+
     return session
 
 
@@ -79,18 +84,18 @@ async def _verified_session(
     settings: Settings,
     csrf_token: Annotated[str, Form()],
 ) -> BrowserSession:
-    """Authorize a state-changing form post before its route body runs."""
     require_same_origin(request, settings)
+
     return await service.verify_browser_csrf(
-        request.cookies.get(settings.session_cookie), csrf_token
+        request.cookies.get(settings.session_cookie),
+        csrf_token,
     )
 
 
-# A browser navigation without a session is sent to the login page; an htmx or
-# API caller is told so with a status code. Mutations answer 403 either way.
+# Page requests redirect to login; API requests return 401.
 PageSession = Annotated[BrowserSession, Depends(_page_session)]
 ApiSession = Annotated[BrowserSession, Depends(_api_session)]
 VerifiedSession = Annotated[BrowserSession, Depends(_verified_session)]
 
-# For the one mutation that acts on the cookie alone and never names its actor.
+# Used when the verified session value itself is not needed.
 RequireVerifiedSession = Depends(_verified_session)

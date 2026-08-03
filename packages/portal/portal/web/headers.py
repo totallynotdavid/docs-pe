@@ -9,9 +9,6 @@ if TYPE_CHECKING:
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 
-# Every script, style and font the portal serves comes from its own origin, so the
-# policy needs no exception and injected markup has nowhere to fetch code from. This
-# is what forces htmx to be vendored into `web/static`.
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; "
     "object-src 'none'; "
@@ -22,11 +19,7 @@ CONTENT_SECURITY_POLICY = (
 
 
 class SecurityHeaders:
-    """Stamp the content security policy onto every response.
-
-    Written against raw ASGI rather than `BaseHTTPMiddleware` so that the job
-    progress stream keeps streaming and keeps seeing client disconnects.
-    """
+    """Raw ASGI middleware so streaming responses and disconnect detection work."""
 
     def __init__(self, app: ASGIApp) -> None:
         self._app = app
