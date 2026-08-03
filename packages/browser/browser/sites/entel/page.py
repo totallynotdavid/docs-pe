@@ -236,7 +236,8 @@ class EntelPage:
 
             time.sleep(0.25)
 
-        raise BrowserError(f"Entel lookup timed out for document {subject}")
+        msg = f"Entel lookup timed out for document {subject}"
+        raise BrowserError(msg)
 
     def check_health(self) -> bool:
         try:
