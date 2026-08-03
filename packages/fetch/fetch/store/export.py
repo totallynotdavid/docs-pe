@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     from fetch.domain.types import Projection, Site
     from fetch.store.outcomes import OutcomeStore
 
-
 ERROR_HEADERS = [
     "doc",
     "error_code",
@@ -26,7 +25,12 @@ ERROR_HEADERS = [
 NOT_FOUND_HEADERS = ["doc", "timestamp"]
 
 
-def export_all(*, store: OutcomeStore, output_csv: Path, sites: list[Site]) -> None:
+def export_all(
+    *,
+    store: OutcomeStore,
+    output_csv: Path,
+    sites: Sequence[Site],
+) -> None:
     for site in sites:
         export_site(store=store, output_csv=output_csv, site=site)
 
@@ -34,20 +38,26 @@ def export_all(*, store: OutcomeStore, output_csv: Path, sites: list[Site]) -> N
 def export_site(*, store: OutcomeStore, output_csv: Path, site: Site) -> None:
     success_path = site_csv_path(output_csv, site.name)
     success_path.parent.mkdir(parents=True, exist_ok=True)
+
     _write_atomic(
-        success_path, ["doc", *site.columns], _success_lines(store, site.name)
+        success_path,
+        ["doc", *site.columns],
+        _success_lines(store, site.name),
     )
+
     for projection in site.projections:
         _write_atomic(
             _projection_path(success_path, projection.name),
             ["doc", *projection.columns],
             _projection_lines(store, site.name, projection),
         )
+
     _write_atomic(
         success_path.with_suffix(".errors.csv"),
         ERROR_HEADERS,
         store.error_rows(site.name),
     )
+
     _write_atomic(
         success_path.with_suffix(".not_found.csv"),
         NOT_FOUND_HEADERS,
@@ -66,15 +76,20 @@ def _projection_path(success_path: Path, projection_name: str) -> Path:
     )
 
 
-def _success_lines(store: OutcomeStore, site_name: str) -> Iterator[list[str | int]]:
-    # An empty payload is an honest success with no rows; it yields no CSV lines.
+def _success_lines(
+    store: OutcomeStore,
+    site_name: str,
+) -> Iterator[list[str | int]]:
+    # Empty successes produce no CSV rows.
     for doc, rows in store.success_rows(site_name):
         for row in rows:
             yield [doc, *row]
 
 
 def _projection_lines(
-    store: OutcomeStore, site_name: str, projection: Projection
+    store: OutcomeStore,
+    site_name: str,
+    projection: Projection,
 ) -> Iterator[list[str | int]]:
     for doc, rows in store.success_rows(site_name):
         for row in projection.project(rows):
@@ -83,14 +98,17 @@ def _projection_lines(
 
 def _write_atomic(
     path: Path,
-    headers: list[str],
+    headers: Sequence[str],
     rows: Iterable[Sequence[str | int]],
 ) -> None:
     temp_path = path.with_suffix(path.suffix + ".tmp")
+
     with temp_path.open("w", newline="", encoding="utf-8") as file_obj:
         writer = csv.writer(file_obj)
         writer.writerow(headers)
         writer.writerows(rows)
+
         file_obj.flush()
         os.fsync(file_obj.fileno())
+
     temp_path.replace(path)

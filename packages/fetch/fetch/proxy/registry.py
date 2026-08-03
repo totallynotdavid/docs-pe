@@ -14,8 +14,6 @@ if TYPE_CHECKING:
     from fetch.proxy.base import ProviderSpec, ProxyProvider
 
 
-# name -> ProviderSpec value. Adding a vendor is one proxy/<name>.py module plus
-# one entry here.
 PROVIDERS: dict[str, ProviderSpec] = {
     GEONODE.name: GEONODE,
     DATAIMPULSE.name: DATAIMPULSE,
@@ -28,28 +26,29 @@ def spec_for(name: str) -> ProviderSpec:
     except KeyError:
         allowed = "|".join(sorted(PROVIDERS))
         msg = f"unknown proxy provider {name!r}; choose from {allowed}"
+
         raise ProxyConfigurationError(msg) from None
 
 
 def provider_from_values(name: str, raw: Mapping[str, str]) -> ProxyProvider:
-    """Validate raw configuration for `name` and return a live provider."""
     spec = spec_for(name)
+
     return spec.build(spec.normalize(raw))
 
 
 async def preflight(name: str, raw: Mapping[str, str]) -> str:
-    """Prove a configuration reaches the internet, and return its exit IP.
-
-    Dials a real session built by the provider itself, so it validates exactly what a
-    run will use.
-    """
+    """Open a real provider session and return its exit IP."""
     provider = provider_from_values(name, raw)
     session = provider.new_session(slot_id=1)
+
     try:
         egress_ip = await resolve_egress_ip(session)
     finally:
         await provider.release(session)
+
     if not egress_ip:
         msg = "proxy configuration did not reach the internet"
+
         raise ProxyConfigurationError(msg)
+
     return egress_ip

@@ -10,6 +10,8 @@ if TYPE_CHECKING:
 
     from capture.result import LookupResult
 
+Row = tuple[str, ...]
+
 
 @dataclass(frozen=True)
 class CaptureSite:
@@ -18,4 +20,4 @@ class CaptureSite:
     export_header: tuple[str, ...]
     script: Path
     parse: Callable[..., LookupResult]
-    row: Callable[[str, dict[str, str], str], list[object]]
+    row: Callable[[str, dict[str, str], str], Row]

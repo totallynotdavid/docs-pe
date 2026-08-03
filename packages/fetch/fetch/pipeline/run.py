@@ -42,9 +42,14 @@ async def run(cfg: RunConfig, *, run_id: str) -> None:
         if cfg.do_import:
             for site in sites:
                 imported = import_site(
-                    store=store, output_csv=cfg.output_csv, site=site
+                    store=store,
+                    output_csv=cfg.output_csv,
+                    site=site,
                 )
-                logger.info("site_import %s", kv(site=site.name, imported=imported))
+                logger.info(
+                    "site_import %s",
+                    kv(site=site.name, imported=imported),
+                )
 
         docs, plan = read_docs(cfg.input_csv, dedupe=cfg.dedupe)
         done = store.done_pairs()
@@ -52,8 +57,13 @@ async def run(cfg: RunConfig, *, run_id: str) -> None:
         totals = {site.name: RunTotals() for site in sites}
 
         unrouted = count_unrouted(docs, sites)
+
         if unrouted:
-            logger.warning("%s %s", DOCS_UNROUTED, kv(run_id=run_id, unrouted=unrouted))
+            logger.warning(
+                "%s %s",
+                DOCS_UNROUTED,
+                kv(run_id=run_id, unrouted=unrouted),
+            )
 
         try:
             for site in sites:
@@ -67,6 +77,7 @@ async def run(cfg: RunConfig, *, run_id: str) -> None:
                         session_budget=_budget(cfg, site),
                     ),
                 )
+
             for provider in providers:
                 logger.info(
                     "%s %s",
@@ -78,6 +89,7 @@ async def run(cfg: RunConfig, *, run_id: str) -> None:
                         ban_cooldown_s=_cooldown(cfg, provider),
                     ),
                 )
+
             await _run_workers(
                 cfg=cfg,
                 store=store,
@@ -88,8 +100,12 @@ async def run(cfg: RunConfig, *, run_id: str) -> None:
                 totals=totals,
             )
         finally:
-            # Export even on interruption, so artifacts on disk reflect the run.
-            export_all(store=store, output_csv=cfg.output_csv, sites=sites)
+            # Keep exports aligned with durable state after interruption.
+            export_all(
+                store=store,
+                output_csv=cfg.output_csv,
+                sites=sites,
+            )
             _log_summary(
                 run_id=run_id,
                 store=store,
@@ -111,26 +127,29 @@ async def _run_workers(
     run_id: str,
     totals: dict[str, RunTotals],
 ) -> None:
-    # Slots are allocated per provider across all sites, so GeoNode's slot->port map
-    # never collides between sites sharing a provider.
+    # Allocate provider slots across sites so sticky ports never collide.
     next_slot = {provider.name: 0 for provider in providers}
+    lane_id = 0
 
     async with asyncio.TaskGroup() as group:
-        lane_id = 0
         for site in sites:
             site_pending = pending[site.name]
+
             if not site_pending:
                 continue
+
             queue: asyncio.Queue[Doc] = asyncio.Queue()
+
             for doc in site_pending:
                 queue.put_nowait(doc)
+
             budget = _budget(cfg, site)
 
             for provider in providers:
-                # One breaker per (site, provider): a provider-wide outage parks
-                # that site's lanes without stalling a healthy sibling.
+                # Isolate outages by site and provider.
                 breaker = CircuitBreaker(
-                    provider=f"{site.name}:{provider.name}", run_id=run_id
+                    provider=f"{site.name}:{provider.name}",
+                    run_id=run_id,
                 )
                 worker_cfg = WorkerConfig(
                     session_budget=budget,
@@ -138,9 +157,11 @@ async def _run_workers(
                     wait_max_s=cfg.wait_max_s,
                     ban_cooldown_s=_cooldown(cfg, provider),
                 )
+
                 for _ in range(provider.tuning.workers):
                     next_slot[provider.name] += 1
                     lane_id += 1
+
                     group.create_task(
                         run_worker(
                             queue=queue,
@@ -160,12 +181,14 @@ async def _run_workers(
 def _budget(cfg: RunConfig, site: Site) -> int:
     if cfg.session_budget is not None:
         return cfg.session_budget
+
     return site.tuning.session_budget
 
 
 def _cooldown(cfg: RunConfig, provider: ProxyProvider) -> float:
     if cfg.ban_cooldown_s is not None:
         return cfg.ban_cooldown_s
+
     return provider.tuning.ban_cooldown_s
 
 
@@ -179,14 +202,22 @@ def _log_summary(
     totals: dict[str, RunTotals],
     unrouted: int,
 ) -> None:
-    total_pending = total_processed = total_succeeded = total_failed = 0
+    total_pending = 0
+    total_processed = 0
+    total_succeeded = 0
     total_not_found = 0
-    overall_succeeded = overall_not_found = overall_terminal = overall_retryable = 0
+    total_failed = 0
+
+    overall_succeeded = 0
+    overall_not_found = 0
+    overall_terminal = 0
+    overall_retryable = 0
 
     for site in sites:
         counts = store.counts(site.name)
-        totals_for_site = totals[site.name]
+        site_totals = totals[site.name]
         site_pending = len(pending[site.name])
+
         logger.info(
             "%s %s",
             SITE_SUMMARY,
@@ -194,21 +225,23 @@ def _log_summary(
                 run_id=run_id,
                 site=site.name,
                 pending=site_pending,
-                processed=totals_for_site.processed,
-                succeeded=totals_for_site.succeeded,
-                not_found=totals_for_site.not_found,
-                failed=totals_for_site.failed,
+                processed=site_totals.processed,
+                succeeded=site_totals.succeeded,
+                not_found=site_totals.not_found,
+                failed=site_totals.failed,
                 total_succeeded=counts.succeeded,
                 total_not_found=counts.not_found,
                 total_terminal_failed=counts.terminal_failed,
                 total_retryable=counts.retryable,
             ),
         )
+
         total_pending += site_pending
-        total_processed += totals_for_site.processed
-        total_succeeded += totals_for_site.succeeded
-        total_not_found += totals_for_site.not_found
-        total_failed += totals_for_site.failed
+        total_processed += site_totals.processed
+        total_succeeded += site_totals.succeeded
+        total_not_found += site_totals.not_found
+        total_failed += site_totals.failed
+
         overall_succeeded += counts.succeeded
         overall_not_found += counts.not_found
         overall_terminal += counts.terminal_failed

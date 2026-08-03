@@ -31,6 +31,7 @@ async def run_worker(
     totals: RunTotals,
 ) -> None:
     state = WorkerState()
+
     try:
         while True:
             try:

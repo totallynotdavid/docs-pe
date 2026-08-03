@@ -6,12 +6,14 @@ import sqlite3
 
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Self
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from pathlib import Path
+
+    from capture.sites.base import Row
 
 SCHEMA_DDL = """
 CREATE TABLE IF NOT EXISTS observations (
@@ -48,22 +50,22 @@ class ObservationStore:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._connection = sqlite3.connect(
+        self._db = sqlite3.connect(
             path,
             timeout=30,
             isolation_level=None,
         )
-        self._connection.row_factory = sqlite3.Row
-        self._connection.execute("PRAGMA journal_mode = WAL")
-        self._connection.execute("PRAGMA synchronous = NORMAL")
-        self._connection.execute("PRAGMA busy_timeout = 30000")
-        self._connection.executescript(SCHEMA_DDL)
+        self._db.row_factory = sqlite3.Row
+        self._db.execute("PRAGMA journal_mode = WAL")
+        self._db.execute("PRAGMA synchronous = NORMAL")
+        self._db.execute("PRAGMA busy_timeout = 30000")
+        self._db.executescript(SCHEMA_DDL)
 
     def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *_: object) -> None:
-        self._connection.close()
+        self._db.close()
 
     def record_success(
         self,
@@ -74,7 +76,7 @@ class ObservationStore:
         columns: dict[str, str],
     ) -> None:
         with self._transaction():
-            self._connection.execute(
+            self._db.execute(
                 """
                 INSERT INTO observations
                     (run_id, site, ruc, status, payload, observed_at)
@@ -107,7 +109,7 @@ class ObservationStore:
             raise ValueError(msg)
 
         with self._transaction():
-            self._connection.execute(
+            self._db.execute(
                 """
                 INSERT INTO observations
                     (run_id, site, ruc, status, error_detail, observed_at)
@@ -124,7 +126,7 @@ class ObservationStore:
             )
 
     def latest(self, site: str, ruc: str) -> dict[str, str] | None:
-        row = self._connection.execute(
+        row = self._db.execute(
             """
             SELECT payload
             FROM observations
@@ -138,8 +140,7 @@ class ObservationStore:
         if row is None:
             return None
 
-        columns: dict[str, str] = json.loads(row["payload"])
-        return columns
+        return json.loads(row["payload"])
 
     def export_current(
         self,
@@ -147,7 +148,7 @@ class ObservationStore:
         *,
         site: str,
         header: tuple[str, ...],
-        project: Callable[[str, dict[str, str], str], list[Any]],
+        project: Callable[[str, dict[str, str], str], Row],
     ) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = path.with_name(f".{path.name}.tmp")
@@ -156,15 +157,14 @@ class ObservationStore:
             writer = csv.writer(file)
             writer.writerow(header)
 
-            for row in self._connection.execute(
+            for row in self._db.execute(
                 LATEST_SUCCESS_SQL,
                 {"site": site},
             ):
-                columns: dict[str, str] = json.loads(row["payload"])
                 writer.writerow(
                     project(
                         row["ruc"],
-                        columns,
+                        json.loads(row["payload"]),
                         row["observed_at"],
                     )
                 )
@@ -172,23 +172,23 @@ class ObservationStore:
         temp_path.replace(path)
 
     def observation_count(self) -> int:
-        row = self._connection.execute(
-            "SELECT COUNT(*) AS total FROM observations"
-        ).fetchone()
-
-        return int(row["total"])
+        return int(
+            self._db.execute("SELECT COUNT(*) AS total FROM observations").fetchone()[
+                "total"
+            ]
+        )
 
     @contextmanager
     def _transaction(self) -> Iterator[None]:
-        self._connection.execute("BEGIN IMMEDIATE")
+        self._db.execute("BEGIN IMMEDIATE")
 
         try:
             yield
         except Exception:
-            self._connection.execute("ROLLBACK")
+            self._db.execute("ROLLBACK")
             raise
         else:
-            self._connection.execute("COMMIT")
+            self._db.execute("COMMIT")
 
 
 def _now() -> str:

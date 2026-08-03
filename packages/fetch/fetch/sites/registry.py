@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from typing import TYPE_CHECKING
 
 from fetch.sites.osiptel.site import OSIPTEL
@@ -10,15 +11,13 @@ if TYPE_CHECKING:
     from fetch.domain.types import Site
 
 
-# name -> Site value. Adding a site is one sites/<name>/ module plus one entry here.
 SITES: dict[str, Site] = {
     SUNAT.name: SUNAT,
     SUNAT_REPS.name: SUNAT_REPS,
     OSIPTEL.name: OSIPTEL,
 }
 
-# The subset the portal may offer to a team, derived from the sites themselves so
-# promoting one is a single flag.
+# Derived from each site's `stable` flag.
 STABLE_SITES: frozenset[str] = frozenset(
     name for name, site in SITES.items() if site.stable
 )
@@ -28,13 +27,18 @@ def get_sites(names: list[str]) -> list[Site]:
     if not names:
         msg = "must list at least one site"
         raise ValueError(msg)
-    duplicates = sorted({name for name in names if names.count(name) > 1})
+
+    duplicates = sorted(name for name, count in Counter(names).items() if count > 1)
+
     if duplicates:
         msg = f"has duplicate site(s): {','.join(duplicates)}"
         raise ValueError(msg)
+
     unknown = [name for name in names if name not in SITES]
+
     if unknown:
         allowed = "|".join(sorted(SITES))
         msg = f"has unknown site(s) {','.join(unknown)}; choose from {allowed}"
         raise ValueError(msg)
+
     return [SITES[name] for name in names]

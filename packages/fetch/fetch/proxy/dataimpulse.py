@@ -22,16 +22,13 @@ from fetch.proxy.base import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-
 logger = logging.getLogger(__name__)
 
 _GATEWAY_HOST = "gw.dataimpulse.com"
-# HTTP rotating port. Stickiness comes from the sessid in the username (see
-# new_session), so one port serves every lane instead of needing one per lane.
-_HTTP_PORT = "823"
-_DEFAULT_SESSION_MINUTES = 3
 
-_TUNING = ProviderTuning(workers=18, ban_cooldown_s=30.0)
+# Sticky sessions are encoded in the username, so every lane shares the same
+# rotating HTTP endpoint.
+_HTTP_PORT = "823"
 
 
 @dataclass(frozen=True)
@@ -46,9 +43,9 @@ class DataImpulseConfig:
 _FIELDS = (
     Field("username", secret=True),
     Field("password", secret=True),
-    # DataImpulse country codes are lowercase ISO-3166.
+    # DataImpulse expects lowercase ISO-3166 country codes.
     Field("country", default="pe"),
-    Field("session_minutes", default=str(_DEFAULT_SESSION_MINUTES)),
+    Field("session_minutes", default="3"),
 )
 
 
@@ -78,21 +75,17 @@ def _build(values: Mapping[str, str]) -> DataImpulseProvider:
 DATAIMPULSE = ProviderSpec(
     name="dataimpulse",
     fields=_FIELDS,
-    tuning=_TUNING,
+    tuning=ProviderTuning(workers=18, ban_cooldown_s=30.0),
     normalize=_normalize,
     build=_build,
 )
 
 
 class DataImpulseProvider:
-    """DataImpulse sticky sessions keyed by a per-session sessid in the username.
-
-    A fresh sessid per call pins a new exit IP and rotates cleanly after a ban.
-    Sessions expire by sessttl, so there is no release call to make.
-    """
+    """DataImpulse sessions keyed by a username `sessid`."""
 
     name = "dataimpulse"
-    tuning = _TUNING
+    tuning = ProviderTuning(workers=18, ban_cooldown_s=30.0)
 
     def __init__(self, config: DataImpulseConfig) -> None:
         self._config = config
@@ -104,6 +97,7 @@ class DataImpulseProvider:
             f"{config.user}__cr.{config.country}"
             f";sessid.{session_id};sessttl.{config.sessttl}"
         )
+
         return ProxySession(
             proxy_id=f"dataimpulse-slot-{slot_id}",
             host=config.host,
@@ -114,7 +108,7 @@ class DataImpulseProvider:
         )
 
     async def release(self, session: ProxySession) -> None:
-        # Logged so a leak hunt can still see every session close.
+        # No release API exists, but keep session lifetimes observable.
         logger.debug(
             "%s %s",
             SESSION_RELEASE_SKIPPED,

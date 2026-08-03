@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from capture.sites.base import CaptureSite
+from capture.sites.base import CaptureSite, Row
 from capture.sites.entel.parse import parse_lookup_result
 
 
-def _row(ruc: str, columns: dict[str, str], observed_at: str) -> list[str]:
-    return [ruc, columns["debt_total"], columns["has_punishment"], observed_at]
+def _row(ruc: str, columns: dict[str, str], observed_at: str) -> Row:
+    return (ruc, columns["debt_total"], columns["has_punishment"], observed_at)
 
 
 ENTEL = CaptureSite(

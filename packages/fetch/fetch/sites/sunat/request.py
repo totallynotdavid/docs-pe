@@ -3,9 +3,8 @@ from __future__ import annotations
 import secrets
 
 
-# SUNAT's grecaptcha wrapper is a client-side stub returning a random 52-char base-36
-# string, and the server only checks that a token is present and plausibly shaped. So
-# this mints one of the same shape.
+# SUNAT only checks that the token is present and has the expected 52-character
+# base-36 shape.
 _TOKEN_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz"
 _TOKEN_LENGTH = 52
 
@@ -15,8 +14,6 @@ def random_token() -> str:
 
 
 def build_consulta_body(*, ruc: str, token: str) -> dict[str, str]:
-    # The consPorRuc consulta: returns the ficha RUC HTML page, used here only for
-    # the persona natural "Tipo de Documento" record.
     return {
         "accion": "consPorRuc",
         "razSoc": "",

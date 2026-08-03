@@ -47,10 +47,13 @@ async def fetch_one(
     cfg: WorkerConfig,
 ) -> Result:
     attempt = 0
+
     while True:
         attempt += 1
+
         try:
             await breaker.acquire()
+
             session = await ensure_session(
                 state,
                 site=site,
@@ -59,9 +62,11 @@ async def fetch_one(
                 run_id=run_id,
                 lane_id=lane_id,
             )
-            started = time.perf_counter()
+
+            lookup_started = time.perf_counter()
             rows = await site.lookup(session.client, doc)
             _enforce_allows_empty(site, rows)
+
             logger.info(
                 "%s %s",
                 LOOKUP_OK,
@@ -75,10 +80,11 @@ async def fetch_one(
                     egress_ip=session.egress_ip,
                     doc=doc,
                     attempt=attempt,
-                    elapsed_ms=int((time.perf_counter() - started) * 1000),
+                    elapsed_ms=int((time.perf_counter() - lookup_started) * 1000),
                     rows=len(rows),
                 ),
             )
+
             result = Result(
                 doc=doc,
                 site=site.name,
@@ -88,11 +94,15 @@ async def fetch_one(
                 proxy_id=session.proxy.proxy_id,
                 attempt=attempt,
             )
+
             breaker.record_success()
-            # Post-success bookkeeping must never undo a successful lookup.
+
+            # Post-success cleanup must not invalidate a completed lookup.
             with contextlib.suppress(Exception):
                 await after_success(state, provider=provider, cfg=cfg)
+
             return result
+
         except RucNotFoundError:
             logger.info(
                 "%s %s",
@@ -108,6 +118,7 @@ async def fetch_one(
                     attempt=attempt,
                 ),
             )
+
             result = Result(
                 doc=doc,
                 site=site.name,
@@ -116,14 +127,22 @@ async def fetch_one(
                 proxy_id=session.proxy.proxy_id,
                 attempt=attempt,
             )
+
             breaker.record_success()
+
             with contextlib.suppress(Exception):
                 await after_success(state, provider=provider, cfg=cfg)
+
             return result
+
         except Exception as exc:  # noqa: BLE001
-            # Nothing may escape a worker into the TaskGroup.
-            decision = classify_exception(exc, ban_cooldown_s=cfg.ban_cooldown_s)
+            # Worker failures must not escape into the TaskGroup.
+            decision = classify_exception(
+                exc,
+                ban_cooldown_s=cfg.ban_cooldown_s,
+            )
             session_id, proxy_id = session_ids(state)
+
             logger.warning(
                 "%s %s",
                 LOOKUP_FAILED,
@@ -141,6 +160,7 @@ async def fetch_one(
                     error_detail=str(exc),
                 ),
             )
+
             if decision.error_code == "unknown_error":
                 logger.warning(
                     "%s %s",
@@ -153,12 +173,16 @@ async def fetch_one(
                         error_type=type(exc).__name__,
                     ),
                 )
-            # Every fault is environmental, so it always rotates.
+
             breaker.record_failure()
+
             with contextlib.suppress(Exception):
                 await rotate_session(
-                    state, provider=provider, cooldown_s=decision.cooldown_s
+                    state,
+                    provider=provider,
+                    cooldown_s=decision.cooldown_s,
                 )
+
             if attempt >= MAX_ATTEMPTS:
                 return Result(
                     doc=doc,
@@ -176,5 +200,6 @@ async def fetch_one(
 def _enforce_allows_empty(site: Site, rows: tuple[Row, ...]) -> None:
     if rows or site.allows_empty:
         return
+
     msg = f"{site.name} returned no rows but disallows empty results"
     raise ProviderSchemaError(msg)

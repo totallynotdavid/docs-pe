@@ -18,8 +18,7 @@ if TYPE_CHECKING:
     from fetch.domain.types import Result, Row
 
 
-# Implements the retirement rule owned by domain/policy.py (MAX_TOTAL_ATTEMPTS).
-# not_found is terminal on first contact, same as ok, never by attempt count.
+# `ok` and `not_found` are immediately terminal. Failures retire at the cap.
 _TERMINAL_PREDICATE = "status IN ('ok', 'not_found') OR attempt_count >= :cap"
 
 SCHEMA_DDL = """
@@ -38,8 +37,7 @@ CREATE TABLE IF NOT EXISTS outcomes (
 );
 """
 
-# A pair is one row that flips ok/failed. Success is terminal and clears the error
-# fields. Failure accumulates attempts and never downgrades a pair that succeeded.
+# Success is terminal, clears error details, and cannot be overwritten by failure.
 UPSERT_SUCCESS = """
 INSERT INTO outcomes
     (site, doc, status, payload, error_code, error_detail,
@@ -117,13 +115,16 @@ SELECT doc, finished_at FROM outcomes
 COUNT_SUCCEEDED = (
     "SELECT COUNT(*) AS total FROM outcomes WHERE site = :site AND status = 'ok'"
 )
+
 COUNT_NOT_FOUND = (
     "SELECT COUNT(*) AS total FROM outcomes WHERE site = :site AND status = 'not_found'"
 )
+
 COUNT_TERMINAL = (
     "SELECT COUNT(*) AS total FROM outcomes "
     "WHERE site = :site AND status = 'failed' AND attempt_count >= :cap"
 )
+
 COUNT_RETRYABLE = (
     "SELECT COUNT(*) AS total FROM outcomes "
     "WHERE site = :site AND status = 'failed' AND attempt_count < :cap"
@@ -142,8 +143,14 @@ class OutcomeStore:
     def __init__(self, path: Path) -> None:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(self.path, timeout=30.0, isolation_level=None)
+
+        self._conn = sqlite3.connect(
+            self.path,
+            timeout=30.0,
+            isolation_level=None,
+        )
         self._conn.row_factory = sqlite3.Row
+
         self._configure()
         self._conn.executescript(SCHEMA_DDL)
 
@@ -166,7 +173,13 @@ class OutcomeStore:
         )
 
     def record_import(self, *, site: str, doc: str, rows: tuple[Row, ...]) -> None:
-        self._write_success(site=site, doc=doc, rows=rows, session_id="", proxy_id="")
+        self._write_success(
+            site=site,
+            doc=doc,
+            rows=rows,
+            session_id="",
+            proxy_id="",
+        )
 
     def record_not_found(self, result: Result) -> None:
         with self._transaction():
@@ -184,6 +197,7 @@ class OutcomeStore:
     def record_failure(self, result: Result) -> None:
         # Breaker-open attempts do not count toward retirement.
         increment = result.attempt if result.made_healthy_contact else 0
+
         with self._transaction():
             self._conn.execute(
                 UPSERT_FAILURE,
@@ -200,34 +214,55 @@ class OutcomeStore:
             )
 
     def done_pairs(
-        self, *, retry_cap: int = MAX_TOTAL_ATTEMPTS
+        self,
+        *,
+        retry_cap: int = MAX_TOTAL_ATTEMPTS,
     ) -> set[tuple[str, str]]:
-        rows = self._conn.execute(SELECT_DONE_PAIRS, {"cap": retry_cap}).fetchall()
+        rows = self._conn.execute(
+            SELECT_DONE_PAIRS,
+            {"cap": retry_cap},
+        ).fetchall()
+
         return {(str(row["site"]), str(row["doc"])) for row in rows}
 
     def counts(
-        self, site: str, *, retry_cap: int = MAX_TOTAL_ATTEMPTS
+        self,
+        site: str,
+        *,
+        retry_cap: int = MAX_TOTAL_ATTEMPTS,
     ) -> OutcomeCounts:
         succeeded = int(
-            self._conn.execute(COUNT_SUCCEEDED, {"site": site}).fetchone()["total"]
-        )
-        not_found = int(
-            self._conn.execute(COUNT_NOT_FOUND, {"site": site}).fetchone()["total"]
-        )
-        terminal = int(
             self._conn.execute(
-                COUNT_TERMINAL, {"site": site, "cap": retry_cap}
+                COUNT_SUCCEEDED,
+                {"site": site},
             ).fetchone()["total"]
         )
+
+        not_found = int(
+            self._conn.execute(
+                COUNT_NOT_FOUND,
+                {"site": site},
+            ).fetchone()["total"]
+        )
+
+        terminal_failed = int(
+            self._conn.execute(
+                COUNT_TERMINAL,
+                {"site": site, "cap": retry_cap},
+            ).fetchone()["total"]
+        )
+
         retryable = int(
             self._conn.execute(
-                COUNT_RETRYABLE, {"site": site, "cap": retry_cap}
+                COUNT_RETRYABLE,
+                {"site": site, "cap": retry_cap},
             ).fetchone()["total"]
         )
+
         return OutcomeCounts(
             succeeded=succeeded,
             not_found=not_found,
-            terminal_failed=terminal,
+            terminal_failed=terminal_failed,
             retryable=retryable,
         )
 
@@ -237,7 +272,10 @@ class OutcomeStore:
 
     def not_found_rows(self, site: str) -> Iterator[list[str]]:
         for row in self._conn.execute(SELECT_NOT_FOUND_ROWS, {"site": site}):
-            yield [str(row["doc"]), str(row["finished_at"])]
+            yield [
+                str(row["doc"]),
+                str(row["finished_at"]),
+            ]
 
     def error_rows(self, site: str) -> Iterator[list[str]]:
         for row in self._conn.execute(SELECT_ERROR_ROWS, {"site": site}):
@@ -276,6 +314,7 @@ class OutcomeStore:
     @contextmanager
     def _transaction(self) -> Iterator[None]:
         self._conn.execute("BEGIN IMMEDIATE")
+
         try:
             yield
         except Exception:

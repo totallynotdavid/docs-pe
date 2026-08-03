@@ -42,11 +42,14 @@ _GATEWAY_HOST_BY_NAME: dict[str, str] = {
     "us": "us.proxy.geonode.io",
     "sg": "sg.proxy.geonode.io",
 }
+
 _HTTP_STICKY_PORT_MIN = 10000
 _HTTP_STICKY_PORT_MAX = 10900
+_HTTP_STICKY_SLOT_COUNT = _HTTP_STICKY_PORT_MAX - _HTTP_STICKY_PORT_MIN + 1
+
 _RELEASE_URL = "https://monitor.geonode.com/sessions/release/proxies"
-# The release endpoint returns 5xx under gateway load; 3 tries with linear 0.5/1.0/1.5s
-# backoff clears transient hiccups without blocking the lane.
+
+# GeoNode may return transient 5xx responses under gateway load.
 _RELEASE_RETRIES = 3
 
 _TUNING = ProviderTuning(workers=15, ban_cooldown_s=30.0)
@@ -84,7 +87,11 @@ def _normalize(raw: Mapping[str, str]) -> dict[str, str]:
     return {
         "username": required(raw, "username"),
         "password": required(raw, "password"),
-        "gateway": one_of(raw, "gateway", tuple(sorted(_GATEWAY_HOST_BY_NAME))),
+        "gateway": one_of(
+            raw,
+            "gateway",
+            tuple(sorted(_GATEWAY_HOST_BY_NAME)),
+        ),
         "proxy_type": one_of(raw, "proxy_type", _PROXY_TYPES),
         "country": country_code(raw, "country"),
         "state": optional(raw, "state"),
@@ -92,7 +99,12 @@ def _normalize(raw: Mapping[str, str]) -> dict[str, str]:
         "asn": optional(raw, "asn"),
         "strict_off": flag(raw, "strict_off"),
         "lifetime_minutes": str(
-            whole_number(raw, "lifetime_minutes", minimum=3, maximum=1440)
+            whole_number(
+                raw,
+                "lifetime_minutes",
+                minimum=3,
+                maximum=1440,
+            )
         ),
     }
 
@@ -124,20 +136,26 @@ GEONODE = ProviderSpec(
 
 
 def build_username(config: GeoNodeConfig, *, session_id: str) -> str:
-    chunks: list[str] = [config.user, "session", session_id]
+    chunks = [config.user, "session", session_id]
 
     if config.proxy_type:
         chunks.extend(["type", config.proxy_type])
+
     if config.country:
         chunks.extend(["country", config.country])
+
     if config.state:
         chunks.extend(["state", config.state])
+
     if config.city:
         chunks.extend(["city", config.city])
+
     if config.asn:
         chunks.extend(["asn", config.asn])
+
     if config.strict_off:
         chunks.extend(["strict", "off"])
+
     if config.lifetime:
         chunks.extend(["lifetime", str(config.lifetime)])
 
@@ -145,17 +163,17 @@ def build_username(config: GeoNodeConfig, *, session_id: str) -> str:
 
 
 def slot_port(*, slot_id: int) -> int:
-    if slot_id < 1:
-        msg = "slot_id must be >= 1"
+    if slot_id < 1 or slot_id > _HTTP_STICKY_SLOT_COUNT:
+        msg = f"slot_id must be between 1 and {_HTTP_STICKY_SLOT_COUNT}"
         raise ValueError(msg)
+
     return _HTTP_STICKY_PORT_MIN + slot_id - 1
 
 
 class GeoNodeProvider:
-    """GeoNode sticky sessions: one dedicated port per lane, released via API.
+    """One sticky port per lane, with explicit release through GeoNode's API.
 
-    Stickiness comes from the per-slot port; a fresh random session id in the
-    username forces a new exit IP each time a lane rotates after a ban.
+    A new session id in the username forces a different exit when a lane rotates.
     """
 
     name = "geonode"
@@ -166,12 +184,9 @@ class GeoNodeProvider:
 
     def new_session(self, *, slot_id: int) -> ProxySession:
         port = slot_port(slot_id=slot_id)
-        if port > _HTTP_STICKY_PORT_MAX:
-            max_slots = _HTTP_STICKY_PORT_MAX - _HTTP_STICKY_PORT_MIN + 1
-            msg = f"slot_id must be <= {max_slots}"
-            raise ValueError(msg)
         session_id = _new_session_id(slot_id)
         username = build_username(self._config, session_id=session_id)
+
         return ProxySession(
             proxy_id=f"proxy-1-port-{port}",
             host=self._config.host,
@@ -184,6 +199,7 @@ class GeoNodeProvider:
     async def release(self, session: ProxySession) -> None:
         last_status = 0
         last_error = ""
+
         for attempt in range(1, _RELEASE_RETRIES + 1):
             ok, status, error = await _release_sticky_session(
                 user=self._config.user,
@@ -192,10 +208,13 @@ class GeoNodeProvider:
                 port=int(session.port),
                 timeout_s=10.0,
             )
+
             if ok:
                 return
+
             last_status = status
             last_error = error
+
             if attempt < _RELEASE_RETRIES:
                 await asyncio.sleep(0.5 * attempt)
 
@@ -219,22 +238,40 @@ def _new_session_id(slot_id: int) -> str:
 
 
 async def _release_sticky_session(
-    *, user: str, password: str, session_id: str, port: int, timeout_s: float
+    *,
+    user: str,
+    password: str,
+    session_id: str,
+    port: int,
+    timeout_s: float,
 ) -> tuple[bool, int, str]:
-    # GeoNode contract: PUT {"data": [{sessionId, port}]}, 200 with truthy `success`.
+    # GeoNode expects PUT {"data": [{"sessionId": ..., "port": ...}]} and a
+    # 200 response with a truthy `success` field.
     try:
         async with httpx.AsyncClient(
-            timeout=timeout_s, auth=(user, password)
+            timeout=timeout_s,
+            auth=(user, password),
         ) as client:
             response = await client.put(
                 _RELEASE_URL,
-                json={"data": [{"sessionId": session_id, "port": port}]},
+                json={
+                    "data": [
+                        {
+                            "sessionId": session_id,
+                            "port": port,
+                        }
+                    ]
+                },
             )
+
         if response.status_code != 200:
             return False, response.status_code, response.text[:300]
+
         payload = response.json()
+
         if not isinstance(payload, dict) or not bool(payload.get("success")):
             return False, response.status_code, json.dumps(payload)[:300]
+
         return True, response.status_code, ""
     except (httpx.HTTPError, ValueError) as exc:
         return False, 0, f"{type(exc).__name__}: {exc}"

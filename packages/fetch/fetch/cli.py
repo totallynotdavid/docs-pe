@@ -27,8 +27,7 @@ class RunConfig:
     sites: tuple[Site, ...]
     dedupe: bool
     debug: bool
-    # None means "use each site's or provider's own default". Lane count is per
-    # provider and lives in PROXY_PROVIDER (e.g. "geonode:30,dataimpulse:18").
+    # None uses the site or provider default.
     session_budget: int | None
     ban_cooldown_s: float | None
     wait_min_s: float
@@ -41,54 +40,72 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument(
-        "--sites", required=True, help="comma-separated: " + ",".join(sorted(SITES))
+        "--sites",
+        required=True,
+        help="comma-separated: " + ",".join(sorted(SITES)),
     )
-    parser.add_argument("--dedupe", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--dedupe",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
     parser.add_argument("--debug", action="store_true", default=False)
     parser.add_argument("--session-budget", type=int, default=None)
     parser.add_argument("--ban-cooldown-s", type=float, default=None)
     parser.add_argument("--wait-min-s", type=float, default=0.0)
     parser.add_argument("--wait-max-s", type=float, default=0.0)
-    # Opt-in recovery: rebuild the store from prior per-site exports before planning.
     parser.add_argument(
-        "--import", dest="do_import", action="store_true", default=False
+        "--import",
+        dest="do_import",
+        action="store_true",
+        default=False,
+        help="rebuild state from prior per-site exports before planning",
     )
-    ns = parser.parse_args(argv)
+
+    args = parser.parse_args(argv)
 
     site_names = [
-        chunk.strip().lower() for chunk in ns.sites.split(",") if chunk.strip()
+        chunk.strip().lower() for chunk in args.sites.split(",") if chunk.strip()
     ]
 
     errors: list[str] = []
-    if not ns.input.exists():
-        errors.append(f"--input file not found: {ns.input}")
+
+    if not args.input.exists():
+        errors.append(f"--input file not found: {args.input}")
+
     sites: tuple[Site, ...] = ()
+
     try:
         sites = tuple(get_sites(site_names))
     except ValueError as exc:
         errors.append(f"--sites {exc}")
-    if ns.session_budget is not None and ns.session_budget < 1:
+
+    if args.session_budget is not None and args.session_budget < 1:
         errors.append("--session-budget must be >= 1")
-    if ns.ban_cooldown_s is not None and ns.ban_cooldown_s < 0:
+
+    if args.ban_cooldown_s is not None and args.ban_cooldown_s < 0:
         errors.append("--ban-cooldown-s must be >= 0")
-    if ns.wait_min_s < 0:
+
+    if args.wait_min_s < 0:
         errors.append("--wait-min-s must be >= 0")
-    if ns.wait_max_s < ns.wait_min_s:
+
+    if args.wait_max_s < args.wait_min_s:
         errors.append("--wait-max-s must be >= --wait-min-s")
+
     if errors:
         parser.error("; ".join(errors))
 
     return RunConfig(
-        input_csv=ns.input,
-        output_csv=ns.output,
+        input_csv=args.input,
+        output_csv=args.output,
         sites=sites,
-        dedupe=ns.dedupe,
-        debug=ns.debug,
-        session_budget=ns.session_budget,
-        ban_cooldown_s=ns.ban_cooldown_s,
-        wait_min_s=ns.wait_min_s,
-        wait_max_s=ns.wait_max_s,
-        do_import=ns.do_import,
+        dedupe=args.dedupe,
+        debug=args.debug,
+        session_budget=args.session_budget,
+        ban_cooldown_s=args.ban_cooldown_s,
+        wait_min_s=args.wait_min_s,
+        wait_max_s=args.wait_max_s,
+        do_import=args.do_import,
     )
 
 
@@ -97,24 +114,27 @@ def _raise_keyboard_interrupt(*_: object) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    cfg = parse_args(argv)
+    config = parse_args(argv)
     run_id = new_run_id()
 
-    configure_logging(debug=cfg.debug, run_id=run_id)
+    configure_logging(debug=config.debug, run_id=run_id)
+
     logger = logging.getLogger(__name__)
     logger.info(
         "%s %s",
         RUN_START,
-        kv(run_id=run_id, sites=",".join(site.name for site in cfg.sites)),
+        kv(
+            run_id=run_id,
+            sites=",".join(site.name for site in config.sites),
+        ),
     )
 
-    # Detached runs receive SIGTERM; route it through the graceful cancellation
-    # path so lanes release proxies and the durable store can resume.
+    # Route SIGTERM through the normal cancellation path.
     with contextlib.suppress(ValueError, OSError):
         signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
 
     try:
-        asyncio.run(run(cfg, run_id=run_id))
+        asyncio.run(run(config, run_id=run_id))
     except KeyboardInterrupt:
         logger.warning("run_interrupted %s", kv(run_id=run_id))
 

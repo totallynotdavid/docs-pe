@@ -14,13 +14,6 @@ if TYPE_CHECKING:
 
 
 class _NormalizingTransport(httpx.AsyncBaseTransport):
-    """Wraps the real transport and maps every transport-layer fault to one type.
-
-    httpx maps most httpcore failures to httpx.HTTPError, but ssl.SSLError and some
-    OSErrors leak through unmapped. A caller here only ever sees
-    TransientTransportError.
-    """
-
     def __init__(self, inner: httpx.AsyncBaseTransport) -> None:
         self._inner = inner
 

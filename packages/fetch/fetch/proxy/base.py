@@ -25,7 +25,7 @@ class ProxySession:
 
 @dataclass(frozen=True)
 class ProviderTuning:
-    # Vendor defaults. A lane count in PROXY_PROVIDER overrides workers per deployment.
+    # Provider defaults. PROXY_PROVIDER may override workers.
     workers: int
     ban_cooldown_s: float
 
@@ -41,29 +41,19 @@ class ProxyProvider(Protocol):
 
 @dataclass(frozen=True)
 class Field:
-    """One configuration input a provider needs.
-
-    The single source for its three consumers: the environment loader (which reads
-    `<PROVIDER>_<FIELD>`), the portal's credential form, and `ProviderSpec.build`.
-    Human labels are user-facing copy, keyed by `(provider, field)` in the portal.
-    """
+    """One configuration field shared by env loading, the portal, and provider construction."""
 
     name: str
     secret: bool = False
     required: bool = True
     default: str = ""
-    # Allowed raw values. Empty means free text; `normalize` still validates.
+    # Empty means free text; normalize still validates.
     choices: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class ProviderSpec:
-    """A proxy vendor as a value: its field schema plus two functions.
-
-    `normalize` validates raw strings from any source and returns canonical ones
-    keyed by field name; `build` turns those into a live provider. Nothing
-    downstream branches on the vendor.
-    """
+    """A proxy provider's schema, tuning, validator, and constructor."""
 
     name: str
     fields: tuple[Field, ...]
@@ -111,12 +101,12 @@ def country_code(raw: Mapping[str, str], name: str, *, lowercase: bool = False) 
     value = required(raw, name)
     code = value.lower() if lowercase else value.upper()
     if len(code) != 2 or not code.isalpha():
-        # OSIPTEL's WAF blocks foreign exits, so a malformed country would route
-        # through the wrong region and fail every lookup. Reject it up front.
+        # OSIPTEL requires Peru exits, so reject malformed country codes early.
         msg = f"{name} must be a two-letter country code"
         raise ProxyConfigurationError(msg)
     return code
 
 
 def flag(raw: Mapping[str, str], name: str) -> str:
-    return "true" if raw.get(name, "").strip().lower() in {"1", "true", "yes"} else ""
+    value = raw.get(name, "").strip().lower()
+    return "true" if value in {"1", "true", "yes"} else ""
