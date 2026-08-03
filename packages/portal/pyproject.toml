@@ -5,8 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "portal"
 version = "0.1.0"
-requires-python = ">=3.11"
 description = "Team-scoped portal control plane backed only by PostgreSQL."
+requires-python = ">=3.11"
 dependencies = [
   "asyncpg>=0.30.0",
   "cryptography>=44.0.0",
@@ -44,12 +44,8 @@ portal = [
   "web/static/*.woff2",
 ]
 
-# djLint resolves its configuration from the nearest pyproject.toml above the
-# templates it is given, which is this one rather than the workspace root.
-# `custom_html` is what teaches it that a capitalised tag is an element: without
-# it djLint flattens every JinjaX component tree it is asked to hold.
 [tool.djlint]
 profile = "jinja"
 indent = 2
 extension = "jinja"
-custom_html = "[A-Z][a-zA-Z0-9]*"
+custom_html = "[A-Z][a-zA-Z0-9]*" # keeps JinjaX component tags from being flattened.
