@@ -163,7 +163,7 @@ def test_slot_port_starts_at_the_minimum_and_climbs_one_per_slot(
 
 @pytest.mark.parametrize("slot_id", [0, -1])
 def test_slot_id_below_one_raises(slot_id: int) -> None:
-    with pytest.raises(ValueError, match="slot_id must be >= 1"):
+    with pytest.raises(ValueError, match="slot_id must be between 1 and"):
         slot_port(slot_id=slot_id)
 
 
@@ -192,5 +192,5 @@ def test_new_session_derives_the_proxy_id_and_port_from_the_slot() -> None:
 
 def test_new_session_raises_past_the_max_slot() -> None:
     max_slots = _HTTP_STICKY_PORT_MAX - _HTTP_STICKY_PORT_MIN + 1
-    with pytest.raises(ValueError, match="slot_id must be <="):
+    with pytest.raises(ValueError, match="slot_id must be between 1 and"):
         GeoNodeProvider(_config()).new_session(slot_id=max_slots + 1)

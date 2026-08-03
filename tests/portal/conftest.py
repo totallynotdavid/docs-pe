@@ -418,6 +418,8 @@ def submit_job(
     team_id: UUID,
     credential_id: UUID,
     documents: str,
+    *,
+    filename: str = "registros.csv",
 ) -> UUID:
     response = client.post(
         f"/equipos/{team_id}/procesos",
@@ -428,7 +430,7 @@ def submit_job(
         },
         files={
             "input_file": (
-                "registros.csv",
+                filename,
                 documents.encode(),
                 "text/csv",
             )
@@ -452,4 +454,5 @@ def submit_csv(
         team_id,
         credential_id,
         "10412345678\n10412345679\n",
+        filename="barranca.csv",
     )

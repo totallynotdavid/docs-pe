@@ -25,7 +25,7 @@ def test_both_lista_and_error_present_is_not_treated_as_confirmed_absence() -> N
 
 
 def test_neither_lista_nor_error_raises() -> None:
-    with pytest.raises(ProviderSchemaError, match="neither lista nor error"):
+    with pytest.raises(ProviderSchemaError, match="no lista or error"):
         parse_identity(json.dumps({"something": "else"}))
 
 
