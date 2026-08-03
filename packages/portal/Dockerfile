@@ -1,15 +1,17 @@
-# syntax=docker/dockerfile:1.7
-FROM python:3.11.15-slim-bookworm@sha256:b18992999dbe963a45a8a4da40ac2b1975be1a776d939d098c647482bcad5cba AS builder
+# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+FROM python:3.14.6-slim-bookworm@sha256:86f975aca15cf04a40b399eebede9aea7c82eae084d1f1a0a6ef6bcaae871a30 AS builder
 
 WORKDIR /app
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
-RUN pip install --no-cache-dir --disable-pip-version-check uv==0.11.21
+RUN pip install --no-cache-dir --disable-pip-version-check uv==0.12.0
 
-# Workspace metadata changes far less often than application source.
+# The shared workspace lock resolves every member, even when only portal installs.
 COPY pyproject.toml uv.lock ./
+COPY packages/browser/pyproject.toml packages/browser/pyproject.toml
+COPY packages/capture/pyproject.toml packages/capture/pyproject.toml
 COPY packages/fetch/pyproject.toml packages/fetch/pyproject.toml
 COPY packages/portal/pyproject.toml packages/portal/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -20,7 +22,7 @@ COPY packages/portal packages/portal
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --package portal --no-editable
 
-FROM python:3.11.15-slim-bookworm@sha256:b18992999dbe963a45a8a4da40ac2b1975be1a776d939d098c647482bcad5cba
+FROM python:3.14.6-slim-bookworm@sha256:86f975aca15cf04a40b399eebede9aea7c82eae084d1f1a0a6ef6bcaae871a30
 
 WORKDIR /app
 
@@ -30,8 +32,8 @@ ENV PYTHONUNBUFFERED=1 \
 
 RUN groupadd --system portal && useradd --system --gid portal --home-dir /app portal
 
-COPY --from=builder /app/.venv /app/.venv
-RUN mkdir -p /app/.data/objects && chown -R portal:portal /app
+COPY --chown=portal:portal --from=builder /app/.venv /app/.venv
+RUN mkdir -p /app/.data/objects && chown portal:portal /app/.data /app/.data/objects
 
 USER portal
 

@@ -24,6 +24,10 @@ run = [
 description = "Refresh the vendored browser dependencies from the versions pinned in package.json"
 run = ["npm ci --no-audit --no-fund", "npm run vendor"]
 
+[tasks."portal:docker:build"]
+description = "Build the portal image from the repository-root workspace context"
+run = "docker build --file packages/portal/Dockerfile --tag osiptel-portal ."
+
 [tasks."portal:db:start"]
 description = "Start the local PostgreSQL cluster used by the portal"
 run = """
