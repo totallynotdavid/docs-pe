@@ -1,10 +1,3 @@
-"""Every sentence a person reads, in one place.
-
-The rest of the codebase is English and raises a `Reason`; this module is the only
-one that speaks Spanish, so translating the portal means editing one file and
-nothing below the web boundary has to change.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -54,7 +47,6 @@ MESSAGES: dict[Reason, str] = {
     Reason.CSV_UNREADABLE: "no se pudo leer el archivo CSV",
 }
 
-# Wording for the proxy credential form fields.
 FIELD_LABELS: dict[str, str] = {
     "username": "Usuario",
     "password": "Contraseña",
@@ -86,7 +78,6 @@ PROVIDER_LABELS: dict[str, str] = {
 
 
 def message_for(error: PortalError) -> str:
-    """Render the Spanish sentence for a raised error."""
     return MESSAGES[error.reason].format(**error.params)
 
 

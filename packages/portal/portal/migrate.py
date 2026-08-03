@@ -7,8 +7,8 @@ from portal.settings import PortalSettings
 
 
 async def migrate() -> None:
-    """Apply the portal schema without creating users or teams."""
     settings = PortalSettings.from_environment()
+
     if not settings.database_dsn:
         msg = "PORTAL_DATABASE_DSN es obligatorio para migrar"
         raise RuntimeError(msg)
@@ -16,6 +16,7 @@ async def migrate() -> None:
     import asyncpg
 
     pool = await asyncpg.create_pool(settings.database_dsn)
+
     try:
         await apply_migrations(pool)
     finally:
