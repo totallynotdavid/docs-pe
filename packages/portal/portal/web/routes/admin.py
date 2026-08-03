@@ -15,14 +15,19 @@ router = APIRouter(prefix="/administracion")
 
 @router.get("", response_class=HTMLResponse)
 async def administration_home(
-    session: PageSession, provisioning: Provisioning
+    session: PageSession,
+    provisioning: Provisioning,
 ) -> Response:
     await provisioning.installation_status(session.user.id)
+
     return RedirectResponse("/administracion/equipos", status_code=303)
 
 
 async def _users_context(
-    session: BrowserSession, provisioning: ProvisioningService, *, error: str
+    session: BrowserSession,
+    provisioning: ProvisioningService,
+    *,
+    error: str = "",
 ) -> dict[str, object]:
     return {
         "user": session.user,
@@ -34,9 +39,12 @@ async def _users_context(
 
 @router.get("/usuarios", response_class=HTMLResponse)
 async def administration_users_get(
-    session: PageSession, provisioning: Provisioning
+    session: PageSession,
+    provisioning: Provisioning,
 ) -> Response:
-    return render("SiteUsers", **await _users_context(session, provisioning, error=""))
+    context = await _users_context(session, provisioning)
+
+    return render("SiteUsers", **context)
 
 
 @router.post("/usuarios", response_class=HTMLResponse)
@@ -47,15 +55,28 @@ async def administration_users_post(
     password: str = Form(),
 ) -> Response:
     try:
-        await provisioning.create_user(session.user.id, email=email, password=password)
+        await provisioning.create_user(
+            session.user.id,
+            email=email,
+            password=password,
+        )
     except (PortalError, ValueError) as error:
-        context = await _users_context(session, provisioning, error=str(error))
+        context = await _users_context(
+            session,
+            provisioning,
+            error=str(error),
+        )
+
         return render("SiteUsers", **context)
+
     return RedirectResponse("/administracion/usuarios", status_code=303)
 
 
 async def _teams_context(
-    session: BrowserSession, provisioning: ProvisioningService, *, error: str
+    session: BrowserSession,
+    provisioning: ProvisioningService,
+    *,
+    error: str = "",
 ) -> dict[str, object]:
     return {
         "user": session.user,
@@ -69,9 +90,12 @@ async def _teams_context(
 
 @router.get("/equipos", response_class=HTMLResponse)
 async def administration_teams_get(
-    session: PageSession, provisioning: Provisioning
+    session: PageSession,
+    provisioning: Provisioning,
 ) -> Response:
-    return render("SiteTeams", **await _teams_context(session, provisioning, error=""))
+    context = await _teams_context(session, provisioning)
+
+    return render("SiteTeams", **context)
 
 
 @router.post("/equipos", response_class=HTMLResponse)
@@ -84,9 +108,18 @@ async def administration_teams_post(
 ) -> Response:
     try:
         team = await provisioning.create_team(
-            session.user.id, name=name, slug=slug, leader_email=leader_email
+            session.user.id,
+            name=name,
+            slug=slug,
+            leader_email=leader_email,
         )
     except (PortalError, ValueError) as error:
-        context = await _teams_context(session, provisioning, error=str(error))
+        context = await _teams_context(
+            session,
+            provisioning,
+            error=str(error),
+        )
+
         return render("SiteTeams", **context)
+
     return RedirectResponse(f"/equipos/{team.id}/ajustes", status_code=303)

@@ -32,108 +32,149 @@ from portal.storage.port import ObjectReference
 if TYPE_CHECKING:
     from uuid import UUID
 
-    from portal.domain.models import BrowserSession, CredentialVersion, Job, JobEvent
+    from portal.domain.models import (
+        BrowserSession,
+        CredentialVersion,
+        Job,
+        JobEvent,
+    )
     from portal.repository.postgres import PostgresPortalRepository
     from portal.storage.port import ObjectStorage
 
 
 class PortalService:
-    """Team-scoped commands. Repository methods provide transaction boundaries."""
-
     def __init__(self, repository: PostgresPortalRepository) -> None:
         self._repository = repository
 
     async def submit(self, command: SubmitJob) -> Job:
         await self.require_leader(command.actor_id, command.team_id)
-        credential = await self._repository.credential(command.credential_version_id)
-        if credential is None or credential.team_id != command.team_id:
-            raise PermissionDenied(Reason.CREDENTIAL_WRONG_TEAM)
-        if not credential.is_active or credential.state is not CredentialState.ACTIVE:
-            raise PermissionDenied(Reason.CREDENTIAL_REQUIRED)
-        return await self._repository.admit_submission(
-            command, plan_submission(command.lines, command.sources)
+        await self._require_active_credential(
+            command.credential_version_id,
+            command.team_id,
         )
+
+        return await self._admit(command)
 
     async def cancel(self, actor_id: UUID, team_id: UUID, job_id: UUID) -> Job:
         await self.require_leader(actor_id, team_id)
+
         job = await self._repository.cancel(job_id, team_id)
+
         if job is None:
             raise NotFound(Reason.JOB_NOT_FOUND)
+
         return job
 
-    async def published_results(self, actor_id: UUID, team_id: UUID) -> tuple[Job, ...]:
+    async def published_results(
+        self,
+        actor_id: UUID,
+        team_id: UUID,
+    ) -> tuple[Job, ...]:
         await self.require_reader(actor_id, team_id)
+
         return await self._repository.published_jobs(team_id)
 
-    async def authenticate(self, email: str, password: str) -> PortalUser | None:
+    async def authenticate(
+        self,
+        email: str,
+        password: str,
+    ) -> PortalUser | None:
         found = await self._repository.user_by_email(email)
+
         if found is None:
             verify_dummy_password(password)
             return None
-        if not verify_password(password, found[1]):
+
+        user, password_hash = found
+
+        if not verify_password(password, password_hash):
             return None
-        return found[0]
+
+        return user
 
     async def login(
-        self, email: str, password: str, client_ip: str
+        self,
+        email: str,
+        password: str,
+        client_ip: str,
     ) -> tuple[PortalUser, str] | None:
         now = datetime.now(UTC)
-        # A rate-limited correct password receives the same generic response as a
-        # bad one; verify it anyway to avoid an account-existence timing oracle.
+
+        # Verify the password even when rate-limited to avoid a timing oracle.
         allowed = await self._repository.login_allowed(email, client_ip, now)
         user = await self.authenticate(email, password)
+
         if not allowed or user is None:
             await self._repository.record_login_failure(email, client_ip, now)
             return None
+
         await self._repository.clear_login_failures(email, client_ip)
+
         return user, await self.create_session(user.id)
 
     async def create_session(self, user_id: UUID) -> str:
         token = new_session_token()
+
         await self._repository.create_session(
             user_id,
             token_hash(token),
             new_csrf_token(),
             datetime.now(UTC) + timedelta(hours=12),
         )
+
         return token
 
     async def current_user(self, token: str | None) -> PortalUser | None:
         if not token:
             return None
-        return await self._repository.session_user(token_hash(token), datetime.now(UTC))
 
-    async def browser_session(self, token: str | None) -> BrowserSession | None:
+        return await self._repository.session_user(
+            token_hash(token),
+            datetime.now(UTC),
+        )
+
+    async def browser_session(
+        self,
+        token: str | None,
+    ) -> BrowserSession | None:
         if not token:
             return None
+
         return await self._repository.browser_session(
-            token_hash(token), datetime.now(UTC)
+            token_hash(token),
+            datetime.now(UTC),
         )
 
     async def verify_browser_csrf(
-        self, token: str | None, submitted: str | None
+        self,
+        token: str | None,
+        submitted: str | None,
     ) -> BrowserSession:
-        """Return the session behind a valid form post, not just its user.
-
-        Handlers that re-render a form after a failure need the session's CSRF
-        token, and re-reading the session to get it would race with logout.
-        """
+        """Return the validated session so handlers can reuse its CSRF token."""
         session = await self.browser_session(token)
+
         if session is None or not valid_csrf(submitted, session.csrf_token):
             raise PermissionDenied(Reason.CSRF_INVALID)
+
         return session
 
     async def issue_login_csrf(self) -> str:
         token = new_csrf_token()
+
         await self._repository.issue_login_csrf(
-            token, datetime.now(UTC) + timedelta(minutes=10)
+            token,
+            datetime.now(UTC) + timedelta(minutes=10),
         )
+
         return token
 
     async def consume_login_csrf(self, submitted: str | None) -> bool:
         return bool(
             submitted
-            and await self._repository.consume_login_csrf(submitted, datetime.now(UTC))
+            and await self._repository.consume_login_csrf(
+                submitted,
+                datetime.now(UTC),
+            )
         )
 
     async def destroy_session(self, token: str | None) -> None:
@@ -143,34 +184,67 @@ class PortalService:
     async def teams(self, actor_id: UUID) -> tuple[Team, ...]:
         return await self._repository.teams_for_user(actor_id)
 
-    async def team(self, actor_id: UUID, team_id: UUID) -> Team:
+    async def team(
+        self,
+        actor_id: UUID,
+        team_id: UUID,
+    ) -> Team:
         await self.require_reader(actor_id, team_id)
+
         team = await self._repository.team(team_id)
+
         if team is None:
             raise NotFound(Reason.TEAM_NOT_FOUND)
+
         role = await self._repository.role_for(actor_id, team_id)
+
         return Team(team.id, team.slug, team.name, role)
 
     async def jobs(
-        self, actor_id: UUID, team_id: UUID, *, page: int, page_size: int = 20
+        self,
+        actor_id: UUID,
+        team_id: UUID,
+        *,
+        page: int,
+        page_size: int = 20,
     ) -> tuple[tuple[Job, ...], int]:
         await self.require_reader(actor_id, team_id)
+
         return await self._repository.jobs_for_team(
-            team_id, page=page, page_size=page_size
+            team_id,
+            page=page,
+            page_size=page_size,
         )
 
-    async def job(self, actor_id: UUID, team_id: UUID, job_id: UUID) -> Job:
+    async def job(
+        self,
+        actor_id: UUID,
+        team_id: UUID,
+        job_id: UUID,
+    ) -> Job:
         await self.require_reader(actor_id, team_id)
+
         job = await self._repository.job(job_id, team_id)
+
         if job is None:
             raise NotFound(Reason.JOB_NOT_FOUND)
+
         return job
 
     async def job_events_after(
-        self, actor_id: UUID, team_id: UUID, job_id: UUID, sequence: int
+        self,
+        actor_id: UUID,
+        team_id: UUID,
+        job_id: UUID,
+        sequence: int,
     ) -> tuple[JobEvent, ...]:
         await self.job(actor_id, team_id, job_id)
-        return await self._repository.job_events_after(job_id, team_id, sequence)
+
+        return await self._repository.job_events_after(
+            job_id,
+            team_id,
+            sequence,
+        )
 
     async def search(
         self,
@@ -182,17 +256,29 @@ class PortalService:
         page_size: int = 20,
     ) -> tuple[tuple[SearchResult, ...], bool]:
         await self.require_reader(actor_id, team_id)
+
         needle = query.strip()
+
         if not needle:
             return (), False
+
         return await self._repository.search_published(
-            team_id, needle, limit=page_size, offset=(page - 1) * page_size
+            team_id,
+            needle,
+            limit=page_size,
+            offset=(page - 1) * page_size,
         )
 
-    async def notifications(self, actor_id: UUID) -> tuple[JobEvent, ...]:
+    async def notifications(
+        self,
+        actor_id: UUID,
+    ) -> tuple[JobEvent, ...]:
         teams = await self.teams(actor_id)
+
         return await self._repository.recent_job_events(
-            tuple(team.id for team in teams), TERMINAL_JOB_EVENTS, limit=100
+            tuple(team.id for team in teams),
+            TERMINAL_JOB_EVENTS,
+            limit=100,
         )
 
     async def submit_input(
@@ -208,16 +294,12 @@ class PortalService:
         sources: tuple[str, ...],
         storage: ObjectStorage,
     ) -> Job:
-        """Persist an immutable submission and admit its already-parsed input lines."""
         await self.require_leader(actor_id, team_id)
-        credential = await self._repository.credential(credential_version_id)
-        if (
-            credential is None
-            or credential.team_id != team_id
-            or not credential.is_active
-            or credential.state is not CredentialState.ACTIVE
-        ):
-            raise PermissionDenied(Reason.CREDENTIAL_REQUIRED)
+        await self._require_active_credential(
+            credential_version_id,
+            team_id,
+        )
+
         reference = ObjectReference(
             id=uuid4(),
             team_id=team_id,
@@ -228,9 +310,11 @@ class PortalService:
             size_bytes=len(content),
             content_type=content_type,
         )
+
         await storage.put_immutable(reference, content)
         await self._repository.add_object_reference(reference)
-        return await self.submit(
+
+        return await self._admit(
             SubmitJob(
                 actor_id=actor_id,
                 team_id=team_id,
@@ -243,19 +327,55 @@ class PortalService:
         )
 
     async def credentials(
-        self, actor_id: UUID, team_id: UUID
+        self,
+        actor_id: UUID,
+        team_id: UUID,
     ) -> tuple[CredentialVersion, ...]:
         await self.require_leader(actor_id, team_id)
+
         return await self._repository.credentials_for_team(team_id)
 
-    async def require_reader(self, actor_id: UUID, team_id: UUID) -> TeamRole:
+    async def require_reader(
+        self,
+        actor_id: UUID,
+        team_id: UUID,
+    ) -> TeamRole:
         role = await self._repository.role_for(actor_id, team_id)
+
         if role is None:
             raise PermissionDenied(Reason.NOT_A_MEMBER)
+
         return role
 
-    async def require_leader(self, actor_id: UUID, team_id: UUID) -> TeamRole:
+    async def require_leader(
+        self,
+        actor_id: UUID,
+        team_id: UUID,
+    ) -> TeamRole:
         role = await self.require_reader(actor_id, team_id)
+
         if role is not TeamRole.TEAM_LEADER:
             raise PermissionDenied(Reason.LEADER_REQUIRED)
+
         return role
+
+    async def _require_active_credential(
+        self,
+        credential_version_id: UUID,
+        team_id: UUID,
+    ) -> CredentialVersion:
+        credential = await self._repository.credential(credential_version_id)
+
+        if credential is None or credential.team_id != team_id:
+            raise PermissionDenied(Reason.CREDENTIAL_WRONG_TEAM)
+
+        if not credential.is_active or credential.state is not CredentialState.ACTIVE:
+            raise PermissionDenied(Reason.CREDENTIAL_REQUIRED)
+
+        return credential
+
+    async def _admit(self, command: SubmitJob) -> Job:
+        return await self._repository.admit_submission(
+            command,
+            plan_submission(command.lines, command.sources),
+        )

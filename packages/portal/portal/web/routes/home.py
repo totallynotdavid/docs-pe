@@ -13,12 +13,16 @@ router = APIRouter()
 
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(
-    session: PageSession, service: Service, provisioning: Provisioning
+    session: PageSession,
+    service: Service,
+    provisioning: Provisioning,
 ) -> Response:
     if session.user.is_site_admin:
         status = await provisioning.installation_status(session.user.id)
+
         if status.can_create_first_team:
             return RedirectResponse("/inicio", status_code=303)
+
     return render(
         "Dashboard",
         user=session.user,
@@ -28,10 +32,15 @@ async def dashboard(
 
 
 @router.get("/inicio", response_class=HTMLResponse)
-async def first_team_get(session: PageSession, provisioning: Provisioning) -> Response:
+async def first_team_get(
+    session: PageSession,
+    provisioning: Provisioning,
+) -> Response:
     status = await provisioning.installation_status(session.user.id)
+
     if not status.can_create_first_team:
         return RedirectResponse("/", status_code=303)
+
     return render(
         "FirstTeam",
         user=session.user,
@@ -50,7 +59,9 @@ async def first_team_post(
 ) -> Response:
     try:
         team = await provisioning.create_first_team(
-            session.user.id, name=name, slug=slug
+            session.user.id,
+            name=name,
+            slug=slug,
         )
     except (PortalError, ValueError) as error:
         return render(
@@ -60,12 +71,18 @@ async def first_team_post(
             error=str(error),
             setup=True,
         )
-    return RedirectResponse(f"/equipos/{team.id}/ajustes/proxy", status_code=303)
+
+    return RedirectResponse(
+        f"/equipos/{team.id}/ajustes/proxy",
+        status_code=303,
+    )
 
 
 @router.get("/notificaciones", response_class=HTMLResponse)
 async def notifications(
-    request: Request, session: PageSession, service: Service
+    request: Request,
+    session: PageSession,
+    service: Service,
 ) -> Response:
     return render_hx(
         request,

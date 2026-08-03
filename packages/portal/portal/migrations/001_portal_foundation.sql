@@ -1,11 +1,11 @@
--- The set of known sites is a lookup table rather than an array literal
--- copied into every CHECK that needs it, so fetch.sites.registry.STABLE_SITES
--- has exactly one place to mirror when a site is added.
+-- Sites live in one lookup table so the database and
+-- fetch.sites.registry.STABLE_SITES have one list to keep synchronized.
 CREATE TABLE portal_sites (
     code text PRIMARY KEY
 );
 
-INSERT INTO portal_sites (code) VALUES ('osiptel'), ('sunat'), ('sunat_reps');
+INSERT INTO portal_sites (code)
+VALUES ('osiptel'), ('sunat'), ('sunat_reps');
 
 CREATE TABLE portal_users (
     id uuid PRIMARY KEY,
@@ -22,7 +22,9 @@ CREATE TABLE portal_sessions (
     expires_at timestamptz NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX portal_sessions_expiry_idx ON portal_sessions (expires_at);
+
+CREATE INDEX portal_sessions_expiry_idx
+    ON portal_sessions (expires_at);
 
 CREATE TABLE portal_teams (
     id uuid PRIMARY KEY,
@@ -39,12 +41,16 @@ CREATE TABLE portal_team_memberships (
     created_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (team_id, user_id)
 );
-CREATE INDEX portal_memberships_user_idx ON portal_team_memberships (user_id, team_id);
 
--- Deferred validation allows a team and its first leader in one transaction.
--- Locking the team prevents concurrent removals from deleting every leader.
+CREATE INDEX portal_memberships_user_idx
+    ON portal_team_memberships (user_id, team_id);
+
+-- Deferred validation allows the team and its first leader to be created in one
+-- transaction. Locking the team serializes concurrent leader removals.
 CREATE OR REPLACE FUNCTION portal_require_team_leader()
-RETURNS trigger LANGUAGE plpgsql AS $$
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
 DECLARE
     selected_team uuid;
 BEGIN
@@ -107,7 +113,9 @@ CREATE TABLE portal_object_references (
 );
 
 CREATE OR REPLACE FUNCTION portal_reject_object_reference_mutation()
-RETURNS trigger LANGUAGE plpgsql AS $$
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
 BEGIN
     RAISE EXCEPTION 'portal object references are immutable';
 END;
@@ -115,7 +123,8 @@ $$;
 
 CREATE TRIGGER portal_object_references_immutable
     BEFORE UPDATE OR DELETE ON portal_object_references
-    FOR EACH ROW EXECUTE FUNCTION portal_reject_object_reference_mutation();
+    FOR EACH ROW
+    EXECUTE FUNCTION portal_reject_object_reference_mutation();
 
 CREATE TABLE portal_team_proxy_credentials (
     id uuid PRIMARY KEY,
@@ -135,11 +144,11 @@ CREATE TABLE portal_team_proxy_credential_versions (
     version integer NOT NULL CHECK (version > 0),
     provider text NOT NULL CONSTRAINT portal_proxy_provider_supported
         CHECK (provider IN ('geonode', 'dataimpulse')),
-    config_ciphertext bytea NOT NULL CHECK (octet_length(config_ciphertext) > 0),
+    config_ciphertext bytea NOT NULL
+        CHECK (octet_length(config_ciphertext) > 0),
     key_id text NOT NULL CHECK (length(trim(key_id)) > 0),
 
-    -- is_active mirrors lifecycle = 'active' so a filter can stay a plain
-    -- boolean column; the CHECK below is what keeps the two from drifting.
+    -- Kept as a boolean for direct filtering and synchronized with lifecycle.
     is_active boolean NOT NULL DEFAULT false,
     lifecycle text NOT NULL CONSTRAINT portal_proxy_credential_lifecycle_valid
         CHECK (
@@ -147,15 +156,17 @@ CREATE TABLE portal_team_proxy_credential_versions (
         ),
     CONSTRAINT portal_proxy_credential_active_consistent
         CHECK (is_active = (lifecycle = 'active')),
+
     validated_at timestamptz,
-    -- Not rendered anywhere yet. If a route ever displays it, the wording
-    -- belongs in messages.py, the one place portal Spanish text is written.
     failure_detail text,
 
     created_by uuid NOT NULL REFERENCES portal_users(id),
     created_at timestamptz NOT NULL DEFAULT now(),
+
     FOREIGN KEY (credential_id, team_id)
-        REFERENCES portal_team_proxy_credentials (id, team_id) ON DELETE CASCADE,
+        REFERENCES portal_team_proxy_credentials (id, team_id)
+        ON DELETE CASCADE,
+
     UNIQUE (credential_id, version),
     UNIQUE (id, team_id)
 );
@@ -181,10 +192,15 @@ CREATE TABLE portal_proxy_credential_events (
 );
 
 CREATE INDEX portal_proxy_credential_events_version_idx
-    ON portal_proxy_credential_events (credential_version_id, created_at);
+    ON portal_proxy_credential_events (
+        credential_version_id,
+        created_at
+    );
 
 CREATE OR REPLACE FUNCTION portal_reject_proxy_credential_version_mutation()
-RETURNS trigger LANGUAGE plpgsql AS $$
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
 BEGIN
     IF NEW.credential_id IS DISTINCT FROM OLD.credential_id
        OR NEW.team_id IS DISTINCT FROM OLD.team_id
@@ -206,10 +222,11 @@ CREATE TRIGGER portal_proxy_credential_versions_immutable
     FOR EACH ROW
     EXECUTE FUNCTION portal_reject_proxy_credential_version_mutation();
 
--- Shared by every table below that carries updated_at, so the column reflects
--- the last write regardless of which statement performed it.
+-- Keeps updated_at tied to the last database write.
 CREATE OR REPLACE FUNCTION portal_set_updated_at()
-RETURNS trigger LANGUAGE plpgsql AS $$
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
 BEGIN
     NEW.updated_at := now();
     RETURN NEW;
@@ -222,6 +239,7 @@ CREATE TABLE portal_installation_state (
     completed_by uuid REFERENCES portal_users(id) ON DELETE RESTRICT,
     completed_at timestamptz,
     updated_at timestamptz NOT NULL DEFAULT now(),
+
     CHECK (
         (
             initial_team_id IS NULL
@@ -236,11 +254,13 @@ CREATE TABLE portal_installation_state (
     )
 );
 
-INSERT INTO portal_installation_state (singleton) VALUES (true);
+INSERT INTO portal_installation_state (singleton)
+VALUES (true);
 
 CREATE TRIGGER portal_installation_state_set_updated_at
     BEFORE UPDATE ON portal_installation_state
-    FOR EACH ROW EXECUTE FUNCTION portal_set_updated_at();
+    FOR EACH ROW
+    EXECUTE FUNCTION portal_set_updated_at();
 
 CREATE TABLE portal_queue_control (
     singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
@@ -252,11 +272,14 @@ CREATE TABLE portal_queue_control (
 INSERT INTO portal_queue_control (singleton, max_active_jobs)
 VALUES (true, 5);
 
--- SQL entry point for the queue mutex. Repositories perform the same
+-- SQL entry point for the queue mutex. Repositories issue the same
 -- SELECT ... FOR UPDATE directly.
 CREATE OR REPLACE FUNCTION portal_lock_queue_control()
-RETURNS smallint LANGUAGE plpgsql AS $$
-DECLARE maximum smallint;
+RETURNS smallint
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    maximum smallint;
 BEGIN
     SELECT max_active_jobs
       INTO maximum
@@ -268,14 +291,21 @@ BEGIN
 END;
 $$;
 
--- A foreign key cannot constrain array elements, so an array column's site
--- membership is checked here against portal_sites instead of a copied literal.
+-- PostgreSQL foreign keys cannot validate individual array elements.
 CREATE OR REPLACE FUNCTION portal_check_sources_known()
-RETURNS trigger LANGUAGE plpgsql AS $$
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
 BEGIN
-    IF NOT (NEW.sources <@ (SELECT array_agg(code) FROM portal_sites)) THEN
+    IF NOT (
+        NEW.sources <@ (
+            SELECT array_agg(code)
+              FROM portal_sites
+        )
+    ) THEN
         RAISE EXCEPTION 'unknown source in %', NEW.sources;
     END IF;
+
     RETURN NEW;
 END;
 $$;
@@ -289,7 +319,6 @@ CREATE TABLE portal_jobs (
     input_object_id uuid NOT NULL,
 
     filename text NOT NULL CHECK (length(trim(filename)) > 0),
-
     sources text[] NOT NULL CHECK (cardinality(sources) > 0),
 
     state text NOT NULL CHECK (
@@ -349,11 +378,13 @@ CREATE INDEX portal_jobs_lease_idx
 
 CREATE TRIGGER portal_jobs_sources_known
     BEFORE INSERT OR UPDATE OF sources ON portal_jobs
-    FOR EACH ROW EXECUTE FUNCTION portal_check_sources_known();
+    FOR EACH ROW
+    EXECUTE FUNCTION portal_check_sources_known();
 
 CREATE TRIGGER portal_jobs_set_updated_at
     BEFORE UPDATE ON portal_jobs
-    FOR EACH ROW EXECUTE FUNCTION portal_set_updated_at();
+    FOR EACH ROW
+    EXECUTE FUNCTION portal_set_updated_at();
 
 CREATE TABLE portal_job_items (
     id uuid PRIMARY KEY,
@@ -363,7 +394,7 @@ CREATE TABLE portal_job_items (
     ordinal integer NOT NULL CHECK (ordinal > 0),
     document text NOT NULL CHECK (length(trim(document)) > 0),
 
-    -- NULL means excluded: the item was never assigned a site to run against.
+    -- NULL means the item was excluded before being assigned to a site.
     source text CONSTRAINT portal_job_items_source_known
         REFERENCES portal_sites (code),
 
@@ -380,7 +411,7 @@ CREATE TABLE portal_job_items (
 
     reason text,
 
-    -- Incremented when an item is leased to a worker.
+    -- Incremented whenever the item is leased to a worker.
     attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
 
     lease_owner text,
@@ -394,8 +425,6 @@ CREATE TABLE portal_job_items (
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
 
-    UNIQUE (job_id, ordinal, source),
-
     FOREIGN KEY (job_id, team_id)
         REFERENCES portal_jobs (id, team_id)
         ON DELETE CASCADE,
@@ -406,8 +435,17 @@ CREATE TABLE portal_job_items (
 
     CONSTRAINT portal_job_items_excluded_has_no_source
         CHECK ((state = 'excluded') = (source IS NULL)),
+
     CHECK ((state = 'published') = (result_object_id IS NOT NULL))
 );
+
+CREATE UNIQUE INDEX portal_job_items_source_unique_idx
+    ON portal_job_items (job_id, ordinal, source)
+    WHERE source IS NOT NULL;
+
+CREATE UNIQUE INDEX portal_job_items_excluded_unique_idx
+    ON portal_job_items (job_id, ordinal)
+    WHERE source IS NULL;
 
 CREATE INDEX portal_job_items_claim_idx
     ON portal_job_items (job_id, ordinal)
@@ -423,7 +461,8 @@ CREATE INDEX portal_job_items_lease_idx
 
 CREATE TRIGGER portal_job_items_set_updated_at
     BEFORE UPDATE ON portal_job_items
-    FOR EACH ROW EXECUTE FUNCTION portal_set_updated_at();
+    FOR EACH ROW
+    EXECUTE FUNCTION portal_set_updated_at();
 
 CREATE TABLE portal_job_events (
     id uuid PRIMARY KEY,
@@ -441,7 +480,9 @@ CREATE INDEX portal_job_events_job_idx
 
 CREATE TABLE portal_notification_outbox (
     id uuid PRIMARY KEY,
-    event_id uuid NOT NULL REFERENCES portal_job_events(id) ON DELETE CASCADE,
+    event_id uuid NOT NULL
+        REFERENCES portal_job_events(id)
+        ON DELETE CASCADE,
     channel text NOT NULL CHECK (
         channel IN ('in_app', 'email', 'kapso_whatsapp')
     ),
@@ -460,7 +501,9 @@ CREATE INDEX portal_notification_outbox_claim_idx
 
 CREATE TABLE portal_notification_deliveries (
     id uuid PRIMARY KEY,
-    outbox_id uuid NOT NULL REFERENCES portal_notification_outbox(id) ON DELETE CASCADE,
+    outbox_id uuid NOT NULL
+        REFERENCES portal_notification_outbox(id)
+        ON DELETE CASCADE,
     attempt integer NOT NULL CHECK (attempt > 0),
     provider_message_id text,
     outcome text NOT NULL CHECK (outcome IN ('sent', 'failed')),
@@ -469,10 +512,11 @@ CREATE TABLE portal_notification_deliveries (
     UNIQUE (outbox_id, attempt)
 );
 
--- A RUC-10 contains its owner's DNI, so searches need substring matching.
--- Btree indexes cannot serve a leading wildcard.
+-- RUC-10 searches match an embedded DNI, which requires leading-wildcard
+-- substring search.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE INDEX portal_job_items_document_trgm_idx
-    ON portal_job_items USING gin (document gin_trgm_ops)
+    ON portal_job_items
+    USING gin (document gin_trgm_ops)
     WHERE state = 'published';

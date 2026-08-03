@@ -12,8 +12,6 @@ class TeamRole(StrEnum):
 
 
 class CredentialState(StrEnum):
-    """Durable lifecycle for a team-owned proxy credential version."""
-
     DRAFT = "draft"
     VALIDATING = "validating"
     ACTIVE = "active"
@@ -50,12 +48,62 @@ TERMINAL_JOB_STATES = frozenset(
     {JobState.COMPLETED, JobState.FAILED, JobState.CANCELLED}
 )
 PUBLISHED_ITEM_STATES = frozenset({ItemState.PUBLISHED})
-# Job events a member is notified about. Progress events stay out of the feed.
-TERMINAL_JOB_EVENTS = ("proceso.completed", "proceso.failed", "proceso.cancelled")
+
+# Only terminal events appear in the notification feed.
+TERMINAL_JOB_EVENTS = (
+    "proceso.completed",
+    "proceso.failed",
+    "proceso.cancelled",
+)
+
 MAX_ACTIVE_JOBS = 5
-# Times an item may be handed to a worker before an expired lease retires it. This
-# bounds worker handoffs, not lookup attempts: the engine caps those separately.
+
+# Bounds worker lease retries, not lookup retries.
 MAX_LEASE_ATTEMPTS = 4
+
+
+@dataclass(frozen=True)
+class PortalUser:
+    id: UUID
+    email: str
+    is_site_admin: bool = False
+
+
+@dataclass(frozen=True)
+class BrowserSession:
+    user: PortalUser
+    csrf_token: str
+
+
+@dataclass(frozen=True)
+class Team:
+    id: UUID
+    slug: str
+    name: str
+    role: TeamRole | None = None
+
+
+@dataclass(frozen=True)
+class CredentialVersion:
+    id: UUID
+    team_id: UUID
+    label: str
+    version: int
+    is_active: bool = True
+    state: CredentialState = CredentialState.ACTIVE
+    provider: str = ""
+
+
+@dataclass(frozen=True)
+class JobCredential:
+    """The proxy credential a job's items must be fetched through.
+
+    Stays encrypted until the boundary that hands work to a worker, so the
+    repository never holds plaintext proxy passwords.
+    """
+
+    provider: str
+    config_ciphertext: bytes
 
 
 @dataclass(frozen=True)
@@ -95,50 +143,6 @@ class SubmitJob:
     lines: tuple[InputLine, ...]
 
 
-@dataclass(frozen=True)
-class CredentialVersion:
-    id: UUID
-    team_id: UUID
-    label: str
-    version: int
-    is_active: bool = True
-    state: CredentialState = CredentialState.ACTIVE
-    # A key into fetch.proxy.registry.PROVIDERS; the engine owns that vocabulary.
-    provider: str = ""
-
-
-@dataclass(frozen=True)
-class PortalUser:
-    """A browser identity. Password material never leaves the repository."""
-
-    id: UUID
-    email: str
-    is_site_admin: bool = False
-
-
-@dataclass(frozen=True)
-class BrowserSession:
-    """Authenticated server-side session data; only its opaque ID is a cookie."""
-
-    user: PortalUser
-    csrf_token: str
-
-
-@dataclass(frozen=True)
-class Team:
-    id: UUID
-    slug: str
-    name: str
-    role: TeamRole | None = None
-
-
-@dataclass(frozen=True)
-class SearchResult:
-    job_id: UUID
-    filename: str
-    document: str
-
-
 @dataclass
 class JobItem:
     id: UUID = field(default_factory=uuid4)
@@ -148,29 +152,6 @@ class JobItem:
     state: ItemState = ItemState.PENDING
     lease_fence: int = 0
     result_object_id: UUID | None = None
-
-
-@dataclass(frozen=True)
-class ClaimedWork:
-    """A PostgreSQL-fenced item handed to one portal worker."""
-
-    item_id: UUID
-    job_id: UUID
-    source: str
-    document: str
-    lease_fence: int
-
-
-@dataclass(frozen=True)
-class JobCredential:
-    """The proxy credential a job's items must be fetched through.
-
-    Stays encrypted until the boundary that hands work to a worker, so the
-    repository never holds plaintext proxy passwords.
-    """
-
-    provider: str
-    config_ciphertext: bytes
 
 
 @dataclass
@@ -192,6 +173,15 @@ class Job:
 
 
 @dataclass(frozen=True)
+class ClaimedWork:
+    item_id: UUID
+    job_id: UUID
+    source: str
+    document: str
+    lease_fence: int
+
+
+@dataclass(frozen=True)
 class JobEvent:
     id: UUID
     job_id: UUID
@@ -206,3 +196,10 @@ class NotificationIntent:
     event_id: UUID
     channel: DeliveryChannel
     team_id: UUID
+
+
+@dataclass(frozen=True)
+class SearchResult:
+    job_id: UUID
+    filename: str
+    document: str

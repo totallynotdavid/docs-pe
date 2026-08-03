@@ -1,9 +1,6 @@
-"""Errors mapped by the web boundary. An error names a `Reason`, never a sentence."""
-
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
 
 
 class Reason(StrEnum):
@@ -49,37 +46,35 @@ class Reason(StrEnum):
 
 
 class PortalError(Exception):
-    """Base application error, identified by reason rather than by message."""
-
-    def __init__(self, reason: Reason, **params: Any) -> None:
+    def __init__(self, reason: Reason, **params: object) -> None:
         super().__init__(reason.value)
         self.reason = reason
         self.params = params
 
 
 class PermissionDenied(PortalError):
-    """The actor cannot perform an operation for this team."""
+    pass
 
 
 class NotFound(PortalError):
-    """The requested team-scoped resource is unavailable to the actor."""
+    pass
 
 
 class SourceValidationError(PortalError):
-    """A submission selected a source outside the stable fetch adapters."""
+    pass
 
 
 class FencedWrite(PortalError):
-    """A worker attempted a result write after its job lease changed."""
+    pass
 
 
 class ProvisioningError(PortalError):
-    """A durable installation or team setup command could not be completed."""
+    pass
 
 
 class CredentialConfigurationError(PortalError):
-    """A proxy configuration is invalid or could not be validated safely."""
+    pass
 
 
 class InputValidationError(PortalError):
-    """An uploaded file or form value could not be accepted."""
+    pass

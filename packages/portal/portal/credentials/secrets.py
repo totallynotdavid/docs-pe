@@ -13,21 +13,17 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from portal.domain.errors import CredentialConfigurationError, Reason
 
 
+NONCE_BYTES = 12
+
+
 @dataclass(frozen=True)
 class ProtectedSecret:
-    """Opaque storage material; neither field is exposed by a browser read model."""
-
     ciphertext: bytes
     key_id: str
 
 
 class AesGcmSecretProtector:
-    """AES-GCM protection for stored proxy credentials, keyed from the environment.
-
-    The key is never persisted with the ciphertext, returned to a caller, or
-    rendered. A missing or malformed key fails at startup: without it the portal
-    cannot store a credential at all.
-    """
+    """Protects stored proxy credentials with an environment-provided key."""
 
     key_id = "environment"
 
@@ -38,39 +34,54 @@ class AesGcmSecretProtector:
         except (BinasciiError, UnicodeEncodeError, ValueError) as error:
             msg = "PORTAL_SECRET_PROTECTION_KEY must be urlsafe base64"
             raise RuntimeError(msg) from error
+
         if len(key) != 32:
             msg = "PORTAL_SECRET_PROTECTION_KEY must decode to 32 bytes"
             raise RuntimeError(msg)
+
         self._cipher = AESGCM(key)
 
     @classmethod
     def from_environment(cls) -> AesGcmSecretProtector:
-        value = os.environ.get("PORTAL_SECRET_PROTECTION_KEY", "").strip()
-        if not value:
+        encoded_key = os.environ.get("PORTAL_SECRET_PROTECTION_KEY", "").strip()
+
+        if not encoded_key:
             msg = "PORTAL_SECRET_PROTECTION_KEY is required"
             raise RuntimeError(msg)
-        return cls(value)
+
+        return cls(encoded_key)
 
     async def protect(self, values: dict[str, str]) -> ProtectedSecret:
-        payload = json.dumps(values, sort_keys=True, separators=(",", ":")).encode(
-            "utf-8"
-        )
-        nonce = secrets.token_bytes(12)
+        payload = json.dumps(
+            values,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        nonce = secrets.token_bytes(NONCE_BYTES)
+        ciphertext = self._cipher.encrypt(nonce, payload, None)
+
         return ProtectedSecret(
-            ciphertext=nonce + self._cipher.encrypt(nonce, payload, None),
+            ciphertext=nonce + ciphertext,
             key_id=self.key_id,
         )
 
     def reveal(self, ciphertext: bytes) -> dict[str, str]:
-        """Decrypt a credential for the trusted worker control plane only."""
+        if len(ciphertext) <= NONCE_BYTES:
+            raise CredentialConfigurationError(Reason.PROXY_INVALID)
+
+        nonce = ciphertext[:NONCE_BYTES]
+        encrypted = ciphertext[NONCE_BYTES:]
+
         try:
-            payload = self._cipher.decrypt(ciphertext[:12], ciphertext[12:], None)
+            payload = self._cipher.decrypt(nonce, encrypted, None)
             values = json.loads(payload)
         except (ValueError, json.JSONDecodeError) as error:
             raise CredentialConfigurationError(Reason.PROXY_INVALID) from error
+
         if not isinstance(values, dict) or not all(
             isinstance(key, str) and isinstance(value, str)
             for key, value in values.items()
         ):
             raise CredentialConfigurationError(Reason.PROXY_INVALID)
+
         return values

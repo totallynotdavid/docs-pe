@@ -7,8 +7,6 @@ from uuid import UUID
 
 @dataclass(frozen=True)
 class ObjectReference:
-    """An immutable, provider-neutral object pointer stored in PostgreSQL."""
-
     id: UUID
     team_id: UUID
     provider: str
@@ -20,10 +18,12 @@ class ObjectReference:
 
 
 class ObjectStorage(Protocol):
-    """Stores bytes against a reference, never against a local process path."""
+    """Stores bytes by object reference, never by local filesystem path."""
 
     async def put_immutable(
-        self, reference: ObjectReference, content: bytes
+        self,
+        reference: ObjectReference,
+        content: bytes,
     ) -> None: ...
 
     async def open(self, reference: ObjectReference) -> bytes: ...
