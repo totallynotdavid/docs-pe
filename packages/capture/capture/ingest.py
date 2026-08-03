@@ -33,23 +33,36 @@ def read_rucs(input_csv: Path, *, dedupe: bool) -> tuple[list[RUC], PlanCounts]:
     with input_csv.open(newline="", encoding="utf-8-sig") as file_obj:
         for row in csv.reader(file_obj):
             rows_read += 1
-            if not row or not row[0].strip():
+
+            if not row:
                 ignored += 1
                 continue
+
+            raw_ruc = row[0].strip()
+
+            if not raw_ruc:
+                ignored += 1
+                continue
+
             try:
-                ruc = RUC(row[0])
+                ruc = RUC(raw_ruc)
             except ValueError:
                 ignored += 1
                 continue
 
             normalized = str(ruc)
+
             if dedupe and normalized in seen:
                 duplicates += 1
                 continue
+
             seen.add(normalized)
             valid += 1
             rucs.append(ruc)
 
     return rucs, PlanCounts(
-        rows_read=rows_read, valid=valid, ignored=ignored, duplicates=duplicates
+        rows_read=rows_read,
+        valid=valid,
+        ignored=ignored,
+        duplicates=duplicates,
     )

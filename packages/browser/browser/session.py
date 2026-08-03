@@ -4,11 +4,7 @@ from typing import Any, Protocol
 
 
 class Session(Protocol):
-    """The seam between a browser backend and a site page.
-
-    The operations are exactly what the two sites need between them: a GUI click
-    for portabilidad's Turnstile checkbox, raw JS evaluate for Entel's token replay.
-    """
+    """Browser operations available to site implementations."""
 
     def goto(self, url: str) -> None: ...
 
@@ -44,11 +40,7 @@ class Session(Protocol):
 
 
 class SeleniumBaseSession:
-    """Adapts a SeleniumBase Pure CDP driver to the Session protocol.
-
-    The only place that touches SeleniumBase directly, so the untyped dependency
-    and its Any-typed return values stay contained behind one typed surface.
-    """
+    """Adapts a SeleniumBase driver to the Session protocol."""
 
     def __init__(self, driver: Any) -> None:
         self._driver = driver

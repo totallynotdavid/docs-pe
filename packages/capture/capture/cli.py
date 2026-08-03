@@ -44,24 +44,29 @@ def parse_args(argv: list[str] | None = None) -> CaptureConfig:
         help="append redacted browser and request diagnostics as JSON Lines",
     )
     parser.add_argument("--port", type=int, default=8765)
+
     args = parser.parse_args(argv)
 
     errors: list[str] = []
+
     if not args.input.exists():
         errors.append(f"--input file not found: {args.input}")
+
     if not 1024 <= args.port <= 65535:
         errors.append("--port must be between 1024 and 65535")
+
     if errors:
         parser.error("; ".join(errors))
 
-    state = args.state or args.output.with_suffix(".state.sqlite3")
+    state_db = args.state or args.output.with_suffix(".state.sqlite3")
     browser_script = args.browser_script or args.output.with_suffix(
         f".{args.site}-capture.js"
     )
+
     return CaptureConfig(
         input_csv=args.input,
         output_csv=args.output,
-        state_db=state,
+        state_db=state_db,
         site=args.site,
         browser_script=browser_script,
         diagnostics=args.diagnostics,
@@ -72,18 +77,25 @@ def parse_args(argv: list[str] | None = None) -> CaptureConfig:
 def run(config: CaptureConfig) -> int:
     site = SITES[config.site]
     rucs, counts = read_rucs(config.input_csv, dedupe=True)
+
     if not rucs:
         print("No valid RUCs found in input.", file=sys.stderr)
         return 2
 
     token = secrets.token_urlsafe(32)
     run_id = new_run_id()
+    relay_url = f"http://127.0.0.1:{config.port}"
+
     diagnostic_log = (
-        DiagnosticLog(config.diagnostics, run_id=run_id, source="reputable-chrome")
+        DiagnosticLog(
+            config.diagnostics,
+            run_id=run_id,
+            source="reputable-chrome",
+        )
         if config.diagnostics is not None
         else None
     )
-    relay_url = f"http://127.0.0.1:{config.port}"
+
     write_browser_script(
         destination=config.browser_script,
         relay_url=relay_url,
@@ -92,7 +104,7 @@ def run(config: CaptureConfig) -> int:
     )
 
     with ObservationStore(config.state_db) as store:
-        state = RelayState(
+        relay_state = RelayState(
             rucs=rucs,
             store=store,
             run_id=run_id,
@@ -100,7 +112,12 @@ def run(config: CaptureConfig) -> int:
             site=site,
             diagnostic_log=diagnostic_log,
         )
-        server = build_server(host="127.0.0.1", port=config.port, state=state)
+        server = build_server(
+            host="127.0.0.1",
+            port=config.port,
+            state=relay_state,
+        )
+
         print(
             f"{site.name} run {run_id}: {len(rucs)} RUCs "
             f"({counts.ignored} invalid/blank rows ignored)",
@@ -108,14 +125,24 @@ def run(config: CaptureConfig) -> int:
         )
         print(f"Relay listening at {relay_url}", flush=True)
         print(
-            f"Paste this file into your reputable Chrome: "
-            f"{config.browser_script.resolve()}"
+            "Paste this file into your reputable Chrome: "
+            f"{config.browser_script.resolve()}",
+            flush=True,
         )
+
         if config.diagnostics is not None:
-            print(f"Diagnostics will append to {config.diagnostics.resolve()}")
-        print("Then drive the RUC form once and click RUN CLIENTS.", flush=True)
+            print(
+                f"Diagnostics will append to {config.diagnostics.resolve()}",
+                flush=True,
+            )
+
+        print(
+            "Then drive the RUC form once and click RUN CLIENTS.",
+            flush=True,
+        )
+
         try:
-            while not state.complete:
+            while not relay_state.complete:
                 server.handle_request()
         except KeyboardInterrupt:
             print("Capture relay interrupted.", file=sys.stderr)
@@ -128,13 +155,21 @@ def run(config: CaptureConfig) -> int:
                 project=site.row,
             )
 
-    remaining = len(rucs) - state.index
+    remaining = len(rucs) - relay_state.index
+
     print(
-        f"Summary: {state.succeeded} ok, {state.rejected} rejected, "
-        f"{state.failed} failed, {remaining} remaining",
+        f"Summary: {relay_state.succeeded} ok, "
+        f"{relay_state.rejected} rejected, "
+        f"{relay_state.failed} failed, "
+        f"{remaining} remaining",
         flush=True,
     )
-    return 0 if remaining == 0 and state.rejected == 0 and state.failed == 0 else 1
+
+    return (
+        0
+        if remaining == 0 and relay_state.rejected == 0 and relay_state.failed == 0
+        else 1
+    )
 
 
 def main(argv: list[str] | None = None) -> None:

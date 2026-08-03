@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-
 class FetchError(Exception):
     pass
 
@@ -26,7 +23,7 @@ class ProviderSchemaError(FetchError):
 
 
 class ProxyConfigurationError(FetchError):
-    """A proxy provider's configuration values are missing or out of range."""
+    pass
 
 
 class RucNotFoundError(FetchError):

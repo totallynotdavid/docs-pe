@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
@@ -14,10 +14,8 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class CaptureSite:
     name: str
-    # The only host the relay accepts requests from.
     origin: str
     export_header: tuple[str, ...]
-    # The in-page recipe a person pastes into their own Chrome.
     script: Path
     parse: Callable[..., LookupResult]
-    row: Callable[[str, dict[str, str], str], list[Any]]
+    row: Callable[[str, dict[str, str], str], list[object]]

@@ -29,7 +29,6 @@ _GEONODE_GATEWAY_HOST = {
     "us": "us.proxy.geonode.io",
     "sg": "sg.proxy.geonode.io",
 }
-# Browser drives one session at a time, so it only ever needs the first sticky port.
 _GEONODE_STICKY_PORT = "10000"
 
 _DATAIMPULSE_HOST = "gw.dataimpulse.com"
@@ -66,6 +65,7 @@ class GeoNodeProvider:
             f"-country-{config.country}"
             f"-lifetime-{config.lifetime}"
         )
+
         return ProxyEndpoint(
             host=config.host,
             port=_GEONODE_STICKY_PORT,
@@ -79,7 +79,7 @@ class _DataImpulseConfig:
     user: str
     password: str
     country: str
-    sessttl: int
+    session_minutes: int
 
 
 class DataImpulseProvider:
@@ -92,8 +92,10 @@ class DataImpulseProvider:
         config = self._config
         username = (
             f"{config.user}__cr.{config.country}"
-            f";sessid.{_new_session_id()};sessttl.{config.sessttl}"
+            f";sessid.{_new_session_id()}"
+            f";sessttl.{config.session_minutes}"
         )
+
         return ProxyEndpoint(
             host=_DATAIMPULSE_HOST,
             port=_DATAIMPULSE_PORT,
@@ -103,15 +105,19 @@ class DataImpulseProvider:
 
 
 def load_proxy_provider() -> ProxyProvider:
-    """Build the first provider listed in PROXY_PROVIDER, or fail fast."""
+    """Build the first provider listed in PROXY_PROVIDER."""
     raw = getenv("PROXY_PROVIDER", "").strip()
+
     if not raw:
         msg = "PROXY_PROVIDER must be set (geonode or dataimpulse), or pass --no-proxy"
         raise RuntimeError(msg)
 
-    name = next(
-        (chunk.strip().lower() for chunk in raw.split(",") if chunk.strip()), ""
+    first_entry = next(
+        (entry.strip() for entry in raw.split(",") if entry.strip()),
+        "",
     )
+    name = first_entry.partition(":")[0].lower()
+
     if name not in _KNOWN_PROVIDERS:
         allowed = "|".join(_KNOWN_PROVIDERS)
         msg = f"PROXY_PROVIDER entry {name!r} is not one of {allowed}"
@@ -119,13 +125,16 @@ def load_proxy_provider() -> ProxyProvider:
 
     if name == "geonode":
         return GeoNodeProvider(_load_geonode_config())
+
     return DataImpulseProvider(_load_dataimpulse_config())
 
 
 def _whole_number(name: str, *, default: int) -> int:
     raw = getenv(name, "").strip()
+
     if not raw:
         return default
+
     try:
         return int(raw)
     except ValueError:
@@ -136,27 +145,29 @@ def _whole_number(name: str, *, default: int) -> int:
 def _load_geonode_config() -> _GeoNodeConfig:
     user = getenv("GEONODE_USERNAME", "")
     password = getenv("GEONODE_PASSWORD", "")
-    gateway = getenv("GEONODE_GATEWAY", "fr")
-    proxy_type = getenv("GEONODE_PROXY_TYPE", "residential")
-    country = getenv("GEONODE_COUNTRY", "")
+    gateway = getenv("GEONODE_GATEWAY", "fr").strip().lower()
+    proxy_type = getenv("GEONODE_PROXY_TYPE", "residential").strip().lower()
+    country = getenv("GEONODE_COUNTRY", "").strip().upper()
     lifetime = _whole_number("GEONODE_LIFETIME_MINUTES", default=10)
 
     if not user or not password:
         msg = "missing GEONODE_USERNAME or GEONODE_PASSWORD"
         raise RuntimeError(msg)
+
     if not country:
-        # An unset country silently routes through the wrong region, which the
-        # Peru sites geo-gate or geo-score. Fail loudly instead.
         msg = "GEONODE_COUNTRY must be set (Peru exits, e.g. PE)"
         raise RuntimeError(msg)
+
     if gateway not in _GEONODE_GATEWAY_HOST:
         allowed = "|".join(sorted(_GEONODE_GATEWAY_HOST))
         msg = f"GEONODE_GATEWAY must be one of {allowed}"
         raise RuntimeError(msg)
+
     if proxy_type not in {"residential", "datacenter", "mix"}:
         msg = "GEONODE_PROXY_TYPE must be one of residential|datacenter|mix"
         raise RuntimeError(msg)
-    if lifetime < 3 or lifetime > 1440:
+
+    if not 3 <= lifetime <= 1440:
         msg = "GEONODE_LIFETIME_MINUTES must be between 3 and 1440 minutes"
         raise RuntimeError(msg)
 
@@ -174,15 +185,20 @@ def _load_dataimpulse_config() -> _DataImpulseConfig:
     user = getenv("DATAIMPULSE_USERNAME", "")
     password = getenv("DATAIMPULSE_PASSWORD", "")
     country = getenv("DATAIMPULSE_COUNTRY", "").strip().lower()
-    sessttl = _whole_number("DATAIMPULSE_SESSION_MINUTES", default=3)
+    session_minutes = _whole_number(
+        "DATAIMPULSE_SESSION_MINUTES",
+        default=3,
+    )
 
     if not user or not password:
         msg = "missing DATAIMPULSE_USERNAME or DATAIMPULSE_PASSWORD"
         raise RuntimeError(msg)
+
     if not country:
-        msg = "DATAIMPULSE_COUNTRY must not be empty (Peru exits, e.g. pe)"
+        msg = "DATAIMPULSE_COUNTRY must be set (Peru exits, e.g. pe)"
         raise RuntimeError(msg)
-    if sessttl < 1:
+
+    if session_minutes < 1:
         msg = "DATAIMPULSE_SESSION_MINUTES must be >= 1 minute"
         raise RuntimeError(msg)
 
@@ -190,5 +206,5 @@ def _load_dataimpulse_config() -> _DataImpulseConfig:
         user=user,
         password=password,
         country=country,
-        sessttl=sessttl,
+        session_minutes=session_minutes,
     )

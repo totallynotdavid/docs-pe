@@ -40,28 +40,37 @@ class RunConfig:
 
 
 def run(config: RunConfig, site: BrowserSite) -> int:
-    # Resolve the proxy first so missing configuration fails before any work.
     provider = load_proxy_provider() if config.use_proxy else None
 
     subjects, counts = read_subjects(config.input_csv, dedupe=True)
+
     if not subjects:
         print("No valid subjects found in input.", file=sys.stderr)
         return 2
 
     run_id = new_run_id()
-    diagnostic_log = _make_log(config, run_id=run_id, site=site, provider=provider)
+    diagnostic_log = _make_log(
+        config,
+        run_id=run_id,
+        site=site,
+        provider=provider,
+    )
+
     print(f"proxy: {provider.name} (Peru exit)" if provider else "proxy: disabled")
 
     with ObservationStore(config.state_db) as store:
         routed = [subject for subject in subjects if site.accepts(subject)]
         unrouted = len(subjects) - len(routed)
+
         done = store.done_subjects(site.name)
         pending = [subject for subject in routed if str(subject) not in done]
         skipped = len(routed) - len(pending)
+
         print(
             f"{site.name} run {run_id}: {len(pending)} pending "
-            f"({counts.ignored} invalid/blank rows ignored, {unrouted} not served by "
-            f"{site.name}, {skipped} already done)"
+            f"({counts.ignored} invalid/blank rows ignored, "
+            f"{unrouted} not served by {site.name}, "
+            f"{skipped} already done)"
         )
 
         driver = _Driver(
@@ -72,6 +81,7 @@ def run(config: RunConfig, site: BrowserSite) -> int:
             diagnostic_log=diagnostic_log,
             provider=provider,
         )
+
         try:
             driver.run_all(pending)
         finally:
@@ -84,19 +94,20 @@ def run(config: RunConfig, site: BrowserSite) -> int:
             observations = store.observation_count()
 
     remaining = len(pending) - driver.index
+
     print(
-        f"Summary: {driver.succeeded} ok, {driver.rejected} rejected, "
-        f"{driver.failed} failed, {remaining} remaining, "
+        f"Summary: {driver.succeeded} ok, "
+        f"{driver.rejected} rejected, "
+        f"{driver.failed} failed, "
+        f"{remaining} remaining, "
         f"{observations} tracked observations"
     )
+
     return 0 if remaining == 0 and not driver.unresolved else 1
 
 
 @dataclass
 class _Driver:
-    """Owns the automation policy: reject-retry per subject and session restart
-    across subjects."""
-
     config: RunConfig
     site: BrowserSite
     store: ObservationStore
@@ -111,6 +122,7 @@ class _Driver:
 
     def run_all(self, subjects: list[Subject]) -> None:
         restarts = 0
+
         while self.index < len(subjects):
             try:
                 self._drive_session(subjects)
@@ -122,17 +134,19 @@ class _Driver:
                         file=sys.stderr,
                     )
                     return
+
                 restarts += 1
                 print(f"Restarting {self.site.name} session ({restarts}): {exc}")
 
     def _drive_session(self, subjects: list[Subject]) -> None:
         with ExitStack() as stack:
             proxy = None
+
             if self.provider is not None:
-                # A fresh endpoint per session, so each restart (a ban) rotates to a
-                # new exit IP.
+                # A new endpoint rotates the upstream exit on every restart.
                 relay = LocalProxy(self.provider.new_endpoint())
                 proxy = stack.enter_context(relay)
+
             session = stack.enter_context(
                 SeleniumBaseBrowser(
                     url=self.site.url,
@@ -140,34 +154,52 @@ class _Driver:
                     proxy=proxy,
                 )
             )
+
             page = self.site.open_page(
                 session,
                 control=self.config.control,
                 reset_cookies=False,
                 diagnostic_log=self.diagnostic_log,
             )
+
             consecutive_rejects = 0
+
             while self.index < len(subjects):
                 consecutive_rejects = self._process(
-                    page, str(subjects[self.index]), consecutive_rejects
+                    page,
+                    str(subjects[self.index]),
+                    consecutive_rejects,
                 )
 
-    def _process(self, page: SitePage, subject: str, consecutive_rejects: int) -> int:
+    def _process(
+        self,
+        page: SitePage,
+        subject: str,
+        consecutive_rejects: int,
+    ) -> int:
         previous = self.store.latest(self.site.name, subject)
+
         try:
             result = _lookup_with_retries(
-                page, subject, retries=self.config.reject_retries
+                page,
+                subject,
+                retries=self.config.reject_retries,
             )
         except RejectedError as exc:
             return self._on_reject(subject, consecutive_rejects, exc)
         except BrowserError as exc:
             self._on_failure(subject, exc)
             raise
+
         self._on_success(subject, result, previous)
+
         return 0
 
     def _on_success(
-        self, subject: str, result: LookupResult, previous: dict[str, str] | None
+        self,
+        subject: str,
+        result: LookupResult,
+        previous: dict[str, str] | None,
     ) -> None:
         self.store.record_success(
             run_id=self.run_id,
@@ -175,17 +207,23 @@ class _Driver:
             subject=subject,
             columns=result.columns,
         )
+
         changed = previous is not None and previous != result.columns
         marker = " CHANGED" if changed else ""
+
         print(
             f"OK {subject} {_summary(result.columns)} ({result.elapsed_ms} ms){marker}"
         )
+
         self.succeeded += 1
         self.unresolved.discard(subject)
         self.index += 1
 
     def _on_reject(
-        self, subject: str, consecutive_rejects: int, exc: RejectedError
+        self,
+        subject: str,
+        consecutive_rejects: int,
+        exc: RejectedError,
     ) -> int:
         self.store.record_failure(
             run_id=self.run_id,
@@ -194,17 +232,21 @@ class _Driver:
             status="rejected",
             error_detail=str(exc),
         )
+
         self.rejected += 1
         self.unresolved.add(subject)
         self.index += 1
         consecutive_rejects += 1
+
         print(f"REJECTED {subject} after {self.config.reject_retries + 1} mints")
+
         if consecutive_rejects >= self.config.reject_restart_threshold:
             msg = (
                 f"{consecutive_rejects} subjects in a row exhausted retries; "
                 "restarting session"
             )
             raise BrowserError(msg)
+
         return consecutive_rejects
 
     def _on_failure(self, subject: str, exc: BrowserError) -> None:
@@ -215,20 +257,27 @@ class _Driver:
             status="failed",
             error_detail=str(exc),
         )
+
         self.failed += 1
         self.unresolved.add(subject)
 
 
-def _lookup_with_retries(page: SitePage, subject: str, *, retries: int) -> LookupResult:
-    # Re-mint a fresh token before giving up on a reject. A hard BrowserError is not
-    # a reject and propagates immediately.
+def _lookup_with_retries(
+    page: SitePage,
+    subject: str,
+    *,
+    retries: int,
+) -> LookupResult:
     last_reject: RejectedError | None = None
+
     for _ in range(retries + 1):
         try:
             return page.lookup(subject)
         except RejectedError as exc:
             last_reject = exc
+
     assert last_reject is not None
+
     raise last_reject
 
 
@@ -241,16 +290,23 @@ def _make_log(
 ) -> DiagnosticLog | None:
     if config.diagnostics is None:
         return None
-    log = DiagnosticLog(config.diagnostics, run_id=run_id, source="seleniumbase-cdp")
+
+    log = DiagnosticLog(
+        config.diagnostics,
+        run_id=run_id,
+        source="seleniumbase-cdp",
+    )
+
     log.record(
         {
             "stage": "launcher",
             "site": site.name,
             "softwareWebgl": config.software_webgl,
-            # Provider name only; the endpoint string carries the password.
+            # Never log the endpoint because it contains the proxy password.
             "proxy": provider.name if provider else None,
         }
     )
+
     return log
 
 

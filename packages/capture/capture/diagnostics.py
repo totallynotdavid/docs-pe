@@ -18,12 +18,16 @@ class DiagnosticLog:
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def record(self, event: dict[str, Any]) -> None:
-        envelope = {
-            "recordedAt": datetime.now(UTC).isoformat(),
-            "runId": self.run_id,
-            "source": self.source,
-            "event": event,
-        }
-        with self.path.open("a", encoding="utf-8") as file_obj:
-            json.dump(envelope, file_obj, ensure_ascii=False, separators=(",", ":"))
-            file_obj.write("\n")
+        with self.path.open("a", encoding="utf-8") as file:
+            json.dump(
+                {
+                    "recordedAt": datetime.now(UTC).isoformat(),
+                    "runId": self.run_id,
+                    "source": self.source,
+                    "event": event,
+                },
+                file,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            file.write("\n")

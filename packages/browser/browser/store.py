@@ -43,14 +43,15 @@ ORDER BY observation.subject
 
 
 class ObservationStore:
-    """One row per lookup attempt, keyed by (site, subject). Columns are opaque
-    here: the store persists a site's stringified column dict as JSON and projects
-    it back out at export time, so it stays site-agnostic."""
-
     def __init__(self, path: Path) -> None:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._connection = sqlite3.connect(path, timeout=30, isolation_level=None)
+
+        self._connection = sqlite3.connect(
+            path,
+            timeout=30,
+            isolation_level=None,
+        )
         self._connection.row_factory = sqlite3.Row
         self._connection.execute("PRAGMA journal_mode = WAL")
         self._connection.execute("PRAGMA synchronous = NORMAL")
@@ -64,7 +65,12 @@ class ObservationStore:
         self._connection.close()
 
     def record_success(
-        self, *, run_id: str, site: str, subject: str, columns: dict[str, str]
+        self,
+        *,
+        run_id: str,
+        site: str,
+        subject: str,
+        columns: dict[str, str],
     ) -> None:
         with self._transaction():
             self._connection.execute(
@@ -78,18 +84,27 @@ class ObservationStore:
                     "site": site,
                     "subject": subject,
                     "payload": json.dumps(
-                        columns, ensure_ascii=False, separators=(",", ":")
+                        columns,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
                     ),
                     "observed_at": _now(),
                 },
             )
 
     def record_failure(
-        self, *, run_id: str, site: str, subject: str, status: str, error_detail: str
+        self,
+        *,
+        run_id: str,
+        site: str,
+        subject: str,
+        status: str,
+        error_detail: str,
     ) -> None:
         if status not in {"rejected", "failed"}:
             msg = f"invalid failure status: {status}"
             raise ValueError(msg)
+
         with self._transaction():
             self._connection.execute(
                 """
@@ -108,25 +123,32 @@ class ObservationStore:
             )
 
     def done_subjects(self, site: str) -> set[str]:
-        # Subjects with at least one 'ok' observation for this site. The planner
-        # skips them so a resumed run never redoes settled work.
         rows = self._connection.execute(
-            "SELECT DISTINCT subject FROM observations WHERE site = :site AND status = 'ok'",
+            """
+            SELECT DISTINCT subject
+            FROM observations
+            WHERE site = :site AND status = 'ok'
+            """,
             {"site": site},
         ).fetchall()
+
         return {row["subject"] for row in rows}
 
     def latest(self, site: str, subject: str) -> dict[str, str] | None:
         row = self._connection.execute(
             """
-            SELECT payload FROM observations
+            SELECT payload
+            FROM observations
             WHERE site = :site AND subject = :subject AND status = 'ok'
-            ORDER BY id DESC LIMIT 1
+            ORDER BY id DESC
+            LIMIT 1
             """,
             {"site": site, "subject": subject},
         ).fetchone()
+
         if row is None:
             return None
+
         parsed: dict[str, str] = json.loads(row["payload"])
         return parsed
 
@@ -139,24 +161,35 @@ class ObservationStore:
         project: Callable[[str, dict[str, str], str], list[Any]],
     ) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_name(f".{path.name}.tmp")
-        with temporary.open("w", newline="", encoding="utf-8") as file_obj:
+        temp_path = path.with_name(f".{path.name}.tmp")
+
+        with temp_path.open("w", newline="", encoding="utf-8") as file_obj:
             writer = csv.writer(file_obj)
             writer.writerow(header)
+
             for row in self._connection.execute(LATEST_SUCCESS, {"site": site}):
                 columns: dict[str, str] = json.loads(row["payload"])
-                writer.writerow(project(row["subject"], columns, row["observed_at"]))
-        temporary.replace(path)
+                writer.writerow(
+                    project(
+                        row["subject"],
+                        columns,
+                        row["observed_at"],
+                    )
+                )
+
+        temp_path.replace(path)
 
     def observation_count(self) -> int:
         row = self._connection.execute(
             "SELECT COUNT(*) AS total FROM observations"
         ).fetchone()
+
         return int(row["total"])
 
     @contextmanager
     def _transaction(self) -> Iterator[None]:
         self._connection.execute("BEGIN IMMEDIATE")
+
         try:
             yield
         except Exception:
