@@ -64,7 +64,7 @@ WITH next_jobs AS (
      LIMIT $1
 )
 UPDATE portal_jobs job
-   SET state = 'running', started_at = now(), updated_at = now()
+   SET state = 'running', started_at = now()
  WHERE job.id IN (SELECT id FROM next_jobs)
 RETURNING job.id
 """
@@ -83,8 +83,7 @@ WITH candidate AS (
 )
 UPDATE portal_job_items AS item
    SET state = 'running', lease_owner = $1, lease_fence = candidate.lease_fence,
-       lease_expires_at = now() + interval '5 minutes', attempts = item.attempts + 1,
-       updated_at = now()
+       lease_expires_at = now() + interval '5 minutes', attempts = item.attempts + 1
   FROM candidate
  WHERE item.id = candidate.id
 RETURNING item.id, item.job_id, item.source, item.document, item.lease_fence
@@ -107,7 +106,7 @@ UPDATE portal_job_items AS item
    SET state = CASE WHEN expired.attempts >= $1 THEN 'failed' ELSE 'pending' END,
        reason = CASE WHEN expired.attempts >= $1 THEN 'lease_expired' ELSE item.reason END,
        finished_at = CASE WHEN expired.attempts >= $1 THEN now() ELSE NULL END,
-       lease_owner = NULL, lease_expires_at = NULL, updated_at = now()
+       lease_owner = NULL, lease_expires_at = NULL
   FROM expired
  WHERE item.id = expired.id
 RETURNING item.job_id
@@ -116,8 +115,7 @@ RETURNING item.job_id
 _PUBLISH_FENCED = """
 UPDATE portal_job_items AS item
    SET state = 'published', result_object_id = $4, published_at = now(),
-       finished_at = now(), lease_owner = NULL, lease_expires_at = NULL,
-       updated_at = now()
+       finished_at = now(), lease_owner = NULL, lease_expires_at = NULL
   FROM portal_jobs AS job
  WHERE item.id = $1
    AND item.job_id = job.id
@@ -230,7 +228,7 @@ class PostgresPortalRepository:
                 """
                 INSERT INTO portal_job_items
                     (id, job_id, team_id, ordinal, document, source, state, reason)
-                VALUES ($1, $2, $3, $4, $5, '', 'excluded', $6)
+                VALUES ($1, $2, $3, $4, $5, NULL, 'excluded', $6)
                 """,
                 [
                     (
@@ -283,8 +281,7 @@ class PostgresPortalRepository:
                 await connection.execute(
                     """
                     UPDATE portal_jobs
-                       SET state = 'cancelling', lease_fence = lease_fence + 1,
-                           updated_at = now()
+                       SET state = 'cancelling', lease_fence = lease_fence + 1
                      WHERE id = $1
                     """,
                     job_id,
@@ -305,7 +302,7 @@ class PostgresPortalRepository:
             row = await connection.fetchrow(
                 """
                 UPDATE portal_jobs
-                   SET state = 'cancelled', finished_at = now(), updated_at = now()
+                   SET state = 'cancelled', finished_at = now()
                  WHERE id = $1
                 RETURNING *
                 """,
@@ -625,7 +622,7 @@ class PostgresPortalRepository:
                 """
                 UPDATE portal_installation_state
                    SET initial_team_id = $1, completed_by = $2,
-                       completed_at = now(), updated_at = now()
+                       completed_at = now()
                  WHERE singleton = true
                 """,
                 team.id,
@@ -1138,7 +1135,7 @@ class PostgresPortalRepository:
                            SELECT 1 FROM portal_job_items
                             WHERE job_id = $1 AND state = 'published'
                        ) THEN job.terminal_reason ELSE 'sin_resultados' END,
-                   finished_at = now(), updated_at = now()
+                   finished_at = now()
              WHERE job.id = $1
                AND job.state = 'running'
                AND NOT EXISTS (

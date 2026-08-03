@@ -56,6 +56,18 @@ mise x postgres -- psql -q -h 127.0.0.1 -p 5432 -U postgres -d postgres \\
 depends = ["portal:db:start"]
 run = "uv run --env-file .env portal-migrate"
 
+[tasks."portal:schema"]
+description = "Snapshot the current portal schema to packages/portal/schema.sql"
+depends = ["portal:migrate"]
+run = """
+mise x postgres -- pg_dump -h 127.0.0.1 -p 5432 -U postgres -d postgres \\
+  --schema-only --no-owner --no-privileges \\
+  --exclude-table=portal_schema_migrations \\
+  | grep -v -e '^\\\\restrict ' -e '^\\\\unrestrict ' \\
+            -e '^-- Dumped from database version' -e '^-- Dumped by pg_dump version' \\
+  > packages/portal/schema.sql
+"""
+
 [tasks."portal:bootstrap"]
 description = "Provision the local portal administrator and first team"
 depends = ["portal:migrate"]
