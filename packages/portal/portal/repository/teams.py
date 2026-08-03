@@ -9,10 +9,10 @@ from portal.repository.shared import lock_team_row, user_row
 
 
 if TYPE_CHECKING:
-    from asyncpg import Connection, Pool
+    from asyncpg import Connection, Pool, Record
 
 
-def team_row(row: object) -> Team:
+def team_row(row: Record) -> Team:
     return Team(row["id"], row["slug"], row["name"])
 
 
