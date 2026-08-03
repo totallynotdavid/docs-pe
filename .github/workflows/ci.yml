@@ -22,7 +22,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "26"
+          node-version: "26.5.1"
           cache: npm
 
       - name: Install pinned browser dependencies
@@ -61,10 +61,10 @@ jobs:
           cache-dependency-glob: uv.lock
 
       - name: Set up Python
-        run: uv python install 3.14
+        run: uv python install 3.14.6
 
       - name: Sync dependencies
-        run: uv sync --all-extras --dev
+        run: uv sync --locked --all-packages --all-groups
 
       - name: Format check
         run: uv run ruff format --check
