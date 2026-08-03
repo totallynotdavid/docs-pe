@@ -1,28 +1,22 @@
 # Results ledger
 
-Every job that has been reconciled end to end. A job is recorded here once its
-counts close, so this doubles as the record of what the collectors have produced
-and of what a healthy job looks like.
+Output files live in `results/<job>/`, which is gitignored.
 
-The output files live in `results/<job>/`, which is gitignored. This ledger is
-the part that is kept.
-
-## How a job reconciles
+## Reconciliation
 
 `osiptel` sets `allows_empty=True`: a document with no phone lines is a real
 success that contributes no CSV rows and does not appear in `.not_found.csv`.
-Unique documents in the main CSV are therefore always fewer than the number that
-succeeded, and the identity to check is:
+The reconciliation is:
 
-```
-documents with >= 1 line  +  documents with 0 lines  +  terminal failures  =  input rows
+```txt
+documents with >= 1 line + documents with 0 lines + terminal failures = input rows
 ```
 
 `sunat` and `sunat_reps` set `allows_empty=False`, so every accepted document
 either produces rows or lands in `.errors.csv` or `.not_found.csv`:
 
-```
-result rows  +  errors  +  not_found  =  input rows
+```txt
+result rows + errors + not_found = input rows
 ```
 
 `sunat_reps` returns one row per legal representative, so it produces more rows
@@ -40,14 +34,12 @@ Phone lines per document. Input is DNIs unless noted.
 | `dni_lambayeque` | 208,336 |    195,501 |    12,835 | 518,117 |      0 |
 | `surco_dni`      | 235,002 |    166,967 |    68,035 | 323,981 |      0 |
 
-Every one of these closes exactly, with zero terminal failures.
+The zero-line share is a useful sanity check for new DNI jobs. Across these
+634,514 documents it is 15.4%, ranging from 4.5% in Ancash to 29.0% in Surco.
+Jobs outside roughly 4% to 30% deserve investigation. A result near 0% or 100%
+usually indicates a bug.
 
-The zero-line share is the number to sanity-check a new DNI job against. Across
-these 634,514 documents it is 15.4%, and the spread by province is wide: 4.5% in
-Ancash against 29.0% in Surco. A job outside roughly 4% to 30% is worth
-investigating before trusting; one at 0% or 100% means something is broken.
-
-Carrier distribution over the 1,295,214 lines those runs returned:
+Carrier distribution across 1,295,214 lines:
 
 | Carrier                   |   Lines | Share |
 | ------------------------- | ------: | ----: |
@@ -70,10 +62,11 @@ Identity records for RUC-10 (natural persons).
 | `lambayeque` | 394,884 | 394,729 |    155 |         0 |
 | `trujillo`   | 540,756 | 540,606 |    150 |         0 |
 
-The residual error rate on the jobs that predate 2026-08-01 is a flat 0.03% to
-0.04%, and it is one class: the two parser gaps described in
-[the SUNAT section of the fetch manual](../packages/fetch/readme.md#sunat).
-`surco` was re-run on the fixed parser and is the first job to reach zero.
+Jobs before 2026-08-01 have a residual error rate of 0.03% to 0.04%, entirely
+explained by the two parser gaps described in
+[the fetch manual](../packages/fetch/readme.md#sunat).
+
+`surco` was the first job re-run after those fixes and reached zero errors.
 
 ## sunat_reps
 
@@ -83,20 +76,22 @@ Legal representatives for RUC-20 (entities).
 | ------------ | ------: | ------: | -----: |
 | `ruc20_reps` | 846,047 | 931,419 |      9 |
 
-More rows than input is expected: an entity may list several representatives,
-and some (associations, educational centres) list none.
+More rows than input are expected because one entity may have multiple legal
+representatives, while some have none.
 
-## What a job costs
+## Cost
 
-Measured against the origin on 2026-08-01. A proxy dashboard will disagree: both
-vendors count one billable request per proxied _session_, so any site with
-`session_budget > 1` looks far more expensive than it is. SUNAT was reported at
-937 to 982 KB per counted request, roughly 36 lookups' worth of bytes.
+Measured against the origin on 2026-08-01.
+
+Proxy dashboards overestimate usage because both providers bill one request per
+proxied session. With `session_budget > 1`, one session serves many lookups. For
+SUNAT, the dashboard reported 937 to 982 KB per billed request, roughly 36
+lookups' worth of traffic.
 
 | Site      | Per lookup   | Notes                                                                                  |
 | --------- | ------------ | -------------------------------------------------------------------------------------- |
 | `osiptel` | ~16 KB, ~6 s | `session_budget=1`, so sessions and lookups are 1:1 and the dashboard figure is honest |
 | `sunat`   | ~26 KB       | `session_budget=50`; the 22.8 KB home GET is paid once per session                     |
 
-A 235,000-document SUNAT job is therefore about 6 GB. Bandwidth has never been
-the constraint on these jobs. Latency and lane count are.
+A 235,000-document SUNAT job transfers about 6 GB. In practice, throughput is
+limited by latency and lane count rather than bandwidth.
