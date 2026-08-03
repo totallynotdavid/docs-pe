@@ -34,17 +34,14 @@ class RunConfig:
     software_webgl: bool
     diagnostics: Path | None
     max_session_restarts: int
-    env_file: str = ".env"
     use_proxy: bool = True
     reject_retries: int = 12
     reject_restart_threshold: int = 4
 
 
 def run(config: RunConfig, site: BrowserSite) -> int:
-    # Resolve the proxy first so a misconfigured .env fails before any work.
-    provider = (
-        load_proxy_provider(env_file=config.env_file) if config.use_proxy else None
-    )
+    # Resolve the proxy first so missing configuration fails before any work.
+    provider = load_proxy_provider() if config.use_proxy else None
 
     subjects, counts = read_subjects(config.input_csv, dedupe=True)
     if not subjects:

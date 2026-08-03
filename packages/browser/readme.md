@@ -5,7 +5,7 @@ driven over plain HTTP. Each site lives in its own `sites/<name>/` recipe on top
 of a site-agnostic core.
 
 ```sh
-uv run browser --input subjects.csv --output debts.csv --site entel --control <ruc>
+uv run --env-file .env browser --input subjects.csv --output debts.csv --site entel --control <ruc>
 ```
 
 Sites move to [`fetch`](../fetch/readme.md) once they no longer require a
@@ -108,14 +108,13 @@ non-zero, and a later run retries them.
 | `--reject-restart-threshold` | 4                        | consecutive exhausted subjects before a session restart |
 | `--max-session-restarts`     | 0                        |                                                         |
 | `--proxy`                    | on                       | `--no-proxy` for a direct local run                     |
-| `--env-file`                 | `.env`                   | same `PROXY_PROVIDER` contract as `fetch`               |
 | `--software-webgl`           | on                       | SwiftShader, for a consistent fingerprint with no GPU   |
 | `--state`                    | `<output>.state.sqlite3` |                                                         |
 | `--diagnostics`              | off                      | redacted per-request timing and structure as JSON Lines |
 
 Browser uses a single session, so it always takes the first provider listed in
-`PROXY_PROVIDER` and ignores lane counts. A shared `.env` that lists multiple
-providers for `fetch` works unchanged.
+`PROXY_PROVIDER` and ignores lane counts. The shared root `.env` is loaded by
+UV, so it works unchanged for `fetch` and `browser`.
 
 ## What limits throughput
 

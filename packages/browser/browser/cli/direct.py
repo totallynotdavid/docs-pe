@@ -37,11 +37,6 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
         "pass --no-proxy for a direct local run",
     )
     parser.add_argument(
-        "--env-file",
-        default=".env",
-        help="env file with PROXY_PROVIDER and provider credentials (default: .env)",
-    )
-    parser.add_argument(
         "--diagnostics",
         type=Path,
         help="append redacted browser and request diagnostics as JSON Lines",
@@ -93,7 +88,6 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
         software_webgl=args.software_webgl,
         diagnostics=args.diagnostics,
         max_session_restarts=args.max_session_restarts,
-        env_file=args.env_file,
         use_proxy=args.proxy,
         reject_retries=args.reject_retries,
         reject_restart_threshold=args.reject_restart_threshold,

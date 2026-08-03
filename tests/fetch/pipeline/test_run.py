@@ -93,7 +93,6 @@ def _cfg(
         ban_cooldown_s=None,
         wait_min_s=0.0,
         wait_max_s=0.0,
-        env_file="/nonexistent/does-not-exist.env",
         do_import=False,
     )
 
@@ -108,7 +107,7 @@ def _no_real_egress(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _install_provider(monkeypatch: pytest.MonkeyPatch) -> _FakeProvider:
     provider = _FakeProvider()
-    monkeypatch.setattr(run_mod, "load_proxy_providers", lambda *, env_file: [provider])
+    monkeypatch.setattr(run_mod, "load_proxy_providers", lambda: [provider])
     return provider
 
 

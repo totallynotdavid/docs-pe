@@ -9,8 +9,6 @@ from fetch.proxy.load import load_proxy_providers
 from fetch.proxy.registry import PROVIDERS
 
 
-_ENV_FILE = "/nonexistent/does-not-exist.env"
-
 # Every variable the schemas can read, so a leaked one cannot mask a failure.
 _ENV_VARS = (
     "PROXY_PROVIDER",
@@ -44,26 +42,26 @@ def test_a_missing_or_blank_proxy_provider_raises(
     if value:
         monkeypatch.setenv("PROXY_PROVIDER", value)
     with pytest.raises(ProxyConfigurationError, match="PROXY_PROVIDER must be set"):
-        load_proxy_providers(env_file=_ENV_FILE)
+        load_proxy_providers()
 
 
 def test_an_unknown_provider_name_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PROXY_PROVIDER", "bogus")
     with pytest.raises(ProxyConfigurationError, match="unknown proxy provider"):
-        load_proxy_providers(env_file=_ENV_FILE)
+        load_proxy_providers()
 
 
 def test_a_duplicate_provider_name_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_valid_provider_creds(monkeypatch)
     monkeypatch.setenv("PROXY_PROVIDER", "geonode,geonode")
     with pytest.raises(ProxyConfigurationError, match="more than once"):
-        load_proxy_providers(env_file=_ENV_FILE)
+        load_proxy_providers()
 
 
 def test_constructs_a_single_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_valid_provider_creds(monkeypatch)
     monkeypatch.setenv("PROXY_PROVIDER", "geonode")
-    providers = load_proxy_providers(env_file=_ENV_FILE)
+    providers = load_proxy_providers()
     assert [type(p) for p in providers] == [GeoNodeProvider]
 
 
@@ -72,7 +70,7 @@ def test_constructs_multiple_providers_in_the_requested_order(
 ) -> None:
     _set_valid_provider_creds(monkeypatch)
     monkeypatch.setenv("PROXY_PROVIDER", "dataimpulse,geonode")
-    providers = load_proxy_providers(env_file=_ENV_FILE)
+    providers = load_proxy_providers()
     assert [type(p) for p in providers] == [DataImpulseProvider, GeoNodeProvider]
 
 
@@ -81,7 +79,7 @@ def test_provider_names_are_trimmed_and_lowercased(
 ) -> None:
     _set_valid_provider_creds(monkeypatch)
     monkeypatch.setenv("PROXY_PROVIDER", " GEONODE , DataImpulse ")
-    providers = load_proxy_providers(env_file=_ENV_FILE)
+    providers = load_proxy_providers()
     assert [type(p) for p in providers] == [GeoNodeProvider, DataImpulseProvider]
 
 
@@ -90,7 +88,7 @@ def test_a_lane_count_overrides_that_providers_default(
 ) -> None:
     _set_valid_provider_creds(monkeypatch)
     monkeypatch.setenv("PROXY_PROVIDER", "geonode:30,dataimpulse:18")
-    providers = load_proxy_providers(env_file=_ENV_FILE)
+    providers = load_proxy_providers()
     assert [p.tuning.workers for p in providers] == [30, 18]
 
 
@@ -99,7 +97,7 @@ def test_an_omitted_lane_count_keeps_the_provider_default(
 ) -> None:
     _set_valid_provider_creds(monkeypatch)
     monkeypatch.setenv("PROXY_PROVIDER", "geonode,dataimpulse:18")
-    geonode, dataimpulse = load_proxy_providers(env_file=_ENV_FILE)
+    geonode, dataimpulse = load_proxy_providers()
     assert geonode.tuning.workers == GeoNodeProvider.tuning.workers
     assert dataimpulse.tuning.workers == 18
 
@@ -112,7 +110,7 @@ def test_overriding_one_provider_does_not_leak_into_the_other(
     _set_valid_provider_creds(monkeypatch)
     monkeypatch.setenv("PROXY_PROVIDER", "geonode:30")
     default = GeoNodeProvider.tuning.workers
-    assert load_proxy_providers(env_file=_ENV_FILE)[0].tuning.workers == 30
+    assert load_proxy_providers()[0].tuning.workers == 30
     assert GeoNodeProvider.tuning.workers == default
 
 
@@ -125,4 +123,4 @@ def test_an_invalid_lane_count_raises(
     _set_valid_provider_creds(monkeypatch)
     monkeypatch.setenv("PROXY_PROVIDER", value)
     with pytest.raises(ProxyConfigurationError, match="lane count"):
-        load_proxy_providers(env_file=_ENV_FILE)
+        load_proxy_providers()

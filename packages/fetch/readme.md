@@ -5,7 +5,7 @@ CSV, distributes lookups across concurrent sticky proxy sessions, and writes one
 result CSV per site backed by a resumable state database.
 
 ```sh
-uv run fetch --input docs.csv --output out.csv --sites sunat,osiptel --env-file .env
+uv run --env-file .env fetch --input docs.csv --output out.csv --sites sunat,osiptel
 ```
 
 Sites that work over plain HTTP belong here. Sites that still require a browser
@@ -125,7 +125,6 @@ Documents are strings, never integers. Roughly 30% of DNIs begin with zero.
 | `--ban-cooldown-s` | provider default | cooldown after a ban                                         |
 | `--wait-min-s`     | 0                | minimum optional delay after a successful lookup             |
 | `--wait-max-s`     | 0                | maximum delay; sampled uniformly from `[min, max]`           |
-| `--env-file`       | `.env`           |                                                              |
 | `--import`         | off              | rebuild state from previous per-site exports before planning |
 | `--debug`          | off              | `fetch.*` at DEBUG; `httpx` and `httpcore` remain at WARNING |
 

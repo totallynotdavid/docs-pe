@@ -6,8 +6,6 @@ from dataclasses import dataclass
 from os import getenv
 from typing import Protocol
 
-from dotenv import load_dotenv
-
 
 @dataclass(frozen=True)
 class ProxyEndpoint:
@@ -104,9 +102,8 @@ class DataImpulseProvider:
         )
 
 
-def load_proxy_provider(*, env_file: str) -> ProxyProvider:
+def load_proxy_provider() -> ProxyProvider:
     """Build the first provider listed in PROXY_PROVIDER, or fail fast."""
-    load_dotenv(env_file, override=False)
     raw = getenv("PROXY_PROVIDER", "").strip()
     if not raw:
         msg = "PROXY_PROVIDER must be set (geonode or dataimpulse), or pass --no-proxy"
@@ -137,15 +134,15 @@ def _whole_number(name: str, *, default: int) -> int:
 
 
 def _load_geonode_config() -> _GeoNodeConfig:
-    user = getenv("GEONODE_USER", "")
-    password = getenv("GEONODE_PASS", "")
+    user = getenv("GEONODE_USERNAME", "")
+    password = getenv("GEONODE_PASSWORD", "")
     gateway = getenv("GEONODE_GATEWAY", "fr")
-    proxy_type = getenv("GEONODE_TYPE", "residential")
+    proxy_type = getenv("GEONODE_PROXY_TYPE", "residential")
     country = getenv("GEONODE_COUNTRY", "")
-    lifetime = _whole_number("GEONODE_LIFETIME", default=10)
+    lifetime = _whole_number("GEONODE_LIFETIME_MINUTES", default=10)
 
     if not user or not password:
-        msg = "missing GEONODE_USER or GEONODE_PASS"
+        msg = "missing GEONODE_USERNAME or GEONODE_PASSWORD"
         raise RuntimeError(msg)
     if not country:
         # An unset country silently routes through the wrong region, which the
@@ -157,10 +154,10 @@ def _load_geonode_config() -> _GeoNodeConfig:
         msg = f"GEONODE_GATEWAY must be one of {allowed}"
         raise RuntimeError(msg)
     if proxy_type not in {"residential", "datacenter", "mix"}:
-        msg = "GEONODE_TYPE must be one of residential|datacenter|mix"
+        msg = "GEONODE_PROXY_TYPE must be one of residential|datacenter|mix"
         raise RuntimeError(msg)
     if lifetime < 3 or lifetime > 1440:
-        msg = "GEONODE_LIFETIME must be between 3 and 1440 minutes"
+        msg = "GEONODE_LIFETIME_MINUTES must be between 3 and 1440 minutes"
         raise RuntimeError(msg)
 
     return _GeoNodeConfig(
@@ -174,19 +171,19 @@ def _load_geonode_config() -> _GeoNodeConfig:
 
 
 def _load_dataimpulse_config() -> _DataImpulseConfig:
-    user = getenv("DATAIMPULSE_USER", "")
-    password = getenv("DATAIMPULSE_PASS", "")
+    user = getenv("DATAIMPULSE_USERNAME", "")
+    password = getenv("DATAIMPULSE_PASSWORD", "")
     country = getenv("DATAIMPULSE_COUNTRY", "").strip().lower()
-    sessttl = _whole_number("DATAIMPULSE_SESSTTL", default=3)
+    sessttl = _whole_number("DATAIMPULSE_SESSION_MINUTES", default=3)
 
     if not user or not password:
-        msg = "missing DATAIMPULSE_USER or DATAIMPULSE_PASS"
+        msg = "missing DATAIMPULSE_USERNAME or DATAIMPULSE_PASSWORD"
         raise RuntimeError(msg)
     if not country:
         msg = "DATAIMPULSE_COUNTRY must not be empty (Peru exits, e.g. pe)"
         raise RuntimeError(msg)
     if sessttl < 1:
-        msg = "DATAIMPULSE_SESSTTL must be >= 1 minute"
+        msg = "DATAIMPULSE_SESSION_MINUTES must be >= 1 minute"
         raise RuntimeError(msg)
 
     return _DataImpulseConfig(

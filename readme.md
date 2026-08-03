@@ -10,11 +10,33 @@ legal representatives, and carrier debt.
 mise install                                  # toolchain: uv, python, ruff, postgres
 mise run install                              # uv sync --all-packages --all-groups
 cp .env.example .env                          # then fill in the proxy credentials
-uv run fetch --input docs.csv --output out.csv --sites osiptel
+uv run --env-file .env fetch --input docs.csv --output out.csv --sites osiptel
 ```
 
-`fetch` needs proxy credentials; `browser` and `capture` do not. The
+`fetch` and proxied `browser` runs need proxy credentials; `capture` does not. The
 [fetch manual](packages/fetch/readme.md) is the place to start reading.
+
+## Environment migration
+
+`.env.example` is the single local environment contract. Commands do not load it
+themselves: pass it to UV as shown above, or use a `mise` task that already does.
+
+Existing files need these renames:
+
+```text
+GEONODE_USER                 -> GEONODE_USERNAME
+GEONODE_PASS                 -> GEONODE_PASSWORD
+GEONODE_TYPE                 -> GEONODE_PROXY_TYPE
+GEONODE_LIFETIME             -> GEONODE_LIFETIME_MINUTES
+DATAIMPULSE_USER             -> DATAIMPULSE_USERNAME
+DATAIMPULSE_PASS             -> DATAIMPULSE_PASSWORD
+DATAIMPULSE_SESSTTL          -> DATAIMPULSE_SESSION_MINUTES
+PORTAL_ENV                   -> PORTAL_ENVIRONMENT
+PORTAL_SECRET_KEY            -> PORTAL_SECRET_PROTECTION_KEY
+```
+
+The final two names are required by the portal. Remove
+`packages/portal/.env.example`; it is no longer a supported configuration file.
 
 Other tasks, all from the repo root:
 

@@ -23,7 +23,6 @@ def test_parses_paths_and_derives_private_state(tmp_path: Path) -> None:
     assert config.control is None
     # Proxy is on by default so bulk runs never hammer a site from one IP.
     assert config.use_proxy is True
-    assert config.env_file == ".env"
 
 
 def test_no_proxy_flag_disables_the_proxy(tmp_path: Path) -> None:

@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 async def run(cfg: RunConfig, *, run_id: str) -> None:
     sites = list(cfg.sites)
-    providers = load_proxy_providers(env_file=cfg.env_file)
+    providers = load_proxy_providers()
 
     with OutcomeStore(state_path_for_output(cfg.output_csv)) as store:
         if cfg.do_import:

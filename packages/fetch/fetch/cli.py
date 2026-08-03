@@ -33,7 +33,6 @@ class RunConfig:
     ban_cooldown_s: float | None
     wait_min_s: float
     wait_max_s: float
-    env_file: str
     do_import: bool
 
 
@@ -50,7 +49,6 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
     parser.add_argument("--ban-cooldown-s", type=float, default=None)
     parser.add_argument("--wait-min-s", type=float, default=0.0)
     parser.add_argument("--wait-max-s", type=float, default=0.0)
-    parser.add_argument("--env-file", default=".env")
     # Opt-in recovery: rebuild the store from prior per-site exports before planning.
     parser.add_argument(
         "--import", dest="do_import", action="store_true", default=False
@@ -90,7 +88,6 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
         ban_cooldown_s=ns.ban_cooldown_s,
         wait_min_s=ns.wait_min_s,
         wait_max_s=ns.wait_max_s,
-        env_file=ns.env_file,
         do_import=ns.do_import,
     )
 

@@ -8,14 +8,9 @@ version = "0.1.0"
 description = "Bulk lookup against the OSIPTEL and SUNAT public endpoints over sticky proxy sessions."
 requires-python = ">=3.11"
 
-authors = [
-    { name = "David Duran", email = "dadch1404@gmail.com" },
-]
+authors = [{ name = "David Duran", email = "dadch1404@gmail.com" }]
 
-dependencies = [
-    "httpx>=0.28.1",
-    "python-dotenv>=1.2.2",
-]
+dependencies = ["httpx>=0.28.1"]
 
 [project.scripts]
 fetch = "fetch.cli:main"
