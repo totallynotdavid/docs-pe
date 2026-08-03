@@ -12,8 +12,6 @@ if TYPE_CHECKING:
 
 
 class SitePage(Protocol):
-    """A prepared, single-site page the run loop drives one subject at a time."""
-
     def lookup(self, subject: str) -> LookupResult: ...
 
 
@@ -22,7 +20,9 @@ class BrowserSite:
     name: str
     url: str
     export_header: tuple[str, ...]
-    # The sole owner of "can this site answer this subject?". The planner routes on it.
+
+    # The site decides which subjects it accepts.
     accepts: Callable[[Subject], bool]
+
     open_page: Callable[..., SitePage]
     row: Callable[[str, dict[str, str], str], list[Any]]

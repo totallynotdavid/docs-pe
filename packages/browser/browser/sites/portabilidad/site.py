@@ -19,11 +19,14 @@ def _open_page(
     reset_cookies: bool,
     diagnostic_log: DiagnosticLog | None,
 ) -> PortabilidadPage:
-    # control and reset_cookies are part of the open_page contract but unused here:
-    # portabilidad needs no warm-up, and each lookup re-navigates for fresh tokens.
-    _ = (control, reset_cookies)
-    page = PortabilidadPage(session=session, diagnostic_log=diagnostic_log)
+    _ = control, reset_cookies
+
+    page = PortabilidadPage(
+        session=session,
+        diagnostic_log=diagnostic_log,
+    )
     page.prepare()
+
     return page
 
 
