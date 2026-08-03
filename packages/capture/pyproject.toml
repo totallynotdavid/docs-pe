@@ -5,8 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "capture"
 version = "0.1.0"
+description = "Human-guided browser capture for discovering and replaying site requests."
 requires-python = ">=3.11"
-description = "Human-in-the-loop discovery and collection: intercept a site's own calls from a reputable Chrome to learn and run its recipe. Standard library only."
 dependencies = []
 
 [project.scripts]
