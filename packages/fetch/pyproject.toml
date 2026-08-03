@@ -5,15 +5,16 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "fetch"
 version = "0.1.0"
+description = "Bulk lookup against the OSIPTEL and SUNAT public endpoints over sticky proxy sessions."
 requires-python = ">=3.11"
-description = "Bulk RUC lookup over httpx against the OSIPTEL and SUNAT public endpoints, fanned across worker processes behind sticky proxy sessions."
-dependencies = [
-    "httpx>=0.28.1",
-    "python-dotenv>=1.2.2",
-]
 
 authors = [
     { name = "David Duran", email = "dadch1404@gmail.com" },
+]
+
+dependencies = [
+    "httpx>=0.28.1",
+    "python-dotenv>=1.2.2",
 ]
 
 [project.scripts]
