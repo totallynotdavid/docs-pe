@@ -9,21 +9,23 @@ from portal.domain.models import PortalUser
 if TYPE_CHECKING:
     from uuid import UUID
 
-    from asyncpg import Connection
+    from asyncpg import Connection, Record
 
 
-def user_row(row: object) -> PortalUser:
+def user_row(row: Record) -> PortalUser:
     return PortalUser(
-        id=row["id"],  # type: ignore[index]
-        email=row["email"],  # type: ignore[index]
-        is_site_admin=bool(row["is_site_admin"]),  # type: ignore[index]
+        id=row["id"],
+        email=row["email"],
+        is_site_admin=bool(row["is_site_admin"]),
     )
 
 
 async def lock_team_row(connection: Connection, team_id: UUID) -> None:
-    """Serialize per-team mutations (membership and credential changes) on the team row."""
+    """Serialize membership and credential changes for a team."""
     found = await connection.fetchval(
-        "SELECT id FROM portal_teams WHERE id = $1 FOR UPDATE", team_id
+        "SELECT id FROM portal_teams WHERE id = $1 FOR UPDATE",
+        team_id,
     )
+
     if found is None:
         raise NotFound(Reason.TEAM_MISSING)

@@ -63,8 +63,8 @@ SOURCE_OPTIONS = (
 
 PROGRESS_POLL_SECONDS = 0.5
 
-# Tell the browser not to reconnect after the job finishes.
-_STREAM_CLOSED = sse_event(event="fin", data="")
+# Prevent the browser from reconnecting after completion.
+_STREAM_END_EVENT = sse_event(event="fin", data="")
 
 
 async def _form_context(
@@ -180,7 +180,7 @@ async def job_progress(
     team_id: UUID,
     job_id: UUID,
 ) -> Response:
-    # Refuse unauthorized callers before opening the stream.
+    # Authorize before opening the stream.
     await service.job(session.user.id, team_id, job_id)
 
     stream = _progress_stream(
@@ -214,7 +214,7 @@ async def _progress_stream(
     sequence: int,
 ) -> AsyncIterator[str]:
     while True:
-        # End the stream if the session expires or changes.
+        # Stop if the session expires or is replaced.
         current_session = await service.browser_session(token)
 
         if current_session is None or current_session.user.id != actor_id:
@@ -238,7 +238,7 @@ async def _progress_stream(
             )
 
             if job.state in TERMINAL_JOB_STATES:
-                yield _STREAM_CLOSED
+                yield _STREAM_END_EVENT
                 return
 
         if await request.is_disconnected():
@@ -247,7 +247,7 @@ async def _progress_stream(
         job = await service.job(actor_id, team_id, job_id)
 
         if job.state in TERMINAL_JOB_STATES:
-            yield _STREAM_CLOSED
+            yield _STREAM_END_EVENT
             return
 
         await asyncio.sleep(PROGRESS_POLL_SECONDS)
