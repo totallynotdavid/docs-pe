@@ -14,13 +14,12 @@ from portal.domain.models import (
     SubmitJob,
 )
 
-from tests.portal.conftest import object_reference, seed_team
+from tests.portal.conftest import WORKER_TOKEN, object_reference, seed_team
 
 
 if TYPE_CHECKING:
     import asyncpg
     import httpx
-    import pytest
 
     from portal.application.service import PortalService
     from portal.credentials.secrets import AesGcmSecretProtector
@@ -209,14 +208,12 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
     service: PortalService,
     client: httpx.AsyncClient,
     protector: AesGcmSecretProtector,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The worker's only view of the queue is this pair of authenticated calls."""
-    monkeypatch.setenv("PORTAL_WORKER_BOOTSTRAP_TOKEN", "ficha-de-prueba")
     secret = await protector.protect({"username": "equipo", "password": "clave"})
     job = await _submit_one(pool, service, ciphertext=secret.ciphertext)
     headers = {
-        "Authorization": "Bearer ficha-de-prueba",
+        "Authorization": f"Bearer {WORKER_TOKEN}",
         "X-Portal-Worker": "trabajador-uno",
     }
     anonymous = await client.post("/api/worker/claim", json={"sources": []})

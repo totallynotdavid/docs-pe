@@ -7,9 +7,30 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 
+def _required(name: str) -> str:
+    value = os.environ.get(name, "").strip()
+
+    if not value:
+        msg = f"{name} is required"
+        raise RuntimeError(msg)
+
+    return value
+
+
+def _required_bool(name: str) -> bool:
+    value = _required(name).lower()
+
+    if value not in {"true", "false"}:
+        msg = f"{name} must be 'true' or 'false'"
+        raise RuntimeError(msg)
+
+    return value == "true"
+
+
 @dataclass(frozen=True)
 class PortalSettings:
     database_dsn: str
+    worker_bootstrap_token: str
     environment: str = "development"
     public_origin: str = "http://testserver"
     cookie_secure: bool = False
@@ -18,32 +39,38 @@ class PortalSettings:
 
     @classmethod
     def from_environment(cls) -> PortalSettings:
-        environment = os.environ.get("PORTAL_ENVIRONMENT", "development").lower()
-        origin = os.environ.get("PORTAL_PUBLIC_ORIGIN", "")
-        secure = os.environ.get("PORTAL_COOKIE_SECURE", "").lower()
-        tls_terminated_upstream = (
-            os.environ.get("PORTAL_TLS_TERMINATED_UPSTREAM", "").lower() == "true"
-        )
         return cls(
-            database_dsn=os.environ.get("PORTAL_DATABASE_DSN", ""),
-            environment=environment,
-            public_origin=origin
-            or ("" if environment == "production" else "http://testserver"),
-            cookie_secure=secure == "true" if secure else environment == "production",
-            tls_terminated_upstream=tls_terminated_upstream,
+            database_dsn=_required("PORTAL_DATABASE_DSN"),
+            worker_bootstrap_token=_required("PORTAL_WORKER_BOOTSTRAP_TOKEN"),
+            environment=_required("PORTAL_ENVIRONMENT").lower(),
+            public_origin=_required("PORTAL_PUBLIC_ORIGIN"),
+            cookie_secure=_required_bool("PORTAL_COOKIE_SECURE"),
+            tls_terminated_upstream=(
+                os.environ.get("PORTAL_TLS_TERMINATED_UPSTREAM", "").lower() == "true"
+            ),
             object_root=Path(os.environ.get("PORTAL_OBJECT_ROOT", ".data/objects")),
         )
 
     def validate(self) -> None:
-        # The portal is PostgreSQL-only in every environment: there is one
-        # repository, so a missing DSN cannot degrade into something else.
         if not self.database_dsn:
             msg = "PORTAL_DATABASE_DSN is required"
             raise RuntimeError(msg)
+
+        if not self.worker_bootstrap_token:
+            msg = "PORTAL_WORKER_BOOTSTRAP_TOKEN is required"
+            raise RuntimeError(msg)
+
         if not self.is_production:
             return
+
+        hostname = urlparse(self.public_origin).hostname
+
         if not self.cookie_secure or urlparse(self.public_origin).scheme != "https":
             msg = "production requires HTTPS and Secure cookies"
+            raise RuntimeError(msg)
+
+        if not hostname:
+            msg = "PORTAL_PUBLIC_ORIGIN must include a hostname"
             raise RuntimeError(msg)
 
     @property

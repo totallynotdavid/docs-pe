@@ -35,9 +35,13 @@ from portal.web.routes import (
 )
 
 
-def create_app(settings: PortalSettings | None = None) -> FastAPI:
+def create_app(
+    settings: PortalSettings | None = None,
+    protector: AesGcmSecretProtector | None = None,
+) -> FastAPI:
     settings = settings or PortalSettings.from_environment()
     settings.validate()
+    protector = protector or AesGcmSecretProtector.from_environment()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -49,7 +53,6 @@ def create_app(settings: PortalSettings | None = None) -> FastAPI:
         team_repository = PostgresTeamRepository(pool)
         credential_repository = PostgresCredentialRepository(pool)
         job_repository = PostgresJobRepository(pool)
-        protector = AesGcmSecretProtector.from_environment()
 
         app.state.pool = pool
         app.state.worker_queue = job_repository
@@ -87,10 +90,10 @@ def create_app(settings: PortalSettings | None = None) -> FastAPI:
     app.add_middleware(SecurityHeaders)
 
     if settings.is_production:
-        app.add_middleware(
-            TrustedHostMiddleware,
-            allowed_hosts=[urlparse(settings.public_origin).hostname or "localhost"],
-        )
+        hostname = urlparse(settings.public_origin).hostname
+        assert hostname, "validated by PortalSettings.validate()"
+
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=[hostname])
 
         if not settings.tls_terminated_upstream:
             app.add_middleware(HTTPSRedirectMiddleware)

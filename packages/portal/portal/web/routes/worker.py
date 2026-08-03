@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import os
 import secrets
 
 from typing import Annotated
@@ -13,14 +12,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from portal.credentials.secrets import AesGcmSecretProtector
 from portal.repository.jobs import PostgresJobRepository
 from portal.storage.port import ObjectReference
-from portal.web.deps import Storage
+from portal.web.deps import Settings, Storage
 
 
 router = APIRouter(prefix="/api/worker")
 
 
-def _worker_identity(request: Request) -> str:
-    expected = os.environ.get("PORTAL_WORKER_BOOTSTRAP_TOKEN", "")
+def _worker_identity(request: Request, settings: Settings) -> str:
+    expected = settings.worker_bootstrap_token
     token = request.headers.get("authorization", "").removeprefix("Bearer ")
     worker_id = request.headers.get("x-portal-worker", "").strip()
 

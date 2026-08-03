@@ -44,6 +44,7 @@ SECRET_KEY = base64.urlsafe_b64encode(b"c" * 32).decode("ascii")
 
 ORIGIN = "http://testserver"
 PASSWORD = "una-clave-larga-y-segura"
+WORKER_TOKEN = "ficha-de-prueba"
 
 
 @pytest.fixture(scope="session")
@@ -172,16 +173,16 @@ def provisioning(
 @pytest.fixture
 def app(
     portal_db: PortalDatabase,
-    monkeypatch: pytest.MonkeyPatch,
+    protector: AesGcmSecretProtector,
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Iterator[FastAPI]:
-    monkeypatch.setenv("PORTAL_SECRET_PROTECTION_KEY", SECRET_KEY)
-
     yield create_app(
         PortalSettings(
             database_dsn=portal_db.dsn,
+            worker_bootstrap_token=WORKER_TOKEN,
             object_root=tmp_path_factory.mktemp("objects"),
-        )
+        ),
+        protector,
     )
 
 
