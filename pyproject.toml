@@ -60,15 +60,15 @@ lines-after-imports = 2
 order-by-type = true
 relative-imports-order = "closest-to-furthest"
 extra-standard-library = ["typing"]
-section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+section-order = [
+  "future",
+  "standard-library",
+  "third-party",
+  "first-party",
+  "local-folder",
+]
 
 [tool.ruff.lint.per-file-ignores]
-# The portal keeps domain-specific HTTP exceptions and explicit endpoint
-# declarations close to their transaction boundaries. These rules are
-# intentionally enforced elsewhere in the workspace but make this integration
-# layer less readable without increasing safety. RUF029 is different: FastAPI
-# runs a sync dependency in a threadpool, so `async` is a dispatch contract
-# rather than a claim that the body awaits something.
 "packages/portal/**/*.py" = [
   "B008",
   "C901",
@@ -87,8 +87,7 @@ module = ["asyncpg", "fetch.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-# auto mode applies the asyncio marker to every async test, so the async site and
-# pipeline tests are plain `async def test_*` with no per-test decorator.
+# Apply asyncio support to every async test.
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
