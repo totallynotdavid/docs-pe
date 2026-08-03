@@ -21,15 +21,14 @@ run = [
 ]
 
 [tasks."portal:assets"]
-description = "Refresh the vendored browser dependencies from the versions pinned in package.json"
+description = "Refresh vendored browser assets"
 run = ["npm ci --no-audit --no-fund", "npm run vendor"]
 
 [tasks."portal:docker:build"]
-description = "Build the portal image from the repository-root workspace context"
 run = "docker build --file packages/portal/Dockerfile --tag osiptel-portal ."
 
 [tasks."portal:db:start"]
-description = "Start the local PostgreSQL cluster used by the portal"
+description = "Start the local portal database"
 run = """
 data_dir="$PWD/.data/postgres"
 
@@ -44,10 +43,8 @@ if ! mise x postgres -- pg_isready -h 127.0.0.1 -p 5432 -U postgres -q; then
     -o "-h 127.0.0.1 -p 5432" -w start
 fi
 
-# .data/postgres is disposable: initdb recreates it and portal:bootstrap refills
-# it, so fsyncing buys nothing and costs 8x on every database a test creates.
-# These three are SIGHUP settings, so reloading applies them to a cluster that
-# was already running; that is why this runs on every start rather than at initdb.
+# This cluster is disposable, so disable durability for faster tests.
+# Reload on every start because the cluster may already be running.
 mise x postgres -- psql -q -h 127.0.0.1 -p 5432 -U postgres -d postgres \\
   -c "ALTER SYSTEM SET fsync = 'off'" \\
   -c "ALTER SYSTEM SET synchronous_commit = 'off'" \\
@@ -56,17 +53,15 @@ mise x postgres -- psql -q -h 127.0.0.1 -p 5432 -U postgres -d postgres \\
 """
 
 [tasks."portal:migrate"]
-description = "Apply pending portal schema migrations"
 depends = ["portal:db:start"]
 run = "uv run --env-file .env portal-migrate"
 
 [tasks."portal:bootstrap"]
-description = "Idempotently provision the local portal administrator and first team"
+description = "Provision the local portal administrator and first team"
 depends = ["portal:migrate"]
 run = "uv run --env-file .env portal-bootstrap"
 
 [tasks."portal:dev"]
-description = "Start PostgreSQL, migrate, bootstrap, then run the portal"
 depends = ["portal:bootstrap"]
 run = "uv run --env-file .env osiptel-portal"
 
@@ -77,7 +72,6 @@ run = [
 ]
 
 [tasks.test]
-description = "Run every test, including the portal suite, against local PostgreSQL"
 depends = ["portal:db:start"]
 run = "uv run pytest"
 
