@@ -18,25 +18,21 @@ if TYPE_CHECKING:
     from browser.session import Session
 
 
-# The debt DataAction reads DocumentType as a plain string from the request body, so
-# one captured template serves both kinds: lookup() overrides this field per call.
-# These are the dropdown's own labels.
-_DOCUMENT_TYPE: dict[SubjectKind, str] = {
-    SubjectKind.RUC: "RUC",
-    SubjectKind.DNI: "DNI",
-}
-
-
 URL = "https://miperfil.entel.pe/PE_Web_Cobro_Online_EU/"
-# Warm-up identifier used to capture the request template and health-check the
-# session when the run supplies no --control.
 DEFAULT_CONTROL = "20610448187"
 MIN_LOOKUP_INTERVAL_S = 0.5
 ENDPOINT = (
     f"{URL}screenservices/PE_Web_Cobro_Online_CW/OnlinePayment/"
     "OnlinePayment_Step2/DataActionGetData"
 )
-# page-diagnostics.js lives at the package root, shared across sites.
+
+# One captured request template works for both document kinds because
+# `DocumentType` is replaced before each lookup.
+_DOCUMENT_TYPE: dict[SubjectKind, str] = {
+    SubjectKind.RUC: "RUC",
+    SubjectKind.DNI: "DNI",
+}
+
 PAGE_DIAGNOSTICS_JS = (
     Path(__file__).resolve().parents[2] / "page-diagnostics.js"
 ).read_text(encoding="utf-8")
@@ -172,92 +168,121 @@ class EntelPage:
 
     def prepare(self) -> None:
         self._wait_for_form()
+
         if self._reset_cookies:
             self._session.clear_cookies()
+
         self._session.goto(URL)
         self._wait_for_form()
-        installed = self._session.evaluate(PAGE_DIAGNOSTICS_JS)
-        if installed not in {"installed", "already-installed"}:
-            msg = f"could not install Entel diagnostics: {installed!r}"
+
+        install_result = self._session.evaluate(PAGE_DIAGNOSTICS_JS)
+
+        if install_result not in {"installed", "already-installed"}:
+            msg = f"could not install Entel diagnostics: {install_result!r}"
             raise BrowserError(msg)
+
         self._capture_stage("page-ready")
-        result = self._session.evaluate(BLOCK_STEP2_JS)
-        if result not in {"blocking", "already"}:
-            msg = f"could not install Entel Step2 block: {result!r}"
+
+        block_result = self._session.evaluate(BLOCK_STEP2_JS)
+
+        if block_result not in {"blocking", "already"}:
+            msg = f"could not install Entel Step2 block: {block_result!r}"
             raise BrowserError(msg)
+
         self._drive_form(self._control)
         self._wait_for_template()
         self._capture_stage("template-captured")
-        installed = self._session.evaluate(
+
+        install_result = self._session.evaluate(
             INSTALL_LOOKUP_JS % (json.dumps(ENDPOINT), json.dumps(ENDPOINT))
         )
-        if installed != "installed":
-            msg = f"could not install Entel lookup loop: {installed!r}"
+
+        if install_result != "installed":
+            msg = f"could not install Entel lookup loop: {install_result!r}"
             raise BrowserError(msg)
-        # A structured reject proves the loop is functional: token minted, request
-        # sent, JSON parsed. Only a real transport error means it failed to install.
+
+        # A structured rejection proves that token minting, transport, and JSON
+        # parsing all work.
         with contextlib.suppress(RejectedError):
             self.lookup(self._control)
 
     def lookup(self, subject: str, *, timeout_s: float = 45.0) -> LookupResult:
         remaining = MIN_LOOKUP_INTERVAL_S - (time.monotonic() - self._last_lookup_at)
+
         if remaining > 0:
             time.sleep(remaining)
+
         doc_type = _DOCUMENT_TYPE[Subject(subject).kind]
+
         self._session.evaluate("window.__entelOutput = null")
         self._session.evaluate(f"window.__entelDocType = {json.dumps(doc_type)}")
         self._session.evaluate(f"window.__entelDocument = {json.dumps(subject)}")
         self._gui_click("#entel-collector-go")
+
         deadline = time.monotonic() + timeout_s
+
         while time.monotonic() < deadline:
             raw = self._session.evaluate("JSON.stringify(window.__entelOutput)")
+
             if raw and raw != "null":
                 payload = json.loads(raw)
                 self._last_lookup_at = time.monotonic()
                 self._record_lookup_diagnostic(payload)
-                return parse_lookup_result(payload, expected_document=subject)
+
+                return parse_lookup_result(
+                    payload,
+                    expected_document=subject,
+                )
+
             time.sleep(0.25)
-        msg = f"Entel lookup timed out for document {subject}"
-        raise BrowserError(msg)
+
+        raise BrowserError(f"Entel lookup timed out for document {subject}")
 
     def check_health(self) -> bool:
-        # The session is alive if the loop still returns a structured result. Only
-        # transport, timeout, or WAF errors mean it is dead.
         try:
             self.lookup(self._control)
         except RejectedError:
             return True
         except BrowserError:
             return False
+
         return True
 
     def _wait_for_template(self, *, timeout_s: float = 45.0) -> None:
-        # Continuar runs intermediate OutSystems round trips before Step2 is issued, so
-        # the wait scales with network latency, notably through a proxy exit.
+        # OutSystems performs intermediate round trips before issuing Step2, so
+        # this wait must account for proxy latency.
         deadline = time.monotonic() + timeout_s
+
         while time.monotonic() < deadline:
             if self._session.evaluate("!!window.__entelTemplate") is True:
                 return
+
             time.sleep(0.5)
+
         _fail("Entel form did not produce a Step2 request template")
 
     def _wait_for_form(self, *, timeout_s: float = 45.0) -> None:
         deadline = time.monotonic() + timeout_s
+
         while time.monotonic() < deadline:
             ready = self._session.evaluate(
                 "!!document.querySelector('#b9-b1-Dropdown_DocumentType')"
             )
+
             if ready is True:
                 return
+
             time.sleep(0.5)
+
         _fail("Entel form did not render")
 
     def _drive_form(self, document: str) -> None:
-        # Driven once, with the RUC control, only to capture the Step2 template. The
-        # dropdown choice here does not gate DNI lookups: see _DOCUMENT_TYPE.
+        # The form is driven only to capture the request template. Later lookups
+        # replace the document type and number directly in the body.
         for _ in range(3):
             self._gui_click("#b9-b1-Dropdown_DocumentType")
             time.sleep(1.2)
+
             tagged = self._session.evaluate(
                 "(() => { const option = [...document.querySelectorAll("
                 "'#b9-b1-Dropdown_DocumentType *')].find(element => "
@@ -265,28 +290,36 @@ class EntelPage:
                 " if (!option) return false; option.id = 'entel-ruc-option';"
                 " return true; })()"
             )
+
             if tagged is True:
                 self._gui_click("#entel-ruc-option")
                 time.sleep(1.2)
+
             selected = self._session.evaluate(
                 "document.querySelector('#b9-b1-Dropdown_DocumentType')"
                 ".innerText.trim().split('\\n').pop()"
             )
+
             if selected == "RUC":
                 break
         else:
             _fail("could not select RUC document type")
 
         inputs = json.loads(self._session.evaluate(VISIBLE_INPUTS_JS))
+
         if not inputs:
             _fail("Entel RUC input was not found")
+
         selector = f"#{inputs[0]['id']}"
+
         self._gui_click(selector)
         time.sleep(0.4)
         self._session.gui_write(document)
         time.sleep(1.2)
+
         inputs = json.loads(self._session.evaluate(VISIBLE_INPUTS_JS))
         entered = inputs[0]["value"] if inputs else None
+
         if entered != document:
             msg = f"OS input did not reach Entel form: got {entered!r}"
             raise BrowserError(msg)
@@ -294,15 +327,18 @@ class EntelPage:
         for selector in ("#b9-b1-Checkbox1", "#b9-b1-Checkbox2"):
             self._gui_click(selector)
             time.sleep(0.4)
+
         button_state = self._session.evaluate(
             "(() => { const button = [...document.querySelectorAll('button')]"
             ".find(element => /Continuar/i.test(element.innerText));"
             " if (!button) return 'missing'; button.id = 'entel-continue';"
             " return String(button.disabled); })()"
         )
+
         if button_state != "false":
             msg = f"Entel Continuar button is not enabled: {button_state}"
             raise BrowserError(msg)
+
         self._gui_click("#entel-continue")
         time.sleep(3.0)
 
@@ -318,6 +354,7 @@ class EntelPage:
     def _capture_stage(self, stage: str, *, timeout_s: float = 10.0) -> None:
         if self._diagnostic_log is None:
             return
+
         self._session.evaluate(
             "window.__entelDiagnosticOutput = null;"
             "window.__entelCaptureDiagnostics("
@@ -328,25 +365,37 @@ class EntelPage:
             + json.dumps(stage)
             + ", exception: String(error && error.message || error)}; });"
         )
+
         deadline = time.monotonic() + timeout_s
+
         while time.monotonic() < deadline:
             raw = self._session.evaluate(
                 "JSON.stringify(window.__entelDiagnosticOutput)"
             )
+
             if raw and raw != "null":
                 event = json.loads(raw)
+
                 if isinstance(event, dict):
                     self._diagnostic_log.record(event)
+
                 return
+
             time.sleep(0.1)
+
         self._diagnostic_log.record(
-            {"stage": stage, "exception": "diagnostic capture timed out"}
+            {
+                "stage": stage,
+                "exception": "diagnostic capture timed out",
+            }
         )
 
     def _record_lookup_diagnostic(self, payload: object) -> None:
         if self._diagnostic_log is None or not isinstance(payload, dict):
             return
+
         event = payload.get("diagnostic")
+
         if isinstance(event, dict):
             self._diagnostic_log.record(event)
 

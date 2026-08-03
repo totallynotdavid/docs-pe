@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import shutil
+
 from typing import TYPE_CHECKING
 
 from seleniumbase import sb_cdp  # type: ignore[import-untyped]
 
 from browser.errors import BrowserError
 from browser.session import SeleniumBaseSession
+
 
 if TYPE_CHECKING:
     from types import TracebackType
