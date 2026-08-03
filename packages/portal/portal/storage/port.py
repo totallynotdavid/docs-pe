@@ -20,7 +20,7 @@ class ObjectReference:
 
 
 class ObjectStorage(Protocol):
-    """Future adapter boundary; it never accepts a local process path."""
+    """Stores bytes against a reference, never against a local process path."""
 
     async def put_immutable(
         self, reference: ObjectReference, content: bytes

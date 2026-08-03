@@ -41,10 +41,10 @@ SECRET_KEY = base64.urlsafe_b64encode(b"c" * 32).decode("ascii")
 def portal_cluster() -> str:
     """Stop the run with instructions rather than skipping the portal silently.
 
-    A missing database used to mark the whole package skipped at collection, so a
-    green run said nothing about whether the portal had been tested. Asking for it
-    here instead means only a test that wants a database demands one: `pytest
-    tests/fetch` still runs without a cluster, because nothing requests this.
+    A green run has to mean the portal really ran, so a missing database fails
+    instead of skipping. Demanding it from a fixture rather than a collection hook
+    is what keeps `pytest tests/fetch` working with no cluster at all: only a test
+    that wants a database requests this.
     """
 
     async def ping() -> None:

@@ -1,9 +1,4 @@
-"""Errors deliberately mapped by the web boundary, never by the domain.
-
-An error names a `Reason`, never a sentence. The Spanish text a person reads is
-presentation and lives in `portal.messages`, so the layers below the web boundary
-stay language-free and one file holds every string a user can see.
-"""
+"""Errors mapped by the web boundary. An error names a `Reason`, never a sentence."""
 
 from __future__ import annotations
 
@@ -12,23 +7,19 @@ from typing import Any
 
 
 class Reason(StrEnum):
-    # Authorization
     NOT_A_MEMBER = "not_a_member"
     LEADER_REQUIRED = "leader_required"
     SITE_ADMIN_REQUIRED = "site_admin_required"
     CSRF_INVALID = "csrf_invalid"
 
-    # Lookup
     TEAM_NOT_FOUND = "team_not_found"
     JOB_NOT_FOUND = "job_not_found"
     USER_NOT_FOUND = "user_not_found"
 
-    # Submission planning
     SOURCE_REQUIRED = "source_required"
     SOURCE_DUPLICATED = "source_duplicated"
     SOURCE_NOT_ENABLED = "source_not_enabled"
 
-    # Credentials
     CREDENTIAL_REQUIRED = "credential_required"
     CREDENTIAL_WRONG_TEAM = "credential_wrong_team"
     CREDENTIAL_NOT_PENDING = "credential_not_pending"
@@ -37,7 +28,6 @@ class Reason(StrEnum):
     PROXY_INVALID = "proxy_invalid"
     PROXY_PREFLIGHT_FAILED = "proxy_preflight_failed"
 
-    # Provisioning
     INITIAL_TEAM_EXISTS = "initial_team_exists"
     TEAM_MISSING = "team_missing"
     TEAM_NAME_LENGTH = "team_name_length"
@@ -48,10 +38,8 @@ class Reason(StrEnum):
     ROLE_INVALID = "role_invalid"
     LAST_LEADER = "last_leader"
 
-    # Worker protocol
     WORKER_SOURCE_REQUIRED = "worker_source_required"
 
-    # CSV upload
     CSV_REQUIRED = "csv_required"
     CSV_EXTENSION = "csv_extension"
     CSV_EMPTY = "csv_empty"

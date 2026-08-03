@@ -22,11 +22,8 @@ _SOFTWARE_WEBGL_ARGS = ["--use-angle=swiftshader", "--enable-webgl"]
 class SeleniumBaseBrowser:
     """Launch a SeleniumBase Pure CDP browser and yield a Session.
 
-    SeleniumBase starts its own private Xvfb display per process (so concurrent
-    runs never share a GUI-input target), then drives Chrome over CDP with the
-    stealth needed to clear Cloudflare Turnstile. Site-agnostic: it needs the URL
-    to open and, optionally, a proxy exit to route through. Tears the browser down
-    on exit.
+    SeleniumBase starts its own private Xvfb display per process, so concurrent
+    runs never share a GUI-input target.
     """
 
     def __init__(
@@ -43,10 +40,8 @@ class SeleniumBaseBrowser:
             raise BrowserError(msg)
         args = list(_SOFTWARE_WEBGL_ARGS) if self._software_webgl else []
         if self._proxy is not None:
-            # Deliberately set as a Chrome flag rather than SeleniumBase's proxy=
-            # argument: that argument only accepts credentials, and supplying
-            # them makes it enable CDP Fetch interception, which stalls heavy
-            # pages. The proxy here is an unauthenticated local relay anyway.
+            # A Chrome flag, because SeleniumBase's own proxy= argument enables CDP
+            # Fetch interception and stalls heavy pages. This proxy is the local relay.
             args.append(f"--proxy-server={self._proxy}")
         self._driver = sb_cdp.Chrome(self._url, browser_args=args or None)
         return SeleniumBaseSession(self._driver)

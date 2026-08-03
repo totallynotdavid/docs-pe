@@ -18,10 +18,9 @@ if TYPE_CHECKING:
     from browser.session import Session
 
 
-# The debt DataAction reads DocumentType as a plain string from the request
-# body, so a template captured with any one kind serves both: we override
-# DocumentType per lookup instead of re-driving the dropdown. These are the
-# dropdown's own labels for the kinds Entel serves.
+# The debt DataAction reads DocumentType as a plain string from the request body, so
+# one captured template serves both kinds: lookup() overrides this field per call.
+# These are the dropdown's own labels.
 _DOCUMENT_TYPE: dict[SubjectKind, str] = {
     SubjectKind.RUC: "RUC",
     SubjectKind.DNI: "DNI",
@@ -195,10 +194,8 @@ class EntelPage:
         if installed != "installed":
             msg = f"could not install Entel lookup loop: {installed!r}"
             raise BrowserError(msg)
-        # A structured reject proves the loop is functional (token minted,
-        # request sent, JSON parsed). The reCAPTCHA v3 score fluctuates, so a
-        # single control mint clears only about half the time; only a real
-        # transport error here means the loop failed to install.
+        # A structured reject proves the loop is functional: token minted, request
+        # sent, JSON parsed. Only a real transport error means it failed to install.
         with contextlib.suppress(RejectedError):
             self.lookup(self._control)
 
@@ -224,9 +221,8 @@ class EntelPage:
         raise BrowserError(msg)
 
     def check_health(self) -> bool:
-        # The session is alive if the loop still returns a structured result.
-        # A reject is a valid response (fluctuating v3 score), not ill health;
-        # only transport, timeout, or WAF errors mean the session is dead.
+        # The session is alive if the loop still returns a structured result. Only
+        # transport, timeout, or WAF errors mean it is dead.
         try:
             self.lookup(self._control)
         except RejectedError:
@@ -236,9 +232,8 @@ class EntelPage:
         return True
 
     def _wait_for_template(self, *, timeout_s: float = 45.0) -> None:
-        # Continuar kicks off intermediate OutSystems round trips before the
-        # Step2 request is issued, so how long the template takes depends on
-        # network latency (notably via a proxy exit). Poll instead of assuming.
+        # Continuar runs intermediate OutSystems round trips before Step2 is issued, so
+        # the wait scales with network latency, notably through a proxy exit.
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
             if self._session.evaluate("!!window.__entelTemplate") is True:
@@ -258,10 +253,8 @@ class EntelPage:
         _fail("Entel form did not render")
 
     def _drive_form(self, document: str) -> None:
-        # The form is driven once, with the RUC control, only to capture the
-        # Step2 request template. That template serves every kind: lookup()
-        # overrides DocumentType in the request body per call (RUC or DNI), so
-        # the dropdown choice here is fixed and does not gate DNI lookups.
+        # Driven once, with the RUC control, only to capture the Step2 template. The
+        # dropdown choice here does not gate DNI lookups: see _DOCUMENT_TYPE.
         for _ in range(3):
             self._gui_click("#b9-b1-Dropdown_DocumentType")
             time.sleep(1.2)

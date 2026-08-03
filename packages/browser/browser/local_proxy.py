@@ -16,17 +16,6 @@ if TYPE_CHECKING:
     from browser.proxy import ProxyEndpoint
 
 
-# SeleniumBase's Pure CDP mode authenticates an upstream proxy by enabling CDP
-# Fetch interception (set_auth -> Fetch.enable with handle_auth_requests): every
-# request is paused and resumed through a Python handler on the CDP event loop.
-# One simple request survives that, but a heavy SPA (Entel's OutSystems app)
-# stalls and never renders, because the interception starves its subresource
-# XHRs. This is not a Chrome-version regression to downgrade around: the Fetch
-# path is unconditional (no version gate), and the blank-render stall reproduces
-# on Chrome 147, 148, 149, and 150 alike (measured). This relay terminates the
-# auth locally instead: Chrome talks to an unauthenticated 127.0.0.1 proxy, so no
-# interception is ever enabled, and we attach the upstream credentials ourselves.
-
 _BUFFER_BYTES = 65536
 _MAX_HEAD_BYTES = 65536
 _UPSTREAM_TIMEOUT_S = 30.0
@@ -35,8 +24,8 @@ _UPSTREAM_TIMEOUT_S = 30.0
 class LocalProxy:
     """An unauthenticated local proxy that forwards to an authenticated one.
 
-    Yields the "host:port" to hand Chrome. One relay per browser session, so a
-    session restart rotates the upstream exit exactly as before.
+    Yields the "host:port" to hand Chrome. Handing Chrome the authenticated
+    upstream directly stalls heavy pages: see the browser readme.
     """
 
     def __init__(self, endpoint: ProxyEndpoint) -> None:

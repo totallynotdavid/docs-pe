@@ -8,7 +8,7 @@ class BrowserError(RuntimeError):
 class RejectedError(BrowserError):
     """The site returned its ambiguous reject response (for Entel, HasErrorDebt).
 
-    A reject is the one signal that drives retry classification: it is not a
-    session fault but a fluctuating verdict, so the run re-mints rather than
-    restarts. Keep this the single owner of that distinction.
+    A reject is a fluctuating verdict on a healthy session, so the run re-mints a
+    token and resends. Entel fluctuates on its reCAPTCHA v3 score, portabilidad on a
+    stale Turnstile token.
     """

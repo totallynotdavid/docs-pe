@@ -159,8 +159,7 @@ async def proxy_settings_post(
     label: str = Form(),
     provider: str = Form(),
 ) -> Response:
-    # The provider's own field schema decides what to read, so adding a vendor
-    # never adds a parameter here.
+    # The provider's field schema decides what to read.
     form = await request.form()
     values = {
         field.name: str(form.get(field.name, ""))

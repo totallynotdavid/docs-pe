@@ -8,10 +8,9 @@ from portal.web.render import COMPONENT_ASSETS_URL, COMPONENTS_DIR
 
 router = APIRouter(prefix=COMPONENT_ASSETS_URL.rstrip("/"))
 
-# A stylesheet sits next to the component template that owns it, so the folder
-# cannot simply be mounted: that would serve the templates too. Reading the names
-# once turns the route into an allowlist, which is also what makes a traversing
-# path impossible to express.
+# A stylesheet sits next to the component template that owns it, so mounting the
+# folder would serve the templates too. Reading the names once makes the route an
+# allowlist, which also leaves no way to express a traversing path.
 _STYLESHEETS = frozenset(path.name for path in COMPONENTS_DIR.glob("*.css"))
 
 

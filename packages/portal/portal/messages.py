@@ -54,8 +54,7 @@ MESSAGES: dict[Reason, str] = {
     Reason.CSV_UNREADABLE: "no se pudo leer el archivo CSV",
 }
 
-# Field labels for the proxy credential form. The schema itself is the engine's
-# (fetch.proxy.registry); only the wording is the portal's.
+# Wording for the proxy credential form fields.
 FIELD_LABELS: dict[str, str] = {
     "username": "Usuario",
     "password": "Contraseña",

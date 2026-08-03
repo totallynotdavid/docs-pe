@@ -15,7 +15,7 @@ class PortalSettings:
     public_origin: str = "http://testserver"
     cookie_secure: bool = False
     tls_terminated_upstream: bool = False
-    object_root: Path = Path("var/objects")
+    object_root: Path = Path(".data/objects")
 
     @classmethod
     def from_environment(cls) -> PortalSettings:
@@ -32,7 +32,7 @@ class PortalSettings:
             or ("" if environment == "production" else "http://testserver"),
             cookie_secure=secure == "true" if secure else environment == "production",
             tls_terminated_upstream=tls_terminated_upstream,
-            object_root=Path(os.environ.get("PORTAL_OBJECT_ROOT", "var/objects")),
+            object_root=Path(os.environ.get("PORTAL_OBJECT_ROOT", ".data/objects")),
         )
 
     def validate(self) -> None:
@@ -63,7 +63,7 @@ class ReadinessProbe(Protocol):
 
 
 class DatabaseConfigured:
-    """Foundation readiness probe; deployments can replace it with an asyncpg ping."""
+    """Reports ready once a DSN is configured, without opening a connection."""
 
     def __init__(self, settings: PortalSettings) -> None:
         self._settings = settings

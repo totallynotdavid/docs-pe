@@ -31,7 +31,6 @@ _GATEWAY_HOST = "gw.dataimpulse.com"
 _HTTP_PORT = "823"
 _DEFAULT_SESSION_MINUTES = 3
 
-# DataImpulse's measured defaults for this workload.
 _TUNING = ProviderTuning(workers=18, ban_cooldown_s=30.0)
 
 
@@ -115,7 +114,7 @@ class DataImpulseProvider:
         )
 
     async def release(self, session: ProxySession) -> None:
-        # No-op: see class docstring. Debug-logged to surface leak hunts.
+        # Logged so a leak hunt can still see every session close.
         logger.debug(
             "%s %s",
             SESSION_RELEASE_SKIPPED,

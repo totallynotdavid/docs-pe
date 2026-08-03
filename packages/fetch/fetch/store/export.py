@@ -37,7 +37,6 @@ def export_site(*, store: OutcomeStore, output_csv: Path, site: Site) -> None:
     _write_atomic(
         success_path, ["doc", *site.columns], _success_lines(store, site.name)
     )
-    # Every projection is a free re-read of the same stored rows, no second crawl.
     for projection in site.projections:
         _write_atomic(
             _projection_path(success_path, projection.name),

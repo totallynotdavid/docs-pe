@@ -1,6 +1,7 @@
 .git
 .codegraph
 .venv
+node_modules
 .mypy_cache
 .pytest_cache
 .ruff_cache
@@ -10,8 +11,10 @@ __pycache__
 .env.*
 !*.env.example
 var
+.data
 build
 dist
 debug
 logs
 results
+*.egg-info

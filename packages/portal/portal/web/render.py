@@ -48,8 +48,8 @@ def component_catalog() -> Catalog:
     """Build the catalog: `components/` are shared, `pages/` are the entry points.
 
     Both folders share one namespace, so a page names a component directly. The
-    environment is handed over pre-built because a catalog only ever inherits
-    autoescaping from one it is given, and leaves it off otherwise.
+    environment must be handed over pre-built: a catalog only inherits autoescaping
+    from one it is given.
     """
     environment = Environment(autoescape=True)
     environment.filters["job_state"] = _state_label
@@ -65,7 +65,7 @@ def component_catalog() -> Catalog:
         }
     )
     environment.globals["job_summary"] = _job_summary
-    # Provider field wording: the schema is the engine's, the words are ours.
+    # The schema is the engine's; only the wording is ours.
     environment.globals["field_label"] = field_label
     environment.globals["choice_label"] = choice_label
     environment.globals["provider_label"] = provider_label

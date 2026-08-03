@@ -33,8 +33,7 @@ class RucKind(Enum):
 
 
 class Doc(UserString):
-    # The engine's identifier vocabulary; browser keeps a separate copy so the two
-    # packages stay independent. Site, Result, and the planner all speak in it.
+    # The identifier vocabulary Site, Result, and the planner all speak in.
     def __init__(self, value: str) -> None:
         normalized = value.strip()
         if _RUC_RE.match(normalized):
@@ -76,17 +75,14 @@ Row = tuple[Cell, ...]
 
 @dataclass(frozen=True)
 class SiteTuning:
-    # Lookups a sticky proxy session serves before rotation. A site/protocol
-    # constraint, not a proxy knob.
+    # Lookups a sticky proxy session serves before rotation. Set by what the site's
+    # protocol requires, not by the proxy vendor.
     session_budget: int
 
 
 @dataclass(frozen=True)
 class Endpoint:
-    """A named HTTP destination a site calls: name for diagnostics, url to hit.
-
-    The hosts a site warms are the ones listed in its Site.endpoints tuple.
-    """
+    """A named HTTP destination a site calls: name for diagnostics, url to hit."""
 
     name: str
     url: str
@@ -100,9 +96,8 @@ class Endpoint:
 class Projection:
     """A named alternate view over a site's stored rows, materialized on export.
 
-    The store holds each site's richest form once; a projection is a pure function
-    that reshapes those rows into a derived CSV (e.g. per-line numbers folded into
-    per-carrier counts) without a second crawl.
+    The store holds each site's richest form once, so a derived CSV costs a pure
+    function over those rows and no second crawl.
     """
 
     name: str
@@ -122,12 +117,10 @@ class Site:
 
     name: str
     columns: tuple[str, ...]
-    # Input contract: the sole owner of "can this site answer this document?". The
-    # planner routes each doc only to sites that accept it, so no site is ever handed
-    # a document it cannot serve.
+    # The sole owner of "can this site answer this document?". The planner routes on it.
     accepts: Callable[[Doc], bool]
-    # Output contract: a non-empty guarantee. The engine enforces this after every
-    # lookup, so a parser's empty fall-through becomes a loud fault.
+    # False makes the engine fault on an empty result, so a parser's empty
+    # fall-through is loud.
     allows_empty: bool
     tuning: SiteTuning
     # The hosts ready() warms before the first lookup.
@@ -136,9 +129,7 @@ class Site:
     lookup: Callable[[httpx.AsyncClient, Doc], Awaitable[tuple[Row, ...]]]
     # Derived CSV views exported alongside the canonical rows, no extra fetch.
     projections: tuple[Projection, ...] = ()
-    # Whether the portal may offer this site to a team. Landing in this package is
-    # not the same as being ready for unattended, customer-facing runs, so the
-    # promotion is one explicit flag rather than a list the portal has to restate.
+    # Whether the portal may offer this site to a team.
     stable: bool = False
 
 

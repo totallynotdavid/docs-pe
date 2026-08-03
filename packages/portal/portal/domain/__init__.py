@@ -1,1 +1,1 @@
-"""Pure portal policy, types, and input planning. No database or HTTP imports."""
+"""Pure portal policy. No database or HTTP imports."""

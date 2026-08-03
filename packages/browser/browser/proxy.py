@@ -9,23 +9,9 @@ from typing import Protocol
 from dotenv import load_dotenv
 
 
-# This mirrors fetch/proxy's env contract on purpose: the same .env, the same
-# PROXY_PROVIDER / GEONODE_* / DATAIMPULSE_* variables, the same vendor username
-# formats. It is a deliberate copy, not a shared import, exactly like
-# browser/subject.py mirrors fetch's Doc: the two packages stay independent.
-# Browser drives ONE Chrome session at a time, so this copy is far smaller than
-# fetch's: no per-worker sticky ports, no async release, no egress probing.
-# It only has to hand Chrome a connection string; rotation is the run loop
-# minting a fresh exit each time it (re)opens a session.
-
-
 @dataclass(frozen=True)
 class ProxyEndpoint:
-    """One upstream proxy exit and the credentials to reach it.
-
-    Chrome never sees these: browser/local_proxy.py authenticates upstream on
-    its behalf. Never log the password.
-    """
+    """Credentials for one upstream proxy exit. Never log the password."""
 
     host: str
     port: str
@@ -45,15 +31,17 @@ _GEONODE_GATEWAY_HOST = {
     "us": "us.proxy.geonode.io",
     "sg": "sg.proxy.geonode.io",
 }
-# One session at a time, so one dedicated sticky port is enough. Fetch spreads
-# lanes across 10000..10900; browser only ever needs the first.
+# Browser drives one session at a time, so it only ever needs the first sticky port.
 _GEONODE_STICKY_PORT = "10000"
 
 _DATAIMPULSE_HOST = "gw.dataimpulse.com"
 _DATAIMPULSE_PORT = "823"
-_DATAIMPULSE_DEFAULT_SESSTTL = 3
 
 _KNOWN_PROVIDERS = ("geonode", "dataimpulse")
+
+
+def _new_session_id() -> str:
+    return f"b_{uuid.uuid4().hex[:8]}"
 
 
 @dataclass(frozen=True)
@@ -67,12 +55,6 @@ class _GeoNodeConfig:
 
 
 class GeoNodeProvider:
-    """GeoNode sticky sessions: a fresh session id per endpoint pins a new exit IP.
-
-    The run loop calls new_endpoint() once per browser session, so each session
-    restart (a ban) rotates to a fresh Peru exit.
-    """
-
     name = "geonode"
 
     def __init__(self, config: _GeoNodeConfig) -> None:
@@ -80,9 +62,8 @@ class GeoNodeProvider:
 
     def new_endpoint(self) -> ProxyEndpoint:
         config = self._config
-        session_id = f"b_{uuid.uuid4().hex[:8]}"
         username = (
-            f"{config.user}-session-{session_id}"
+            f"{config.user}-session-{_new_session_id()}"
             f"-type-{config.proxy_type}"
             f"-country-{config.country}"
             f"-lifetime-{config.lifetime}"
@@ -104,12 +85,6 @@ class _DataImpulseConfig:
 
 
 class DataImpulseProvider:
-    """DataImpulse sticky sessions keyed by a per-session sessid in the username.
-
-    Sessions expire by sessttl, so there is nothing to release; a fresh sessid
-    per endpoint pins a new exit IP.
-    """
-
     name = "dataimpulse"
 
     def __init__(self, config: _DataImpulseConfig) -> None:
@@ -117,10 +92,9 @@ class DataImpulseProvider:
 
     def new_endpoint(self) -> ProxyEndpoint:
         config = self._config
-        session_id = f"b_{uuid.uuid4().hex[:8]}"
         username = (
             f"{config.user}__cr.{config.country}"
-            f";sessid.{session_id};sessttl.{config.sessttl}"
+            f";sessid.{_new_session_id()};sessttl.{config.sessttl}"
         )
         return ProxyEndpoint(
             host=_DATAIMPULSE_HOST,
@@ -131,20 +105,16 @@ class DataImpulseProvider:
 
 
 def load_proxy_provider(*, env_file: str) -> ProxyProvider:
-    """Construct the proxy provider selected by PROXY_PROVIDER, or fail fast.
-
-    Browser runs one session at a time, so it uses a single provider. A shared
-    .env may list several for fetch's worker pool (e.g. "geonode,dataimpulse");
-    browser takes the first named.
-    """
+    """Build the first provider listed in PROXY_PROVIDER, or fail fast."""
     load_dotenv(env_file, override=False)
     raw = getenv("PROXY_PROVIDER", "").strip()
     if not raw:
         msg = "PROXY_PROVIDER must be set (geonode or dataimpulse), or pass --no-proxy"
         raise RuntimeError(msg)
 
-    names = [chunk.strip().lower() for chunk in raw.split(",") if chunk.strip()]
-    name = names[0]
+    name = next(
+        (chunk.strip().lower() for chunk in raw.split(",") if chunk.strip()), ""
+    )
     if name not in _KNOWN_PROVIDERS:
         allowed = "|".join(_KNOWN_PROVIDERS)
         msg = f"PROXY_PROVIDER entry {name!r} is not one of {allowed}"
@@ -155,21 +125,31 @@ def load_proxy_provider(*, env_file: str) -> ProxyProvider:
     return DataImpulseProvider(_load_dataimpulse_config())
 
 
+def _whole_number(name: str, *, default: int) -> int:
+    raw = getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        msg = f"{name} must be a whole number"
+        raise RuntimeError(msg) from None
+
+
 def _load_geonode_config() -> _GeoNodeConfig:
     user = getenv("GEONODE_USER", "")
     password = getenv("GEONODE_PASS", "")
     gateway = getenv("GEONODE_GATEWAY", "fr")
     proxy_type = getenv("GEONODE_TYPE", "residential")
     country = getenv("GEONODE_COUNTRY", "")
-    lifetime_raw = getenv("GEONODE_LIFETIME", "").strip()
-    lifetime = int(lifetime_raw) if lifetime_raw else 10
+    lifetime = _whole_number("GEONODE_LIFETIME", default=10)
 
     if not user or not password:
         msg = "missing GEONODE_USER or GEONODE_PASS"
         raise RuntimeError(msg)
     if not country:
-        # Peru sites geo-gate or geo-score foreign exits; an unset country
-        # silently routes through the wrong region, so fail loudly instead.
+        # An unset country silently routes through the wrong region, which the
+        # Peru sites geo-gate or geo-score. Fail loudly instead.
         msg = "GEONODE_COUNTRY must be set (Peru exits, e.g. PE)"
         raise RuntimeError(msg)
     if gateway not in _GEONODE_GATEWAY_HOST:
@@ -197,8 +177,7 @@ def _load_dataimpulse_config() -> _DataImpulseConfig:
     user = getenv("DATAIMPULSE_USER", "")
     password = getenv("DATAIMPULSE_PASS", "")
     country = getenv("DATAIMPULSE_COUNTRY", "").strip().lower()
-    sessttl_raw = getenv("DATAIMPULSE_SESSTTL", "").strip()
-    sessttl = int(sessttl_raw) if sessttl_raw else _DATAIMPULSE_DEFAULT_SESSTTL
+    sessttl = _whole_number("DATAIMPULSE_SESSTTL", default=3)
 
     if not user or not password:
         msg = "missing DATAIMPULSE_USER or DATAIMPULSE_PASS"

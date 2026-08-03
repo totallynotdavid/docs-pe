@@ -23,9 +23,8 @@ HOME_URL = (
 API_URL = "https://e-consultaruc.sunat.gob.pe/cl-ti-itmrconsruc/jcrS00Alias"
 _ORIGIN = "https://e-consultaruc.sunat.gob.pe"
 
-# _HOME is warmed by being listed in each site's endpoints tuple. _CONSULTA and
-# _REPS are dispatch targets the lookup functions post to; their name feeds the
-# status-error message and is never warmed.
+# Only _HOME is warmed, by being listed in each site's endpoints tuple. _CONSULTA and
+# _REPS are POST targets whose name feeds the status-error message.
 _HOME = Endpoint(name="home", url=HOME_URL)
 _CONSULTA = Endpoint(name="consulta", url=API_URL)
 _REPS = Endpoint(name="reps", url=API_URL)
@@ -109,10 +108,8 @@ SUNAT = Site(
     name="sunat",
     columns=("tipo_doc", "num_doc", "nombre", "tipo_contribuyente"),
     accepts=_accepts_natural_ruc,
-    # Every RUC-10 SUNAT will answer for yields at least a name, so an empty
-    # result is drift, never a valid blank. A sucesion indivisa has no identity
-    # document but still has a name, and the parser reports it with tipo_doc and
-    # num_doc blank rather than nothing at all.
+    # Every RUC-10 SUNAT answers for yields at least a name, so an empty result is
+    # drift. A sucesion indivisa comes back with tipo_doc and num_doc blank.
     allows_empty=False,
     tuning=_TUNING,
     endpoints=(_HOME,),

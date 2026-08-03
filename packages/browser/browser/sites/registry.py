@@ -10,8 +10,8 @@ if TYPE_CHECKING:
     from browser.sites.base import BrowserSite
 
 
-# The registry is a plain dict, not a framework: name -> BrowserSite value.
-# Adding a site is one new sites/<name>/ module plus one entry here.
+# name -> BrowserSite value. Adding a site is one sites/<name>/ module plus one
+# entry here.
 SITES: dict[str, BrowserSite] = {
     PORTABILIDAD.name: PORTABILIDAD,
     ENTEL.name: ENTEL,

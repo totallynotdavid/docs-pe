@@ -10,9 +10,8 @@ if TYPE_CHECKING:
 
 
 # Every script, style and font the portal serves comes from its own origin, so the
-# policy needs no exception: injected markup has nowhere to fetch code from, and
-# inline `<script>` will not run. This is what forces the vendored htmx in
-# `web/static` rather than a CDN, in an app that stores proxy credentials.
+# policy needs no exception and injected markup has nowhere to fetch code from. This
+# is what forces htmx to be vendored into `web/static`.
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; "
     "object-src 'none'; "

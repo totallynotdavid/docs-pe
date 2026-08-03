@@ -21,9 +21,9 @@ DEFAULT_MAX_COOLDOWN_S = 300.0
 class CircuitBreaker:
     """Per-provider health gate shared by all its lanes.
 
-    Lanes await acquire() before each attempt; a burst of transient failures parks
-    every lane on that provider with exponential backoff, and the first healthy
-    contact closes it. No lock is needed: asyncio is single-threaded.
+    Lanes await acquire() before each attempt; a burst of failures parks every lane on
+    that provider with exponential backoff, and the first healthy contact closes it.
+    Single-threaded asyncio, so no lock.
     """
 
     def __init__(

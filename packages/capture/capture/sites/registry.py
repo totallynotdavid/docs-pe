@@ -9,8 +9,8 @@ if TYPE_CHECKING:
     from capture.sites.base import CaptureSite
 
 
-# The registry is a plain dict, not a framework: name -> CaptureSite value.
-# Adding a site is one new sites/<name>/ module plus one entry here.
+# name -> CaptureSite value. Adding a site is one sites/<name>/ module plus one
+# entry here.
 SITES: dict[str, CaptureSite] = {
     ENTEL.name: ENTEL,
 }

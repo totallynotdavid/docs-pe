@@ -10,16 +10,15 @@ if TYPE_CHECKING:
     from fetch.domain.types import Site
 
 
-# The registry is a plain dict, not a framework: name -> Site value. Adding a site
-# is one new sites/<name>/ module plus one entry here.
+# name -> Site value. Adding a site is one sites/<name>/ module plus one entry here.
 SITES: dict[str, Site] = {
     SUNAT.name: SUNAT,
     SUNAT_REPS.name: SUNAT_REPS,
     OSIPTEL.name: OSIPTEL,
 }
 
-# The subset the portal may offer to a team. Derived from the sites themselves so
-# promoting one is a single flag, not an edit in two packages.
+# The subset the portal may offer to a team, derived from the sites themselves so
+# promoting one is a single flag.
 STABLE_SITES: frozenset[str] = frozenset(
     name for name, site in SITES.items() if site.stable
 )

@@ -3,10 +3,10 @@ requires = ["setuptools>=83.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "osiptel-portal"
+name = "portal"
 version = "0.1.0"
 requires-python = ">=3.11"
-description = "Team-scoped OSIPTEL portal control plane backed only by PostgreSQL."
+description = "Team-scoped portal control plane backed only by PostgreSQL."
 dependencies = [
     "asyncpg>=0.30.0",
     "cryptography>=44.0.0",
@@ -21,8 +21,8 @@ dependencies = [
 ]
 
 [project.scripts]
-osiptel-portal = "portal.web.app:main"
-osiptel-portal-worker = "portal.worker.service:main"
+portal = "portal.web.app:main"
+portal-worker = "portal.worker.service:main"
 portal-bootstrap = "portal.bootstrap:main"
 portal-migrate = "portal.migrate:main"
 portal-provision = "portal.provision:main"

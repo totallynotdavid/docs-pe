@@ -49,7 +49,6 @@ _RELEASE_URL = "https://monitor.geonode.com/sessions/release/proxies"
 # backoff clears transient hiccups without blocking the lane.
 _RELEASE_RETRIES = 3
 
-# GeoNode's measured default for this workload.
 _TUNING = ProviderTuning(workers=15, ban_cooldown_s=30.0)
 
 

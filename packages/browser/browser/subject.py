@@ -12,22 +12,17 @@ _DNI_RE = re.compile(r"^\d{7,8}$")
 
 
 class SubjectKind(Enum):
-    # What is being looked up. A site declares which kinds it serves
-    # (BrowserSite.accepts), and the planner routes each subject only to sites that
-    # accept its kind, so no site is handed an identifier it cannot answer.
     PHONE = "phone"
     DNI = "dni"
     RUC = "ruc"
 
 
 class Subject(UserString):
-    # The engine's identifier vocabulary, spanning every kind the browser sites take.
-    # This package keeps its own copy so it stays independent of fetch's Doc. The store,
-    # sites, and driver all speak in it.
+    # A deliberate copy of fetch's Doc, over the kinds browser sites take.
     #
-    # Classification is by digit shape and must stay unambiguous: Peru mobiles are 9
-    # digits leading 9, DNIs are 7-8 digits, RUCs are 11. Lengths never collide, so an
-    # 8-digit landline reads as a DNI; 8-digit portability is out of scope and
+    # Classification is by digit shape, which stays unambiguous only because the
+    # lengths never collide: Peru mobiles are 9 digits leading 9, DNIs are 7-8, RUCs
+    # are 11. An 8-digit landline therefore reads as a DNI, which is acceptable while
     # portabilidad targets 9-digit mobiles.
     def __init__(self, value: str) -> None:
         normalized = value.strip()

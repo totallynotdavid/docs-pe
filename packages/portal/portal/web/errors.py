@@ -20,9 +20,9 @@ class LoginRequired(Exception):
 def install_error_handlers(app: FastAPI) -> None:
     """Translate domain errors once, so routes only raise what they mean.
 
-    A route that lets a `PortalError` escape is denying the request. A route that
-    catches one is re-rendering its form with a message. This is also the only
-    place a reason becomes Spanish, so nothing below the web boundary holds copy.
+    A route that lets a `PortalError` escape is denying the request; a route that
+    catches one is re-rendering its form with a message. The only place a reason
+    becomes Spanish, so nothing below the web boundary holds copy.
     """
     app.add_exception_handler(LoginRequired, _to_login)
     app.add_exception_handler(NotFound, _not_found)

@@ -25,7 +25,7 @@ class ProxySession:
 
 @dataclass(frozen=True)
 class ProviderTuning:
-    # Vendor-supplied operational defaults.
+    # Vendor defaults. A lane count in PROXY_PROVIDER overrides workers per deployment.
     workers: int
     ban_cooldown_s: float
 
@@ -43,10 +43,9 @@ class ProxyProvider(Protocol):
 class Field:
     """One configuration input a provider needs.
 
-    This schema is the single source for all three consumers: the environment
-    loader (which reads `<PROVIDER>_<FIELD>`), the portal's credential form, and
-    `ProviderSpec.build`. Human labels are user-facing copy and deliberately do
-    not live here -- the portal keys them by `(provider, field)`.
+    The single source for its three consumers: the environment loader (which reads
+    `<PROVIDER>_<FIELD>`), the portal's credential form, and `ProviderSpec.build`.
+    Human labels are user-facing copy, keyed by `(provider, field)` in the portal.
     """
 
     name: str
@@ -61,10 +60,9 @@ class Field:
 class ProviderSpec:
     """A proxy vendor as a value: its field schema plus two functions.
 
-    Mirrors `domain.types.Site` deliberately. `normalize` validates raw strings
-    from any source and returns canonical ones keyed by field name; `build` turns
-    those into a live provider. Adding a vendor is one module plus one entry in
-    `registry.PROVIDERS`, with no downstream if-chain to extend.
+    `normalize` validates raw strings from any source and returns canonical ones
+    keyed by field name; `build` turns those into a live provider. Nothing
+    downstream branches on the vendor.
     """
 
     name: str

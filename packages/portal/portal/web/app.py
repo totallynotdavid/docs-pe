@@ -38,9 +38,8 @@ def create_app(
 ) -> FastAPI:
     """Create the server-rendered portal.
 
-    There is one repository and one object store. The portal is PostgreSQL-only,
-    so a missing DSN is a misconfiguration to fail on rather than a cue to fall
-    back to something with different semantics.
+    One repository and one object store. The portal is PostgreSQL-only, so a missing
+    DSN fails at startup.
     """
     settings = settings or PortalSettings.from_environment()
     settings.validate()

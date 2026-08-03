@@ -53,8 +53,8 @@ PUBLISHED_ITEM_STATES = frozenset({ItemState.PUBLISHED})
 # Job events a member is notified about. Progress events stay out of the feed.
 TERMINAL_JOB_EVENTS = ("proceso.completed", "proceso.failed", "proceso.cancelled")
 MAX_ACTIVE_JOBS = 5
-# Times an item may be handed to a worker before an expired lease retires it.
-# Mirrors fetch.domain.policy.MAX_ATTEMPTS, which bounds the same kind of retry.
+# Times an item may be handed to a worker before an expired lease retires it. This
+# bounds worker handoffs, not lookup attempts: the engine caps those separately.
 MAX_LEASE_ATTEMPTS = 4
 
 

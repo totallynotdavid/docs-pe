@@ -3,9 +3,9 @@ from __future__ import annotations
 import secrets
 
 
-# SUNAT's grecaptcha wrapper is a client-side stub that returns a random 52-char
-# base-36 string; the server only checks the token is present and plausibly shaped,
-# never that it is a real reCAPTCHA response, so this mints a token of the same shape.
+# SUNAT's grecaptcha wrapper is a client-side stub returning a random 52-char base-36
+# string, and the server only checks that a token is present and plausibly shaped. So
+# this mints one of the same shape.
 _TOKEN_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz"
 _TOKEN_LENGTH = 52
 

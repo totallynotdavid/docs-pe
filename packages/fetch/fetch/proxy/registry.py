@@ -14,8 +14,8 @@ if TYPE_CHECKING:
     from fetch.proxy.base import ProviderSpec, ProxyProvider
 
 
-# The registry is a plain dict, not a framework: name -> ProviderSpec value. Adding
-# a vendor is one new proxy/<name>.py module plus one entry here.
+# name -> ProviderSpec value. Adding a vendor is one proxy/<name>.py module plus
+# one entry here.
 PROVIDERS: dict[str, ProviderSpec] = {
     GEONODE.name: GEONODE,
     DATAIMPULSE.name: DATAIMPULSE,
@@ -40,9 +40,8 @@ def provider_from_values(name: str, raw: Mapping[str, str]) -> ProxyProvider:
 async def preflight(name: str, raw: Mapping[str, str]) -> str:
     """Prove a configuration reaches the internet, and return its exit IP.
 
-    This dials through a real session built by the provider itself, so what it
-    validates is exactly what a run will use -- there is no second copy of a
-    vendor's username format to drift out of sync.
+    Dials a real session built by the provider itself, so it validates exactly what a
+    run will use.
     """
     provider = provider_from_values(name, raw)
     session = provider.new_session(slot_id=1)

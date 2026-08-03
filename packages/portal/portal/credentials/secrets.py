@@ -25,9 +25,8 @@ class AesGcmSecretProtector:
     """AES-GCM protection for stored proxy credentials, keyed from the environment.
 
     The key is never persisted with the ciphertext, returned to a caller, or
-    rendered. A missing or malformed key is a deployment fault raised at startup,
-    not a condition to degrade into: without it the portal cannot store a
-    credential at all.
+    rendered. A missing or malformed key fails at startup: without it the portal
+    cannot store a credential at all.
     """
 
     key_id = "environment"

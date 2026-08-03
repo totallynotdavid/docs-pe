@@ -44,11 +44,7 @@ def load_proxy_providers(*, env_file: str) -> list[ProxyProvider]:
 
 
 def values_from_environment(spec: ProviderSpec) -> dict[str, str]:
-    """Read a provider's configuration from `<PROVIDER>_<FIELD>` variables.
-
-    The field schema drives this, so a new vendor becomes configurable without
-    touching the loader.
-    """
+    """Read a provider's configuration from `<PROVIDER>_<FIELD>` variables."""
     raw = {
         field.name: getenv(f"{spec.name}_{field.name}".upper(), field.default)
         for field in spec.fields
@@ -78,8 +74,7 @@ def _build(request: _ProviderSpecRequest) -> ProxyProvider:
     spec = spec_for(request.name)
     provider = spec.build(values_from_environment(spec))
     if request.workers is not None:
-        # Lane count is deployment capacity, not a vendor default, so it is applied
-        # here rather than inside each provider class -- a new provider then needs
-        # no code to become tunable.
+        # Lane count is deployment capacity, so it is applied here and a new provider
+        # needs no code to become tunable.
         provider.tuning = replace(provider.tuning, workers=request.workers)
     return provider

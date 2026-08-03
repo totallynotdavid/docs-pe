@@ -32,8 +32,8 @@ FORM_SETTLE_S = 3.0
 
 class PortabilidadPage:
     """Drives consulta.portabilidad.pe: fill the number, clear Turnstile, submit,
-    parse the returned card. Each lookup re-navigates for a fresh antiforgery token
-    and a fresh single-use Turnstile token, so one session serves many numbers."""
+    parse the returned card. Each lookup re-navigates, because both the antiforgery
+    token and the Turnstile token are single use."""
 
     def __init__(
         self, *, session: Session, diagnostic_log: DiagnosticLog | None = None
@@ -65,13 +65,10 @@ class PortabilidadPage:
     def _solve_turnstile(self, *, attempts: int = 10, poll_s: int = 12) -> int:
         started = time.monotonic()
         for _ in range(attempts):
-            # The first click reliably misses (the widget is not interactive the
-            # instant the form settles), and gui_click_captcha is idempotent. A
-            # landed click mints the token within a few seconds, so re-click after
-            # a short poll rather than waiting out a long one on a click that has
-            # already missed: burning the full window on the doomed first click was
-            # what pinned every solve near 48s. attempts * poll_s is the total
-            # ceiling before we treat it as a genuine miss.
+            # The first click reliably misses: the widget is not interactive the
+            # instant the form settles. A landed click mints within a few seconds, so
+            # poll briefly and re-click, which is idempotent. Waiting out one long
+            # window instead pins every solve near 48s.
             self._session.gui_click_captcha()
             for _ in range(poll_s):
                 if self._session.evaluate(TOKEN_JS):
@@ -87,8 +84,6 @@ class PortabilidadPage:
             if RESULT_MARKER in body:
                 return
             if CAPTCHA_ERROR in body:
-                # A stale/invalid token is a fluctuating verdict, not a session fault;
-                # the driver re-mints on RejectedError.
                 msg = f"portabilidad rejected the Turnstile token: {CAPTCHA_ERROR}"
                 raise RejectedError(msg)
             self._session.sleep(0.5)

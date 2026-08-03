@@ -13,14 +13,11 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CaptureSite:
-    # A site value is data plus two callables: parse an in-page result payload
-    # into a stored column dict, and project that column dict into an export row.
-    # `script` is the in-page recipe pasted into a reputable Chrome. `origin` is
-    # the only host the relay accepts requests from. Adding a site is one new
-    # sites/<name>/ module plus one registry entry.
     name: str
+    # The only host the relay accepts requests from.
     origin: str
     export_header: tuple[str, ...]
+    # The in-page recipe a person pastes into their own Chrome.
     script: Path
     parse: Callable[..., LookupResult]
     row: Callable[[str, dict[str, str], str], list[Any]]

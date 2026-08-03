@@ -1,19 +1,19 @@
 __pycache__/
-
-build/
-dist/
 *.egg-info/
 node_modules/
 
-downloaded_files/
+# Build output
+build/
+dist/
+
+# Local configuration
 .env*
 !.env.example
 
-# Run artifacts live under runs/ so a fixture CSV elsewhere stays committable.
-runs/
+# Generated data
+.data/
 logs/
-var/
-.old-state-backup/
+results/
 
-*.pid
-*.pgid
+# results contain PII data
+/*.csv

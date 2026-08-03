@@ -38,9 +38,9 @@ _SUCESION_PREFIX_RE = re.compile(r"^SUCESI[ÓO]N\s+INDIVISA\s+", re.IGNORECASE)
 
 _RESULT_MARKER = "Resultado de la B"
 _ERROR_MARKERS = ("Pagina de Error", "Surgieron problemas")
-# SUNAT answers an unregistered RUC with a result page that says the number "no es
-# valido". That is an answer, not a fault: the RUC will never resolve, so retrying
-# only burns attempts. Matched up to the accent, which may arrive raw or escaped.
+# SUNAT answers an unregistered RUC with a result page saying the number "no es
+# valido". It will never resolve, so this is an answer and retrying burns attempts.
+# Matched up to the accent, which may arrive raw or escaped.
 _NOT_REGISTERED_RE = re.compile(r"RUC\s+\d+\s+consultado no es v", re.IGNORECASE)
 
 
@@ -60,11 +60,10 @@ def parse_tipo_documento(page: str) -> SunatRecord | None:
     if record is not None:
         return record
 
-    # No document row. That is legitimate only for a sucesion indivisa: the estate
-    # of someone who died intestate, which SUNAT registers as a taxpayer and taxes
-    # like a natural person, but which holds no identity document of its own. The
-    # person's name still exists, in the RUC row. For any other contributor type a
-    # missing row is parser drift, so report nothing and let allows_empty raise.
+    # No document row. Legitimate only for a sucesion indivisa, the estate of someone
+    # who died intestate: SUNAT taxes it like a natural person but it holds no
+    # identity document, and only the RUC row carries the name. Any other contributor
+    # type with a missing row is parser drift, so report nothing and let it raise.
     if not _SUCESION_RE.search(tipo_contribuyente):
         return None
     # The RUC row repeats the "SUCESION INDIVISA" prefix that tipo_contribuyente

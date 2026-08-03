@@ -1,38 +1,59 @@
-# osiptel
+# docs-pe
 
-Tools for bulk-looking-up public data about Peruvian RUCs (tax IDs) from government
-and carrier sites. This is a [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/)
-holding three packages, split by the mechanism a site demands: a plain HTTP client, an
-automated browser, or a human at a reputable browser.
+Takes a CSV of Peruvian DNIs or RUCs and looks each one up on the public sites
+that answer for it. Returns registered phone lines, taxpayer identity records,
+legal representatives, and carrier debt.
 
-- [`packages/fetch`](packages/fetch/readme.md) reads sites that answer a plain HTTP
-  request. It bulk-looks-up OSIPTEL phone-line counts and SUNAT identity records for a
-  CSV of RUCs, fanned out across proxied async lanes and backed by a resume database.
-  This is the workhorse and the package you almost always want.
-- [`packages/browser`](packages/browser/readme.md) reads sites that need a real browser.
-  It drives Google Chrome over the DevTools protocol on a headless server, one prepared
-  page per site. Entel's reCAPTCHA-v3 debt page is the first site.
-- [`packages/capture`](packages/capture/readme.md) is the discovery tool you reach for
-  first when adding a site. It intercepts a site's own calls from your everyday Chrome so
-  you can learn its recipe, and collects through that reputable browser when automation
-  cannot clear the gate. Standard library only, no browser launched.
-- [`packages/portal`](packages/portal/readme.md) is the separately deployable
-  authenticated, team-scoped control plane. It uses only the stable HTTP `fetch`
-  adapters, is PostgreSQL-only, and does not integrate with CRM.
-
-## Working in the repo
-
-The toolchain (uv, python, ruff) is pinned in `mise.toml`. Run tasks from the repo root:
+## Get started
 
 ```sh
-mise install          # install the toolchain
-mise run install      # sync all packages and dev dependencies
-mise run format       # ruff format + ruff check --fix
-mise run check        # mypy across the workspace
-mise run test         # pytest across all packages
-mise run build        # build the fetch standalone binary
-mise run portal:dev   # start PostgreSQL, migrate/bootstrap the portal, then run it
+mise install                                  # toolchain: uv, python, ruff, postgres
+mise run install                              # uv sync --all-packages --all-groups
+cp .env.example .env                          # then fill in the proxy credentials
+uv run fetch --input docs.csv --output out.csv --sites osiptel
 ```
 
-Proxy credentials for `fetch` load from a gitignored `.env`; copy `.env.example` to
-start. `browser` and `capture` need no credentials.
+`fetch` needs proxy credentials; `browser` and `capture` do not. The
+[fetch manual](packages/fetch/readme.md) is the place to start reading.
+
+Other tasks, all from the repo root:
+
+```sh
+mise run format       # ruff format + ruff check --fix
+mise run check        # mypy across the workspace
+mise run test         # pytest across all packages, portal included
+mise run build        # PyInstaller single binary for fetch
+mise run portal:dev   # start PostgreSQL, migrate, bootstrap, run the portal
+```
+
+## Packages
+
+A [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/). Each
+package serves one access mechanism.
+
+| Package                                 | Reads sites that             |                                                   |
+| --------------------------------------- | ---------------------------- | ------------------------------------------------- |
+| [`fetch`](packages/fetch/readme.md)     | answer a plain HTTP request  | the workhorse, and the one you almost always want |
+| [`browser`](packages/browser/readme.md) | need a real Chrome           | driven over CDP on a headless display             |
+| [`capture`](packages/capture/readme.md) | need a browser a person owns | the discovery tool, standard library only         |
+| [`portal`](packages/portal/readme.md)   | are stable enough to sell    | authenticated, team-scoped, PostgreSQL-only       |
+
+A new site usually starts in `capture`, which discovers its wire protocol from
+your own Chrome, moves to `browser` once it can be driven, and lands in `fetch`
+when it survives unattended runs. `Site.stable` is the last step: the portal
+offers exactly the sites whose flag is set.
+
+Each package keeps its own copy of a site's parser, columns, and document type.
+Do not add cross-package imports.
+
+## Notes
+
+Written while working out how the sites behave.
+
+- [docs/results.md](docs/results.md), every reconciled job and what a healthy
+  one looks like.
+- [docs/proxies.md](docs/proxies.md), how the proxy vendors behave per site.
+- [docs/entel.md](docs/entel.md), the Entel wire protocol and everything ruled
+  out.
+
+Job output lands in `results/`, which is gitignored.

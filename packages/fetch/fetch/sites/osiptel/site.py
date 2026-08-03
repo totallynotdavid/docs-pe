@@ -110,8 +110,7 @@ def _id_tipo_doc(doc: Doc) -> str:
 
 
 def _counts(rows: tuple[Row, ...]) -> tuple[Row, ...]:
-    # Fold the per-line rows into per-carrier counts; total_lines is the doc's grand
-    # total. A pure projection over stored rows, so counts never costs a second fetch.
+    # Per-carrier line counts, with total_lines the document's grand total.
     counts: dict[str, int] = {}
     for _modalidad, _numero, operador in rows:
         key = str(operador)
@@ -245,7 +244,6 @@ _COUNTS = Projection(
 
 OSIPTEL = Site(
     name="osiptel",
-    # The raw truth is one row per line: its modality, redacted number, and carrier.
     columns=("modalidad", "numero", "operador"),
     accepts=_accepts_any,
     # A document with no phone lines is a real, valid empty result, not a fault.
@@ -255,7 +253,6 @@ OSIPTEL = Site(
     endpoints=(_HOME,),
     ready=_ready,
     lookup=_lookup,
-    # Per-carrier line counts, folded from the stored rows at export time.
     projections=(_COUNTS,),
     stable=True,
 )

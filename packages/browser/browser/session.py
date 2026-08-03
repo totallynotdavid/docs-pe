@@ -6,11 +6,8 @@ from typing import Any, Protocol
 class Session(Protocol):
     """The seam between a browser backend and a site page.
 
-    A site page drives a live browser only through these methods, so it never
-    imports the backend. One backend (SeleniumBase CDP over its own Xvfb display)
-    satisfies this; the backend never knows a site. Mirrors the old PageController
-    seam, widened to the operations both sites need (Turnstile GUI click for
-    portabilidad, raw JS evaluate for Entel's token replay).
+    The operations are exactly what the two sites need between them: a GUI click
+    for portabilidad's Turnstile checkbox, raw JS evaluate for Entel's token replay.
     """
 
     def goto(self, url: str) -> None: ...

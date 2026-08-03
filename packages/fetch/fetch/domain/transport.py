@@ -13,10 +13,9 @@ if TYPE_CHECKING:
     from fetch.domain.types import Endpoint
 
 
-# The one owner of "which HTTP status means what" across every site: a transient
-# upstream hiccup, a ban-shaped block, or a clean success. A site that wants its own
-# diagnostic message or logging calls classify_status and raises with its own
-# context; everyone else calls raise_for_status directly.
+# The one owner of "which HTTP status means what" across every site. A site wanting
+# its own diagnostic message calls classify_status; everyone else calls
+# raise_for_status.
 _TRANSIENT_STATUSES = frozenset({502, 503, 504})
 _BAN_STATUSES = frozenset({403, 429})
 

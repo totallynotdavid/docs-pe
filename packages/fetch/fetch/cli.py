@@ -27,9 +27,8 @@ class RunConfig:
     sites: tuple[Site, ...]
     dedupe: bool
     debug: bool
-    # Both: None means "use each site's/provider's own default"; a value
-    # overrides it. Lane count is deliberately absent -- it is per provider, and
-    # lives in PROXY_PROVIDER (e.g. "geonode:30,dataimpulse:18").
+    # None means "use each site's or provider's own default". Lane count is per
+    # provider and lives in PROXY_PROVIDER (e.g. "geonode:30,dataimpulse:18").
     session_budget: int | None
     ban_cooldown_s: float | None
     wait_min_s: float

@@ -53,7 +53,6 @@ def read_docs(input_csv: Path, *, dedupe: bool) -> tuple[list[Doc], PlanCounts]:
 
 
 def _serves(site: Site, doc: Doc) -> bool:
-    # The sole owner of "can this site answer this document?".
     return site.accepts(doc)
 
 

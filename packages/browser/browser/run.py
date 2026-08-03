@@ -98,8 +98,7 @@ def run(config: RunConfig, site: BrowserSite) -> int:
 @dataclass
 class _Driver:
     """Owns the automation policy: reject-retry per subject and session restart
-    across subjects. Holds the run-wide counters so each step stays small and
-    linear."""
+    across subjects."""
 
     config: RunConfig
     site: BrowserSite
@@ -133,10 +132,8 @@ class _Driver:
         with ExitStack() as stack:
             proxy = None
             if self.provider is not None:
-                # A fresh endpoint per session means each restart (a ban)
-                # rotates to a new exit IP. Chrome only ever sees the local
-                # relay, which carries the credentials upstream; None routes
-                # direct.
+                # A fresh endpoint per session, so each restart (a ban) rotates to a
+                # new exit IP.
                 relay = LocalProxy(self.provider.new_endpoint())
                 proxy = stack.enter_context(relay)
             session = stack.enter_context(
@@ -226,16 +223,15 @@ class _Driver:
 
 
 def _lookup_with_retries(page: SitePage, subject: str, *, retries: int) -> LookupResult:
-    # A reject is a fluctuating verdict (Entel's reCAPTCHA v3 score, portabilidad's
-    # stale Turnstile token), so re-mint a fresh token before giving up; a hard
-    # BrowserError is not a reject and propagates immediately.
+    # Re-mint a fresh token before giving up on a reject. A hard BrowserError is not
+    # a reject and propagates immediately.
     last_reject: RejectedError | None = None
     for _ in range(retries + 1):
         try:
             return page.lookup(subject)
         except RejectedError as exc:
             last_reject = exc
-    assert last_reject is not None  # range(retries + 1) runs at least once
+    assert last_reject is not None
     raise last_reject
 
 
