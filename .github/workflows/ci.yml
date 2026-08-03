@@ -28,7 +28,7 @@ jobs:
       - name: Install pinned browser dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Vendored assets match the pinned versions
+      - name: Check vendored assets
         run: |
           npm run vendor
           git diff --exit-code -- packages/portal/portal/web/static
@@ -46,42 +46,34 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s
           --health-retries 5
 
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
-      - name: Set up Python
-        run: uv python install 3.14.6
+      - run: uv python install 3.14.6
 
-      - name: Sync dependencies
-        run: uv sync --locked --all-packages --all-groups
+      - run: uv sync --locked --all-packages --all-groups
 
-      - name: Format check
-        run: uv run ruff format --check
+      - run: uv run ruff format --check
 
-      - name: Lint
-        run: uv run ruff check
+      - run: uv run ruff check
 
-      - name: Template format check
-        run: uv run djlint packages/portal/portal/web/components packages/portal/portal/web/pages --check
+      - run: >
+          uv run djlint packages/portal/portal/web/components
+          packages/portal/portal/web/pages --check
 
-      - name: Type check
-        run: uv run mypy .
+      - run: uv run mypy .
 
-      # The service container is thrown away with the job, so durability only costs
-      # time: every database a portal test creates is ~8x cheaper without it. A
-      # `services:` block cannot pass server flags, hence a step rather than a flag.
-      - name: Trade durability for speed on the throwaway cluster
+      # The database is disposable, and service containers cannot receive
+      # these PostgreSQL server flags directly.
+      - name: Disable PostgreSQL durability
         env:
           PGPASSWORD: postgres
         run: |
