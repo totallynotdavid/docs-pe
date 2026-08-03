@@ -7,7 +7,12 @@ from capture.sites.entel.parse import parse_lookup_result
 
 
 def _row(ruc: str, columns: dict[str, str], observed_at: str) -> Row:
-    return (ruc, columns["debt_total"], columns["has_punishment"], observed_at)
+    return (
+        ruc,
+        columns["debt_total"],
+        columns["has_punishment"],
+        observed_at,
+    )
 
 
 ENTEL = CaptureSite(
