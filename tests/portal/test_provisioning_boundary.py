@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     import asyncpg
 
     from fastapi import FastAPI
-    from portal.repository.postgres import PostgresPortalRepository
+    from portal.repository.teams import PostgresTeamRepository
 
 
 ORIGIN = "http://testserver"
@@ -59,7 +59,7 @@ async def _person(
 
 
 async def test_first_team_setup_is_the_only_empty_installation_path(
-    pool: asyncpg.Pool, repository: PostgresPortalRepository, app: FastAPI
+    pool: asyncpg.Pool, team_repository: PostgresTeamRepository, app: FastAPI
 ) -> None:
     admin_email = await _person(pool, "admin@osiptel.test", is_site_admin=True)
     admin_id = await pool.fetchval(
@@ -84,13 +84,13 @@ async def test_first_team_setup_is_the_only_empty_installation_path(
         assert created.headers["location"].endswith("/ajustes/proxy")
         assert "config_ciphertext" not in client.get(created.headers["location"]).text
 
-    team = await repository.team_by_slug("equipo-lima")
+    team = await team_repository.team_by_slug("equipo-lima")
     assert team is not None
-    assert await repository.role_for(admin_id, team.id) is TeamRole.TEAM_LEADER
+    assert await team_repository.role_for(admin_id, team.id) is TeamRole.TEAM_LEADER
 
 
 async def test_site_and_team_settings_use_email_selectors_and_keep_members_limited(
-    pool: asyncpg.Pool, repository: PostgresPortalRepository, app: FastAPI
+    pool: asyncpg.Pool, team_repository: PostgresTeamRepository, app: FastAPI
 ) -> None:
     admin_email = await _person(pool, "admin@osiptel.test", is_site_admin=True)
     leader_email = await _person(pool, "lider@osiptel.test")
@@ -98,7 +98,7 @@ async def test_site_and_team_settings_use_email_selectors_and_keep_members_limit
     admin_id = await pool.fetchval(
         "SELECT id FROM portal_users WHERE email = $1", admin_email
     )
-    await repository.create_first_team("inicial", "Inicial", admin_id)
+    await team_repository.create_first_team("inicial", "Inicial", admin_id)
 
     with _client(app) as admin_client:
         _login(admin_client, admin_email)

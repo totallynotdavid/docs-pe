@@ -17,7 +17,8 @@ if TYPE_CHECKING:
     import asyncpg
 
     from portal.application.service import PortalService
-    from portal.repository.postgres import PostgresPortalRepository
+    from portal.repository.jobs import PostgresJobRepository
+    from portal.repository.teams import PostgresTeamRepository
 
 
 async def _input(pool: asyncpg.Pool, team_id: UUID) -> UUID:
@@ -26,12 +27,12 @@ async def _input(pool: asyncpg.Pool, team_id: UUID) -> UUID:
 
 async def test_team_member_cannot_submit_a_process(
     pool: asyncpg.Pool,
-    repository: PostgresPortalRepository,
+    team_repository: PostgresTeamRepository,
     service: PortalService,
 ) -> None:
     team = await seed_team(pool)
     member_id = await seed_user(pool)
-    await repository.add_member(team.team_id, member_id, TeamRole.TEAM_MEMBER)
+    await team_repository.add_member(team.team_id, member_id, TeamRole.TEAM_MEMBER)
     command = submit_command(team, await _input(pool, team.team_id), actor_id=member_id)
 
     with pytest.raises(PermissionDenied) as raised:
@@ -59,13 +60,14 @@ async def test_credential_cannot_cross_team_boundary(
 
 async def test_members_only_search_their_team_published_results(
     pool: asyncpg.Pool,
-    repository: PostgresPortalRepository,
+    team_repository: PostgresTeamRepository,
+    job_repository: PostgresJobRepository,
     service: PortalService,
 ) -> None:
     team_a = await seed_team(pool)
     team_b = await seed_team(pool)
     member_a = await seed_user(pool)
-    await repository.add_member(team_a.team_id, member_a, TeamRole.TEAM_MEMBER)
+    await team_repository.add_member(team_a.team_id, member_a, TeamRole.TEAM_MEMBER)
     job_a = await service.submit(
         submit_command(team_a, await _input(pool, team_a.team_id))
     )
@@ -73,9 +75,9 @@ async def test_members_only_search_their_team_published_results(
         submit_command(team_b, await _input(pool, team_b.team_id))
     )
     for job in (job_a, job_b):
-        claimed = await repository.claim("trabajador", ("osiptel",))
+        claimed = await job_repository.claim("trabajador", ("osiptel",))
         assert claimed is not None
-        assert await repository.publish(
+        assert await job_repository.publish(
             claimed.item_id,
             "trabajador",
             claimed.lease_fence,

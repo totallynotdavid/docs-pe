@@ -20,7 +20,10 @@ from portal.application.service import PortalService
 from portal.credentials.secrets import AesGcmSecretProtector
 from portal.domain.models import InputLine, SubmitJob, TeamRole
 from portal.migrations import apply_migrations
-from portal.repository.postgres import PostgresPortalRepository
+from portal.repository.auth import PostgresAuthRepository
+from portal.repository.credentials import PostgresCredentialRepository
+from portal.repository.jobs import PostgresJobRepository
+from portal.repository.teams import PostgresTeamRepository
 from portal.security import hash_password
 from portal.settings import PortalSettings
 from portal.web.app import create_app
@@ -116,13 +119,35 @@ def pool(portal_db: PortalDatabase) -> asyncpg.Pool:
 
 
 @pytest.fixture
-def repository(portal_db: PortalDatabase) -> PostgresPortalRepository:
-    return PostgresPortalRepository(portal_db.pool)
+def auth_repository(portal_db: PortalDatabase) -> PostgresAuthRepository:
+    return PostgresAuthRepository(portal_db.pool)
 
 
 @pytest.fixture
-def service(repository: PostgresPortalRepository) -> PortalService:
-    return PortalService(repository)
+def team_repository(portal_db: PortalDatabase) -> PostgresTeamRepository:
+    return PostgresTeamRepository(portal_db.pool)
+
+
+@pytest.fixture
+def credential_repository(portal_db: PortalDatabase) -> PostgresCredentialRepository:
+    return PostgresCredentialRepository(portal_db.pool)
+
+
+@pytest.fixture
+def job_repository(portal_db: PortalDatabase) -> PostgresJobRepository:
+    return PostgresJobRepository(portal_db.pool)
+
+
+@pytest.fixture
+def service(
+    auth_repository: PostgresAuthRepository,
+    team_repository: PostgresTeamRepository,
+    credential_repository: PostgresCredentialRepository,
+    job_repository: PostgresJobRepository,
+) -> PortalService:
+    return PortalService(
+        auth_repository, team_repository, credential_repository, job_repository
+    )
 
 
 @pytest.fixture
@@ -132,10 +157,14 @@ def protector() -> AesGcmSecretProtector:
 
 @pytest.fixture
 def provisioning(
-    repository: PostgresPortalRepository,
+    auth_repository: PostgresAuthRepository,
+    team_repository: PostgresTeamRepository,
+    credential_repository: PostgresCredentialRepository,
     protector: AesGcmSecretProtector,
 ) -> ProvisioningService:
-    return ProvisioningService(repository, protector)
+    return ProvisioningService(
+        auth_repository, team_repository, credential_repository, protector
+    )
 
 
 @pytest.fixture
@@ -342,7 +371,7 @@ class Experience:
 
 async def build_experience(
     pool: asyncpg.Pool,
-    repository: PostgresPortalRepository,
+    team_repository: PostgresTeamRepository,
 ) -> Experience:
     hashed = hash_password(PASSWORD)
     team = await seed_team(pool, password_hash=hashed)
@@ -369,7 +398,7 @@ async def build_experience(
         [admin_id, member_id, team.actor_id, other.actor_id],
     )
 
-    await repository.add_member(
+    await team_repository.add_member(
         team.team_id,
         member_id,
         TeamRole.TEAM_MEMBER,

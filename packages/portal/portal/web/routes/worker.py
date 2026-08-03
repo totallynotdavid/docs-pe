@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from portal.credentials.secrets import AesGcmSecretProtector
-from portal.repository.postgres import PostgresPortalRepository
+from portal.repository.jobs import PostgresJobRepository
 from portal.storage.port import ObjectReference
 from portal.web.deps import Storage
 
@@ -32,8 +32,8 @@ def _worker_identity(request: Request) -> str:
     return worker_id
 
 
-def _queue(request: Request) -> PostgresPortalRepository:
-    queue: PostgresPortalRepository = request.app.state.worker_queue
+def _queue(request: Request) -> PostgresJobRepository:
+    queue: PostgresJobRepository = request.app.state.worker_queue
     return queue
 
 
@@ -43,7 +43,7 @@ def _revealer(request: Request) -> AesGcmSecretProtector:
 
 
 WorkerId = Annotated[str, Depends(_worker_identity)]
-Queue = Annotated[PostgresPortalRepository, Depends(_queue)]
+Queue = Annotated[PostgresJobRepository, Depends(_queue)]
 Revealer = Annotated[AesGcmSecretProtector, Depends(_revealer)]
 
 

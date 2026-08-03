@@ -10,7 +10,9 @@ from portal.application.provisioning import ProvisioningService
 from portal.credentials.secrets import AesGcmSecretProtector
 from portal.domain.models import CredentialState, TeamRole
 from portal.migrations import apply_migrations
-from portal.repository.postgres import PostgresPortalRepository
+from portal.repository.auth import PostgresAuthRepository
+from portal.repository.credentials import PostgresCredentialRepository
+from portal.repository.teams import PostgresTeamRepository
 from portal.security import hash_password
 from portal.settings import PortalSettings
 
@@ -62,34 +64,41 @@ async def provision(args: argparse.Namespace) -> None:
     pool = await asyncpg.create_pool(settings.database_dsn)
     try:
         await apply_migrations(pool)
-        repository = PostgresPortalRepository(pool)
-        administrator = await repository.provision_site_admin(
+        auth_repository = PostgresAuthRepository(pool)
+        team_repository = PostgresTeamRepository(pool)
+        credential_repository = PostgresCredentialRepository(pool)
+        administrator = await auth_repository.provision_site_admin(
             args.admin_email, hash_password(password)
         )
         service = ProvisioningService(
-            repository, AesGcmSecretProtector.from_environment()
+            auth_repository,
+            team_repository,
+            credential_repository,
+            AesGcmSecretProtector.from_environment(),
         )
-        team_count, initial_team_id = await repository.installation_status()
+        team_count, initial_team_id = await team_repository.installation_status()
         if team_count == 0:
             team = await service.create_first_team(
                 administrator.id, name=args.team_name, slug=args.team_slug
             )
             team_status = "created"
         else:
-            existing_team = await repository.team_by_slug(
+            existing_team = await team_repository.team_by_slug(
                 args.team_slug.strip().lower()
             )
             if existing_team is None or initial_team_id != existing_team.id:
                 msg = "the installation already has a different initial team"
                 raise RuntimeError(msg)
             team = existing_team
-            await repository.add_member(team.id, administrator.id, TeamRole.TEAM_LEADER)
+            await team_repository.add_member(
+                team.id, administrator.id, TeamRole.TEAM_LEADER
+            )
             team_status = "verified"
         print(f"Administrator: {administrator.email} (ready)")
         print(f"Team: {team.name} · {team.slug} ({team_status})")
         if args.proxy_provider:
             provider = str(args.proxy_provider)
-            existing = await repository.credentials_for_team(team.id)
+            existing = await credential_repository.credentials_for_team(team.id)
             active = next(
                 (
                     credential

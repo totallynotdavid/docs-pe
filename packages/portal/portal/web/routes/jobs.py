@@ -26,8 +26,6 @@ from portal.web.uploads import csv_input_lines, read_csv_upload
 
 router = APIRouter(prefix="/equipos/{team_id}/procesos")
 
-# Product copy for the stable fetch adapters. Eligibility remains enforced by the
-# submission planner; the UI makes the outcome of each choice explicit upfront.
 SOURCE_OPTIONS = (
     {
         "id": "sunat",
@@ -53,23 +51,31 @@ SOURCE_OPTIONS = (
         "output": "DNI, nombre y cargo de los representantes.",
         "eligibility": "Para RUC que empiezan en 20",
         "sample_headers": ("Razón social", "DNI", "Nombre", "Cargo"),
-        "sample_row": ("Empresa S.A.C.", "12345678", "María Pérez Gómez", "Gerente"),
+        "sample_row": (
+            "Empresa S.A.C.",
+            "12345678",
+            "María Pérez Gómez",
+            "Gerente",
+        ),
         "default": False,
     },
 )
 
 PROGRESS_POLL_SECONDS = 0.5
 
-# A finished job will never speak again, so the stream says so before closing.
-# `sse-close` in `job_detail.html` reads this and drops the connection, instead of
-# leaving the browser to reconnect to a terminal job for as long as the tab lives.
+# Tell the browser not to reconnect after the job finishes.
 _STREAM_CLOSED = sse_event(event="fin", data="")
 
 
 async def _form_context(
-    session: BrowserSession, service: PortalService, team_id: UUID, *, error: str
+    session: BrowserSession,
+    service: PortalService,
+    team_id: UUID,
+    *,
+    error: str,
 ) -> dict[str, object]:
     credentials = await service.credentials(session.user.id, team_id)
+
     return {
         "user": session.user,
         "csrf_token": session.csrf_token,
@@ -84,9 +90,13 @@ async def _form_context(
 
 @router.get("/nuevo", response_class=HTMLResponse)
 async def new_job_get(
-    session: PageSession, service: Service, team_id: UUID
+    session: PageSession,
+    service: Service,
+    team_id: UUID,
 ) -> Response:
-    return render("JobForm", **await _form_context(session, service, team_id, error=""))
+    context = await _form_context(session, service, team_id, error="")
+
+    return render("JobForm", **context)
 
 
 @router.post("")
@@ -102,6 +112,7 @@ async def new_job_post(
 ) -> Response:
     try:
         uploaded_filename, content = await read_csv_upload(input_file)
+
         job = await service.submit_input(
             actor_id=session.user.id,
             team_id=team_id,
@@ -114,14 +125,27 @@ async def new_job_post(
             storage=storage,
         )
     except (PortalError, ValueError, RuntimeError) as error:
-        context = await _form_context(session, service, team_id, error=str(error))
+        context = await _form_context(
+            session,
+            service,
+            team_id,
+            error=str(error),
+        )
+
         return render("JobForm", **context)
-    return RedirectResponse(f"/equipos/{team_id}/procesos/{job.id}", status_code=303)
+
+    return RedirectResponse(
+        f"/equipos/{team_id}/procesos/{job.id}",
+        status_code=303,
+    )
 
 
 @router.get("/{job_id}", response_class=HTMLResponse)
 async def job_detail(
-    session: PageSession, service: Service, team_id: UUID, job_id: UUID
+    session: PageSession,
+    service: Service,
+    team_id: UUID,
+    job_id: UUID,
 ) -> Response:
     return render(
         "JobDetail",
@@ -134,10 +158,17 @@ async def job_detail(
 
 @router.post("/{job_id}/cancelar")
 async def cancel_job(
-    session: VerifiedSession, service: Service, team_id: UUID, job_id: UUID
+    session: VerifiedSession,
+    service: Service,
+    team_id: UUID,
+    job_id: UUID,
 ) -> Response:
     await service.cancel(session.user.id, team_id, job_id)
-    return RedirectResponse(f"/equipos/{team_id}/procesos/{job_id}", status_code=303)
+
+    return RedirectResponse(
+        f"/equipos/{team_id}/procesos/{job_id}",
+        status_code=303,
+    )
 
 
 @router.get("/{job_id}/progreso")
@@ -149,12 +180,9 @@ async def job_progress(
     team_id: UUID,
     job_id: UUID,
 ) -> Response:
-    """Stream one progress fragment per durable job event.
-
-    Authorization is checked once here so that a caller who cannot read the job
-    is refused with a status code rather than an empty stream.
-    """
+    # Refuse unauthorized callers before opening the stream.
     await service.job(session.user.id, team_id, job_id)
+
     stream = _progress_stream(
         request,
         service,
@@ -164,10 +192,14 @@ async def job_progress(
         job_id=job_id,
         sequence=_last_event_id(request),
     )
+
     return StreamingResponse(
         stream,
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -182,29 +214,42 @@ async def _progress_stream(
     sequence: int,
 ) -> AsyncIterator[str]:
     while True:
-        # The stream outlives the request that opened it, so every pass revalidates
-        # the cookie: a logout must end the stream, not keep feeding the old reader.
-        current = await service.browser_session(token)
-        if current is None or current.user.id != actor_id:
+        # End the stream if the session expires or changes.
+        current_session = await service.browser_session(token)
+
+        if current_session is None or current_session.user.id != actor_id:
             return
-        for event in await service.job_events_after(
-            actor_id, team_id, job_id, sequence
-        ):
+
+        events = await service.job_events_after(
+            actor_id,
+            team_id,
+            job_id,
+            sequence,
+        )
+
+        for event in events:
             sequence = event.sequence
             job = await service.job(actor_id, team_id, job_id)
+
             yield sse_event(
                 event_id=event.sequence,
                 event="progreso",
                 data=render_fragment("JobProgressFragment", job=job),
             )
+
             if job.state in TERMINAL_JOB_STATES:
                 yield _STREAM_CLOSED
                 return
+
         if await request.is_disconnected():
             return
-        if (await service.job(actor_id, team_id, job_id)).state in TERMINAL_JOB_STATES:
+
+        job = await service.job(actor_id, team_id, job_id)
+
+        if job.state in TERMINAL_JOB_STATES:
             yield _STREAM_CLOSED
             return
+
         await asyncio.sleep(PROGRESS_POLL_SECONDS)
 
 

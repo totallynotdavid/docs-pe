@@ -21,9 +21,15 @@ async def search(
     q: str = "",
     page: int = 1,
 ) -> Response:
+    page = max(page, 1)
+
     results, has_more = await service.search(
-        session.user.id, team_id, q, page=max(page, 1)
+        session.user.id,
+        team_id,
+        q,
+        page=page,
     )
+
     return render_hx(
         request,
         "Search",
@@ -33,6 +39,6 @@ async def search(
         team=await service.team(session.user.id, team_id),
         query=q,
         results=results,
-        page=max(page, 1),
+        page=page,
         has_more=has_more,
     )

@@ -56,8 +56,8 @@ only owner document parsing/routing packages/fetch/fetch/domain/types.py, Doc
 and RucKind resume state packages/fetch/fetch/store/outcomes.py portal HTTP
 handling packages/portal/portal/web/routes/ portal auth and CSRF
 packages/portal/portal/web/deps.py, not in a route portal SQL
-packages/portal/portal/repository/postgres.py, the only one any Spanish string
-packages/portal/portal/messages.py, the only place
+packages/portal/portal/repository/, one module per concern: auth.py, teams.py,
+credentials.py, jobs.py.
 
 Tests live in one tests/ package at the repo root, one subpackage per workspace
 member.

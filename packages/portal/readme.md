@@ -15,7 +15,8 @@ mise run portal:dev
 web          FastAPI, JinjaX, HTMX, SSE, sessions, and CSRF
 application  Team access, job submission, and cancellation
 domain       Source planning and state rules
-repository   PostgreSQL transactions, leases, and queue operations
+repository   PostgreSQL, one module per concern: auth.py, teams.py,
+             credentials.py, jobs.py; no shared facade
 worker       Claims work and publishes results
 storage      Immutable object references
 ```

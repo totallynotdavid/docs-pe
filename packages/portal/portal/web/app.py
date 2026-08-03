@@ -15,7 +15,10 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
 from portal.credentials.secrets import AesGcmSecretProtector
-from portal.repository.postgres import PostgresPortalRepository
+from portal.repository.auth import PostgresAuthRepository
+from portal.repository.credentials import PostgresCredentialRepository
+from portal.repository.jobs import PostgresJobRepository
+from portal.repository.teams import PostgresTeamRepository
 from portal.settings import DatabaseConfigured, PortalSettings, ReadinessProbe
 from portal.storage.files import FileObjectStorage
 from portal.web.errors import install_error_handlers
@@ -49,13 +52,19 @@ def create_app(
         import asyncpg
 
         pool = await asyncpg.create_pool(settings.database_dsn)
-        repository = PostgresPortalRepository(pool)
+        auth_repository = PostgresAuthRepository(pool)
+        team_repository = PostgresTeamRepository(pool)
+        credential_repository = PostgresCredentialRepository(pool)
+        job_repository = PostgresJobRepository(pool)
         protector = AesGcmSecretProtector.from_environment()
         app.state.pool = pool
-        app.state.repository = repository
-        app.state.worker_queue = repository
-        app.state.service = PortalService(repository)
-        app.state.provisioning = ProvisioningService(repository, protector)
+        app.state.worker_queue = job_repository
+        app.state.service = PortalService(
+            auth_repository, team_repository, credential_repository, job_repository
+        )
+        app.state.provisioning = ProvisioningService(
+            auth_repository, team_repository, credential_repository, protector
+        )
         app.state.secret_protector = protector
         app.state.storage = FileObjectStorage(settings.object_root)
         try:

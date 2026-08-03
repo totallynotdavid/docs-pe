@@ -18,20 +18,24 @@ if TYPE_CHECKING:
     import asyncpg
 
     from fastapi import FastAPI
-    from portal.repository.postgres import PostgresPortalRepository
+    from portal.repository.jobs import PostgresJobRepository
+    from portal.repository.teams import PostgresTeamRepository
 
 
 async def test_htmx_search_notifications_partial_results_and_pagination(
-    pool: asyncpg.Pool, repository: PostgresPortalRepository, app: FastAPI
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    job_repository: PostgresJobRepository,
+    app: FastAPI,
 ) -> None:
-    people = await build_experience(pool, repository)
+    people = await build_experience(pool, team_repository)
     team_id, credential_id = people.team_id, people.credential_id
     with sync_client(app) as client:
         assert login(client, "lider@osiptel.test").status_code == 303
         job_id = submit_job(client, team_id, credential_id, "10412345678")
-        claimed = await repository.claim("trabajador", ("osiptel",))
+        claimed = await job_repository.claim("trabajador", ("osiptel",))
         assert claimed is not None and claimed.job_id == job_id
-        assert await repository.publish(
+        assert await job_repository.publish(
             claimed.item_id,
             "trabajador",
             claimed.lease_fence,
@@ -60,10 +64,10 @@ async def test_htmx_search_notifications_partial_results_and_pagination(
 
 
 async def test_one_url_serves_both_the_page_and_the_fragment_htmx_swaps_into_it(
-    pool: asyncpg.Pool, repository: PostgresPortalRepository, app: FastAPI
+    pool: asyncpg.Pool, team_repository: PostgresTeamRepository, app: FastAPI
 ) -> None:
     """A pushed htmx URL must reload as a whole page, not as a bare fragment."""
-    people = await build_experience(pool, repository)
+    people = await build_experience(pool, team_repository)
     team_id, credential_id = people.team_id, people.credential_id
     with sync_client(app) as client:
         assert login(client, "lider@osiptel.test").status_code == 303

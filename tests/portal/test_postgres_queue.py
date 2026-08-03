@@ -3,11 +3,9 @@ from __future__ import annotations
 import asyncio
 import base64
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from portal.application.service import PortalService
 from portal.domain.models import (
     MAX_LEASE_ATTEMPTS,
     InputLine,
@@ -15,7 +13,6 @@ from portal.domain.models import (
     JobState,
     SubmitJob,
 )
-from portal.repository.postgres import PostgresPortalRepository
 
 from tests.portal.conftest import object_reference, seed_team
 
@@ -25,7 +22,9 @@ if TYPE_CHECKING:
     import httpx
     import pytest
 
+    from portal.application.service import PortalService
     from portal.credentials.secrets import AesGcmSecretProtector
+    from portal.repository.jobs import PostgresJobRepository
 
 
 async def _expire_leases(pool: asyncpg.Pool) -> None:
@@ -40,10 +39,11 @@ async def _expire_leases(pool: asyncpg.Pool) -> None:
 
 async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results(
     pool: asyncpg.Pool,
+    service: PortalService,
+    job_repository: PostgresJobRepository,
 ) -> None:
     """Exercise the real FOR UPDATE gate, FIFO promotion, and cancellation fence."""
     actor_id, team_id, credential_id = await seed_team(pool)
-    service = PortalService(PostgresPortalRepository(pool))
     commands = [
         SubmitJob(
             actor_id=actor_id,
@@ -59,8 +59,6 @@ async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results
         for number in range(10)
     ]
     jobs = await asyncio.gather(*(service.submit(command) for command in commands))
-    repository = PostgresPortalRepository(pool)
-    service = PortalService(repository)
     running = [job for job in jobs if job.state is JobState.RUNNING]
     queued = sorted(
         (job for job in jobs if job.state is JobState.QUEUED),
@@ -69,7 +67,7 @@ async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results
     assert len(running) == 5
     assert [job.queue_sequence for job in queued] == [6, 7, 8, 9, 10]
 
-    claimed = await repository.claim("trabajador-prueba", ("osiptel",))
+    claimed = await job_repository.claim("trabajador-prueba", ("osiptel",))
     assert claimed is not None
     partial_job = next(job for job in running if job.id != claimed.job_id)
     result_reference = await object_reference(pool, team_id, "resultados/uno.json")
@@ -85,7 +83,7 @@ async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results
     cancelled = await service.cancel(actor_id, team_id, claimed.job_id)
     assert cancelled.state is JobState.CANCELLED
     assert (
-        await repository.publish(
+        await job_repository.publish(
             claimed.item_id,
             "trabajador-prueba",
             claimed.lease_fence,
@@ -116,27 +114,20 @@ async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results
     assert await pool.fetchval("SELECT count(*) FROM portal_notification_outbox") == 6
 
 
-async def test_postgresql_login_limit_uses_a_timestamp_window(
-    pool: asyncpg.Pool,
-) -> None:
-    repository = PostgresPortalRepository(pool)
-    now = datetime.now(UTC)
-    assert await repository.login_allowed("persona@example.test", "127.0.0.1", now)
-
-
 async def test_an_expired_lease_returns_its_item_to_the_queue(
     pool: asyncpg.Pool,
+    service: PortalService,
+    job_repository: PostgresJobRepository,
 ) -> None:
     """A worker that stops renewing must not strand its item in 'running'."""
-    repository = PostgresPortalRepository(pool)
-    await _submit_one(pool, repository)
+    await _submit_one(pool, service)
 
-    first = await repository.claim("trabajador-uno", ("osiptel",))
+    first = await job_repository.claim("trabajador-uno", ("osiptel",))
     assert first is not None
     assert await _attempts(pool, first.item_id) == 1
 
     await _expire_leases(pool)
-    second = await repository.claim("trabajador-dos", ("osiptel",))
+    second = await job_repository.claim("trabajador-dos", ("osiptel",))
 
     assert second is not None
     assert second.item_id == first.item_id
@@ -145,16 +136,17 @@ async def test_an_expired_lease_returns_its_item_to_the_queue(
 
 async def test_a_repeatedly_expired_item_retires_and_fails_its_job(
     pool: asyncpg.Pool,
+    service: PortalService,
+    job_repository: PostgresJobRepository,
 ) -> None:
     """The cap stops an item cycling forever, and an empty job is not 'completed'."""
-    repository = PostgresPortalRepository(pool)
-    job = await _submit_one(pool, repository)
+    job = await _submit_one(pool, service)
 
     for _ in range(MAX_LEASE_ATTEMPTS):
-        assert await repository.claim("trabajador", ("osiptel",)) is not None
+        assert await job_repository.claim("trabajador", ("osiptel",)) is not None
         await _expire_leases(pool)
 
-    assert await repository.claim("trabajador", ("osiptel",)) is None
+    assert await job_repository.claim("trabajador", ("osiptel",)) is None
     item = await pool.fetchrow(
         "SELECT state, reason FROM portal_job_items WHERE job_id = $1", job.id
     )
@@ -170,10 +162,11 @@ async def test_a_repeatedly_expired_item_retires_and_fails_its_job(
 
 async def test_published_search_finds_a_dni_inside_a_ruc_and_paginates(
     pool: asyncpg.Pool,
+    service: PortalService,
+    job_repository: PostgresJobRepository,
 ) -> None:
     """A RUC-10 embeds its owner's DNI, so a DNI search must return both rows."""
-    repository = PostgresPortalRepository(pool)
-    job = await _submit_one(pool, repository)
+    job = await _submit_one(pool, service)
     reference = await object_reference(pool, job.team_id, "resultados/uno.json")
     await pool.execute(
         """
@@ -198,13 +191,13 @@ async def test_published_search_finds_a_dni_inside_a_ruc_and_paginates(
         reference,
     )
 
-    found, more = await repository.search_published(
+    found, more = await job_repository.search_published(
         job.team_id, "12345678", limit=20, offset=0
     )
     assert {result.document for result in found} == {"10123456789", "12345678"}
     assert more is False
 
-    first_page, more = await repository.search_published(
+    first_page, more = await job_repository.search_published(
         job.team_id, "12345678", limit=1, offset=0
     )
     assert len(first_page) == 1
@@ -213,6 +206,7 @@ async def test_published_search_finds_a_dni_inside_a_ruc_and_paginates(
 
 async def test_the_worker_api_leases_an_item_and_publishes_its_result(
     pool: asyncpg.Pool,
+    service: PortalService,
     client: httpx.AsyncClient,
     protector: AesGcmSecretProtector,
     monkeypatch: pytest.MonkeyPatch,
@@ -220,8 +214,7 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
     """The worker's only view of the queue is this pair of authenticated calls."""
     monkeypatch.setenv("PORTAL_WORKER_BOOTSTRAP_TOKEN", "ficha-de-prueba")
     secret = await protector.protect({"username": "equipo", "password": "clave"})
-    repository = PostgresPortalRepository(pool)
-    job = await _submit_one(pool, repository, ciphertext=secret.ciphertext)
+    job = await _submit_one(pool, service, ciphertext=secret.ciphertext)
     headers = {
         "Authorization": "Bearer ficha-de-prueba",
         "X-Portal-Worker": "trabajador-uno",
@@ -258,13 +251,13 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
 
 async def _submit_one(
     pool: asyncpg.Pool,
-    repository: PostgresPortalRepository,
+    service: PortalService,
     *,
     ciphertext: bytes = b"cifrado",
 ) -> Job:
     """Seed a team and admit a single running job holding one osiptel item."""
     actor_id, team_id, credential_id = await seed_team(pool, ciphertext=ciphertext)
-    return await PortalService(repository).submit(
+    return await service.submit(
         SubmitJob(
             actor_id=actor_id,
             team_id=team_id,

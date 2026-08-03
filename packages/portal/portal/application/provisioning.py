@@ -31,6 +31,10 @@ from portal.security import hash_password
 if TYPE_CHECKING:
     from fetch.proxy.base import Field
 
+    from portal.repository.auth import PostgresAuthRepository
+    from portal.repository.credentials import PostgresCredentialRepository
+    from portal.repository.teams import PostgresTeamRepository
+
 
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -52,14 +56,22 @@ class TeamReadiness:
 
 
 class ProvisioningService:
-    def __init__(self, repository, secret_protector: AesGcmSecretProtector) -> None:
-        self._repository = repository
+    def __init__(
+        self,
+        auth: PostgresAuthRepository,
+        teams: PostgresTeamRepository,
+        credentials: PostgresCredentialRepository,
+        secret_protector: AesGcmSecretProtector,
+    ) -> None:
+        self._auth = auth
+        self._teams = teams
+        self._credentials = credentials
         self._secret_protector = secret_protector
 
     async def installation_status(self, actor_id: UUID) -> InstallationStatus:
         await self._require_site_admin(actor_id)
 
-        team_count, initial_team_id = await self._repository.installation_status()
+        team_count, initial_team_id = await self._teams.installation_status()
         can_create_first_team = team_count == 0 and initial_team_id is None
 
         return InstallationStatus(
@@ -80,7 +92,7 @@ class ProvisioningService:
     ) -> Team:
         await self._require_site_admin(actor_id)
 
-        return await self._repository.create_first_team(
+        return await self._teams.create_first_team(
             self._slug(slug),
             self._name(name),
             actor_id,
@@ -98,7 +110,7 @@ class ProvisioningService:
 
         leader = await self._user_by_email(leader_email)
 
-        return await self._repository.create_team(
+        return await self._teams.create_team(
             self._slug(slug),
             self._name(name),
             actor_id,
@@ -120,7 +132,7 @@ class ProvisioningService:
                 minimum=_MIN_PASSWORD,
             )
 
-        return await self._repository.create_user(
+        return await self._auth.create_user(
             self._email(email),
             hash_password(password),
         )
@@ -128,12 +140,12 @@ class ProvisioningService:
     async def users(self, actor_id: UUID) -> tuple[PortalUser, ...]:
         await self._require_site_admin(actor_id)
 
-        return await self._repository.users()
+        return await self._teams.users()
 
     async def teams(self, actor_id: UUID) -> tuple[Team, ...]:
         await self._require_site_admin(actor_id)
 
-        return await self._repository.all_teams()
+        return await self._teams.all_teams()
 
     async def invite_or_add_member(
         self,
@@ -150,7 +162,7 @@ class ProvisioningService:
 
         member = await self._user_by_email(email)
 
-        await self._repository.add_member(team_id, member.id, role)
+        await self._teams.add_member(team_id, member.id, role)
 
     async def remove_member(
         self,
@@ -163,7 +175,7 @@ class ProvisioningService:
 
         member = await self._user_by_email(email)
 
-        await self._repository.remove_member(team_id, member.id)
+        await self._teams.remove_member(team_id, member.id)
 
     async def members(
         self,
@@ -172,7 +184,7 @@ class ProvisioningService:
     ) -> tuple[tuple[PortalUser, TeamRole], ...]:
         await self._require_leader(actor_id, team_id)
 
-        return await self._repository.members_for_team(team_id)
+        return await self._teams.members_for_team(team_id)
 
     async def member_candidates(
         self,
@@ -181,7 +193,7 @@ class ProvisioningService:
     ) -> tuple[PortalUser, ...]:
         await self._require_leader(actor_id, team_id)
 
-        return await self._repository.users()
+        return await self._teams.users()
 
     async def team_readiness(
         self,
@@ -190,7 +202,7 @@ class ProvisioningService:
     ) -> TeamReadiness:
         await self._require_leader(actor_id, team_id)
 
-        credentials = await self._repository.credentials_for_team(team_id)
+        credentials = await self._credentials.credentials_for_team(team_id)
         has_active_credential = any(
             credential.is_active and credential.state is CredentialState.ACTIVE
             for credential in credentials
@@ -226,7 +238,7 @@ class ProvisioningService:
 
         protected = await self._secret_protector.protect(normalized)
 
-        pending = await self._repository.start_credential_validation(
+        pending = await self._credentials.start_credential_validation(
             team_id,
             clean_label,
             spec.name,
@@ -238,7 +250,7 @@ class ProvisioningService:
         try:
             await preflight(spec.name, normalized)
         except ProxyConfigurationError as error:
-            await self._repository.finish_credential_validation(
+            await self._credentials.finish_credential_validation(
                 pending.id,
                 state=CredentialState.FAILED,
                 # Store only the stable failure code, never provider output.
@@ -250,7 +262,7 @@ class ProvisioningService:
                 Reason.PROXY_PREFLIGHT_FAILED,
             ) from error
 
-        return await self._repository.finish_credential_validation(
+        return await self._credentials.finish_credential_validation(
             pending.id,
             state=CredentialState.ACTIVE,
             detail="",
@@ -269,7 +281,7 @@ class ProvisioningService:
         return spec_for(provider)
 
     async def _require_site_admin(self, actor_id: UUID) -> PortalUser:
-        user = await self._repository.user_by_id(actor_id)
+        user = await self._auth.user_by_id(actor_id)
 
         if user is None or not user.is_site_admin:
             raise PermissionDenied(Reason.SITE_ADMIN_REQUIRED)
@@ -277,13 +289,13 @@ class ProvisioningService:
         return user
 
     async def _require_leader(self, actor_id: UUID, team_id: UUID) -> None:
-        role = await self._repository.role_for(actor_id, team_id)
+        role = await self._teams.role_for(actor_id, team_id)
 
         if role is not TeamRole.TEAM_LEADER:
             raise PermissionDenied(Reason.LEADER_REQUIRED)
 
     async def _user_by_email(self, email: str) -> PortalUser:
-        found = await self._repository.user_by_email(self._email(email))
+        found = await self._auth.user_by_email(self._email(email))
 
         if found is None:
             raise NotFound(Reason.USER_NOT_FOUND)

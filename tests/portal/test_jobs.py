@@ -20,13 +20,14 @@ if TYPE_CHECKING:
     import asyncpg
 
     from fastapi import FastAPI
-    from portal.repository.postgres import PostgresPortalRepository
+    from portal.repository.jobs import PostgresJobRepository
+    from portal.repository.teams import PostgresTeamRepository
 
 
 async def test_new_job_makes_source_outcomes_visible_without_exposing_setup_details(
-    pool: asyncpg.Pool, repository: PostgresPortalRepository, app: FastAPI
+    pool: asyncpg.Pool, team_repository: PostgresTeamRepository, app: FastAPI
 ) -> None:
-    team_id = (await build_experience(pool, repository)).team_id
+    team_id = (await build_experience(pool, team_repository)).team_id
     with sync_client(app) as client:
         assert login(client, "lider@osiptel.test").status_code == 303
         page = client.get(f"/equipos/{team_id}/procesos/nuevo")
@@ -43,9 +44,12 @@ async def test_new_job_makes_source_outcomes_visible_without_exposing_setup_deta
 
 
 async def test_roles_cross_team_isolation_submission_and_terminal_rendering(
-    pool: asyncpg.Pool, repository: PostgresPortalRepository, app: FastAPI
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    job_repository: PostgresJobRepository,
+    app: FastAPI,
 ) -> None:
-    people = await build_experience(pool, repository)
+    people = await build_experience(pool, team_repository)
     leader_id, member_id = people.leader_id, people.member_id
     team_id, credential_id = people.team_id, people.credential_id
     with sync_client(app) as member_client:
@@ -81,7 +85,7 @@ async def test_roles_cross_team_isolation_submission_and_terminal_rendering(
         assert reconnect.text == "event: fin\ndata: \n\n"
 
         active_job = submit_job(leader_client, team_id, credential_id, "10412345678")
-        assert await repository.cancel(active_job, team_id) is not None
+        assert await job_repository.cancel(active_job, team_id) is not None
         cancelled = leader_client.get(f"/equipos/{team_id}/procesos/{active_job}")
         assert "Cancelado" in cancelled.text
 
@@ -112,15 +116,18 @@ async def test_roles_cross_team_isolation_submission_and_terminal_rendering(
 
 
 async def test_csv_upload_uses_the_file_name_and_first_column(
-    pool: asyncpg.Pool, repository: PostgresPortalRepository, app: FastAPI
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    job_repository: PostgresJobRepository,
+    app: FastAPI,
 ) -> None:
-    people = await build_experience(pool, repository)
+    people = await build_experience(pool, team_repository)
     team_id, credential_id = people.team_id, people.credential_id
     with sync_client(app) as client:
         assert login(client, "lider@osiptel.test").status_code == 303
         csv_job = submit_csv(client, team_id, credential_id)
 
-    stored_job = await repository.job(csv_job, team_id)
+    stored_job = await job_repository.job(csv_job, team_id)
     assert stored_job is not None
     assert stored_job.filename == "barranca.csv"
     assert [item.document for item in stored_job.items] == [

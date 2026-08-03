@@ -25,8 +25,14 @@ async def team_page(
     team_id: UUID,
     page: int = 1,
 ) -> Response:
+    current_page = max(page, 1)
     team = await service.team(session.user.id, team_id)
-    jobs, total = await service.jobs(session.user.id, team_id, page=max(page, 1))
+    jobs, total = await service.jobs(
+        session.user.id,
+        team_id,
+        page=current_page,
+    )
+
     return render_hx(
         request,
         "Team",
@@ -36,24 +42,30 @@ async def team_page(
         team=team,
         jobs=jobs,
         total=total,
-        page=max(page, 1),
+        page=current_page,
     )
 
 
 @router.get("/ajustes", response_class=HTMLResponse)
 async def team_settings_overview(
-    session: PageSession, service: Service, provisioning: Provisioning, team_id: UUID
+    session: PageSession,
+    service: Service,
+    provisioning: Provisioning,
+    team_id: UUID,
 ) -> Response:
+    team = await service.team(session.user.id, team_id)
+    readiness = await provisioning.team_readiness(session.user.id, team_id)
+
     return render(
         "TeamSettings",
         user=session.user,
         csrf_token=session.csrf_token,
-        team=await service.team(session.user.id, team_id),
-        readiness=await provisioning.team_readiness(session.user.id, team_id),
+        team=team,
+        readiness=readiness,
     )
 
 
-async def _members_context(
+async def build_members_context(
     session: BrowserSession,
     service: PortalService,
     provisioning: ProvisioningService,
@@ -61,21 +73,35 @@ async def _members_context(
     *,
     error: str,
 ) -> dict[str, object]:
+    team = await service.team(session.user.id, team_id)
+    members = await provisioning.members(session.user.id, team_id)
+    candidates = await provisioning.member_candidates(session.user.id, team_id)
+
     return {
         "user": session.user,
         "csrf_token": session.csrf_token,
-        "team": await service.team(session.user.id, team_id),
-        "members": await provisioning.members(session.user.id, team_id),
-        "candidates": await provisioning.member_candidates(session.user.id, team_id),
+        "team": team,
+        "members": members,
+        "candidates": candidates,
         "error": error,
     }
 
 
 @router.get("/ajustes/miembros", response_class=HTMLResponse)
 async def team_members_get(
-    session: PageSession, service: Service, provisioning: Provisioning, team_id: UUID
+    session: PageSession,
+    service: Service,
+    provisioning: Provisioning,
+    team_id: UUID,
 ) -> Response:
-    context = await _members_context(session, service, provisioning, team_id, error="")
+    context = await build_members_context(
+        session,
+        service,
+        provisioning,
+        team_id,
+        error="",
+    )
+
     return render("TeamMembers", **context)
 
 
@@ -90,14 +116,26 @@ async def team_members_post(
 ) -> Response:
     try:
         await provisioning.invite_or_add_member(
-            session.user.id, team_id=team_id, email=email, role=role
+            session.user.id,
+            team_id=team_id,
+            email=email,
+            role=role,
         )
     except PortalError as error:
-        context = await _members_context(
-            session, service, provisioning, team_id, error=message_for(error)
+        context = await build_members_context(
+            session,
+            service,
+            provisioning,
+            team_id,
+            error=message_for(error),
         )
+
         return render("TeamMembers", **context)
-    return RedirectResponse(f"/equipos/{team_id}/ajustes/miembros", status_code=303)
+
+    return RedirectResponse(
+        f"/equipos/{team_id}/ajustes/miembros",
+        status_code=303,
+    )
 
 
 @router.post("/ajustes/miembros/quitar")
@@ -107,13 +145,20 @@ async def team_members_remove(
     team_id: UUID,
     email: str = Form(),
 ) -> Response:
-    # Removing the last leader is refused by the repository; the error handler
-    # turns that refusal into the 403 page.
-    await provisioning.remove_member(session.user.id, team_id=team_id, email=email)
-    return RedirectResponse(f"/equipos/{team_id}/ajustes/miembros", status_code=303)
+    # The repository prevents removal of the final team leader.
+    await provisioning.remove_member(
+        session.user.id,
+        team_id=team_id,
+        email=email,
+    )
+
+    return RedirectResponse(
+        f"/equipos/{team_id}/ajustes/miembros",
+        status_code=303,
+    )
 
 
-async def _proxy_context(
+async def build_proxy_context(
     session: BrowserSession,
     service: PortalService,
     provisioning: ProvisioningService,
@@ -122,12 +167,16 @@ async def _proxy_context(
     provider: str,
     error: str,
 ) -> dict[str, object]:
+    team = await service.team(session.user.id, team_id)
+    credentials = await service.credentials(session.user.id, team_id)
+    readiness = await provisioning.team_readiness(session.user.id, team_id)
+
     return {
         "user": session.user,
         "csrf_token": session.csrf_token,
-        "team": await service.team(session.user.id, team_id),
-        "credentials": await service.credentials(session.user.id, team_id),
-        "readiness": await provisioning.team_readiness(session.user.id, team_id),
+        "team": team,
+        "credentials": credentials,
+        "readiness": readiness,
         "provider": provider,
         "providers": provider_names(),
         "fields": ProvisioningService.provider_fields(provider),
@@ -143,9 +192,15 @@ async def proxy_settings_get(
     team_id: UUID,
     proveedor: str = "geonode",
 ) -> Response:
-    context = await _proxy_context(
-        session, service, provisioning, team_id, provider=proveedor, error=""
+    context = await build_proxy_context(
+        session,
+        service,
+        provisioning,
+        team_id,
+        provider=proveedor,
+        error="",
     )
+
     return render("ProxySettings", **context)
 
 
@@ -159,12 +214,12 @@ async def proxy_settings_post(
     label: str = Form(),
     provider: str = Form(),
 ) -> Response:
-    # The provider's field schema decides what to read.
     form = await request.form()
     values = {
         field.name: str(form.get(field.name, ""))
         for field in ProvisioningService.provider_fields(provider)
     }
+
     try:
         await provisioning.configure_proxy(
             session.user.id,
@@ -174,7 +229,7 @@ async def proxy_settings_post(
             values=values,
         )
     except PortalError as error:
-        context = await _proxy_context(
+        context = await build_proxy_context(
             session,
             service,
             provisioning,
@@ -182,5 +237,10 @@ async def proxy_settings_post(
             provider=provider,
             error=message_for(error),
         )
+
         return render("ProxySettings", **context)
-    return RedirectResponse(f"/equipos/{team_id}/ajustes/proxy", status_code=303)
+
+    return RedirectResponse(
+        f"/equipos/{team_id}/ajustes/proxy",
+        status_code=303,
+    )

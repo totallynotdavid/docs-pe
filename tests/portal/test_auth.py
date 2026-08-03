@@ -4,6 +4,7 @@ against real PostgreSQL."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from tests.portal.conftest import (
@@ -21,13 +22,21 @@ if TYPE_CHECKING:
     import asyncpg
 
     from fastapi import FastAPI
-    from portal.repository.postgres import PostgresPortalRepository
+    from portal.repository.auth import PostgresAuthRepository
+    from portal.repository.teams import PostgresTeamRepository
+
+
+async def test_postgresql_login_limit_uses_a_timestamp_window(
+    auth_repository: PostgresAuthRepository,
+) -> None:
+    now = datetime.now(UTC)
+    assert await auth_repository.login_allowed("persona@example.test", "127.0.0.1", now)
 
 
 async def test_login_csrf_cookie_rotation_and_generic_failure(
-    pool: asyncpg.Pool, repository: PostgresPortalRepository, app: FastAPI
+    pool: asyncpg.Pool, team_repository: PostgresTeamRepository, app: FastAPI
 ) -> None:
-    await build_experience(pool, repository)
+    await build_experience(pool, team_repository)
     with sync_client(app) as client:
         page = client.get("/login")
         assert 'class="barra-superior"' not in page.text
@@ -78,11 +87,11 @@ async def test_login_csrf_cookie_rotation_and_generic_failure(
 
 
 async def test_a_forged_csrf_token_on_a_protected_route_is_rejected(
-    pool: asyncpg.Pool, repository: PostgresPortalRepository, app: FastAPI
+    pool: asyncpg.Pool, team_repository: PostgresTeamRepository, app: FastAPI
 ) -> None:
     """Origin is checked first (see the test above); a stale or forged token
     submitted alongside a trusted Origin must still be caught on its own."""
-    await build_experience(pool, repository)
+    await build_experience(pool, team_repository)
     with sync_client(app) as client:
         assert login(client, "admin@osiptel.test").status_code == 303
         forged = client.post(
