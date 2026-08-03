@@ -13,13 +13,14 @@ cp .env.example .env                          # then fill in the proxy credentia
 uv run --env-file .env fetch --input docs.csv --output out.csv --sites osiptel
 ```
 
-`fetch` and proxied `browser` runs need proxy credentials; `capture` does not. The
-[fetch manual](packages/fetch/readme.md) is the place to start reading.
+`fetch` and proxied `browser` runs need proxy credentials; `capture` does not.
+The [fetch manual](packages/fetch/readme.md) is the place to start reading.
 
 ## Environment migration
 
 `.env.example` is the single local environment contract. Commands do not load it
-themselves: pass it to UV as shown above, or use a `mise` task that already does.
+themselves: pass it to UV as shown above, or use a `mise` task that already
+does.
 
 Existing files need these renames:
 
