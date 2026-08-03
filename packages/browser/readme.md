@@ -1,16 +1,15 @@
 # browser
 
-Reads sites that a plain HTTP client cannot, by driving a real Chrome over the
-DevTools protocol on a headless display. One site-agnostic core plus one
-`sites/<name>/` recipe per site.
+Drives a real Chrome over the DevTools protocol for sites that cannot yet be
+driven over plain HTTP. Each site lives in its own `sites/<name>/` recipe on top
+of a site-agnostic core.
 
 ```sh
 uv run browser --input subjects.csv --output debts.csv --site entel --control <ruc>
 ```
 
-Its sites are absent from the portal by design: a site lands here while it still
-needs a browser, and moves to [`fetch`](../fetch/readme.md) once it can be
-driven over plain HTTP.
+Sites move to [`fetch`](../fetch/readme.md) once they no longer require a
+browser.
 
 ## Sites
 
@@ -21,75 +20,90 @@ driven over plain HTTP.
 
 `entel` reads Entel's "Paga tu deuda" page, which is gated by reCAPTCHA v3.
 `portabilidad` reads `consulta.portabilidad.pe`, which is gated by Cloudflare
-Turnstile. Both gates are why this package exists.
+Turnstile. Those gates are why this package exists.
 
 `--control` is a warm-up identifier for sites that need one. Entel uses it to
-capture its request template and to health-check the session; portabilidad
-ignores it.
+capture its request template and health-check the session. Portabilidad ignores
+it.
 
 ## How it fits together
 
-```
-cli/direct.py           parse args -> RunConfig, pick a site from the registry
-run.py                  ingest, resolve the proxy, drive the retry loop, export
-backends/seleniumbase.py  launch a SeleniumBase Pure CDP browser, yield a Session
-session.py              the backend/site-page seam (evaluate, open, gui_click ...)
-local_proxy.py          an unauthenticated 127.0.0.1 relay onto an authenticated proxy
-sites/<name>/page.py    a prepared page: navigate, install JS, drive the form
-sites/<name>/parse.py   in-page payload -> LookupResult(columns)
-store.py                SQLite observation log; export projects columns to CSV
+```text
+cli/direct.py
+    Parse CLI arguments, build a RunConfig, and select a site.
+
+run.py
+    Coordinate the run: read input, resolve the proxy, execute retries,
+    and export results.
+
+backends/
+    Launch a browser and expose it as a Session.
+
+session.py
+    Common browser interface used by every site.
+
+sites/<name>/
+    page.py   Drive the site.
+    parse.py  Convert the page payload into a LookupResult.
+
+local_proxy.py
+    Local relay that exposes an authenticated proxy without credentials.
+
+store.py
+    Record observations in SQLite and export selected columns to CSV.
 ```
 
-The backend knows nothing about any site, and a site page consumes only the
-`Session` protocol and never touches SeleniumBase. Adding a site is a new
-`sites/<name>/` folder plus one entry in `sites/registry.py`.
+The backend knows nothing about any site. Site pages consume only the `Session`
+protocol and never depend on SeleniumBase directly. Adding a site is a new
+`sites/<name>/` directory plus one entry in `sites/registry.py`.
 
 Input is a CSV of subjects. `subject.py` classifies each by digit shape, and the
-lengths never collide: a Peru mobile is 9 digits leading 9, a DNI is 7 or 8, a
-RUC is 11. The planner routes a subject only to a site that accepts its kind.
+lengths never collide: a Peru mobile is 9 digits beginning with 9, a DNI is 7 or
+8 digits, and a RUC is 11. The planner routes each subject only to sites that
+accept its kind.
 
-Output is a CSV whose columns the site defines. The adjacent
-`<output>.state.sqlite3` holds every observation and is the source of truth; the
-CSV is a disposable projection of the latest verified row per subject.
-Re-running retries whatever has not succeeded.
+Each site defines its own output columns.
+
+`<output>.state.sqlite3` stores every observation and is the source of truth.
+The CSV is a disposable projection of the latest verified row for each subject.
+Re-running retries any subject that has not yet succeeded.
 
 ## The local proxy
 
-SeleniumBase's Pure CDP mode authenticates an upstream proxy by enabling CDP
-Fetch interception, which pauses and resumes every request through a Python
-handler on the CDP event loop. One simple request survives that. A heavy SPA
-does not: Entel's OutSystems app stalls and never renders, because the
-interception starves its subresource XHRs.
+SeleniumBase's Pure CDP mode authenticates upstream proxies by enabling CDP
+Fetch interception. Every request pauses while a Python handler supplies proxy
+credentials.
 
-Downgrading Chrome does not help: the Fetch path has no version gate, and the
-blank-render stall reproduces on Chrome 147, 148, 149, and 150 alike.
+That works for simple pages. Entel's OutSystems application stalls because its
+subresource requests compete with the interception handler. The problem
+reproduces on Chrome 147 through 150.
 
-So `local_proxy.py` terminates the auth locally. Chrome talks to an
-unauthenticated `127.0.0.1` relay, no interception is ever enabled, and the
-relay attaches the upstream credentials itself. One relay per browser session,
-so a session restart still rotates the upstream exit.
+`local_proxy.py` avoids interception entirely. Chrome connects to an
+unauthenticated relay on `127.0.0.1`, and the relay attaches the upstream
+credentials itself. Each browser session gets its own relay, so restarting the
+session still rotates the upstream exit.
 
 ## Rejects and the retry policy
 
-Both sites answer an ambiguous rejection on a healthy session: Entel's reCAPTCHA
-v3 score fluctuates per mint, and portabilidad's Turnstile token goes stale. A
-single mint clears only some of the time.
+Both sites return an ambiguous rejection on an otherwise healthy session.
+Entel's reCAPTCHA v3 score varies from token to token, and portabilidad's
+Turnstile token eventually expires.
 
-`RejectedError` is the sole owner of that verdict, and it is what makes the
-retry policy work: on a reject, `run.py` re-mints a fresh token and resends, up
-to `--reject-retries`, before recording the subject as rejected. A structured
-reject also proves the loop is alive, so it never triggers a session restart on
-its own. A hard `BrowserError` propagates immediately.
+`RejectedError` owns that decision. On rejection, `run.py` mints a fresh token
+and retries up to `--reject-retries` before recording the subject as rejected. A
+structured reject proves the loop is healthy, so it never triggers a session
+restart on its own. A hard `BrowserError` propagates immediately.
 
-If several subjects in a row exhaust their whole budget, the window is assumed
-cold and the session restarts, which mints a fresh proxy exit. A rejected
-subject is not lost: it stays rejected in the store, the run exits non-zero, and
-a re-run retries it.
+If several consecutive subjects exhaust their retry budget, the session is
+considered cold and restarts with a fresh proxy exit.
+
+Rejected subjects are not lost. They remain rejected in the store, the run exits
+non-zero, and a later run retries them.
 
 | flag                         | default                  | notes                                                   |
 | ---------------------------- | ------------------------ | ------------------------------------------------------- |
 | `--site`                     | required                 | `entel` or `portabilidad`                               |
-| `--control`                  | none                     | warm-up identifier; must be one the site accepts        |
+| `--control`                  | none                     | warm-up identifier; must be accepted by the site        |
 | `--reject-retries`           | 12                       | extra token mints before recording a reject             |
 | `--reject-restart-threshold` | 4                        | consecutive exhausted subjects before a session restart |
 | `--max-session-restarts`     | 0                        |                                                         |
@@ -99,16 +113,16 @@ a re-run retries it.
 | `--state`                    | `<output>.state.sqlite3` |                                                         |
 | `--diagnostics`              | off                      | redacted per-request timing and structure as JSON Lines |
 
-Browser drives one session at a time, so it takes the first provider named in
-`PROXY_PROVIDER` and ignores any lane count. A shared `.env` listing several
-providers for `fetch`'s pool works here unchanged.
+Browser uses a single session, so it always takes the first provider listed in
+`PROXY_PROVIDER` and ignores lane counts. A shared `.env` that lists multiple
+providers for `fetch` works unchanged.
 
 ## What limits throughput
 
-Entel's token does not survive being moved to a plain HTTP client, so the
-browser cannot be dropped from the mint path. That is the ceiling on this site,
-and it is why Entel is not in `fetch`.
+Entel's token cannot be reused from a plain HTTP client, so the browser remains
+part of the request path. That is why Entel stays in `browser` instead of
+`fetch`.
 
-The full investigation, including everything ruled out, is in
+The full investigation, including everything that was ruled out, is in
 [docs/entel.md](../../docs/entel.md). Read it before changing the Entel recipe:
-most of what looks worth trying has already been tried and measured.
+most ideas that look promising have already been tried and measured.
