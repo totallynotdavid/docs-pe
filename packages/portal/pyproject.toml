@@ -9,7 +9,7 @@ description = "Web portal and worker for managing fetch jobs."
 requires-python = ">=3.11"
 dependencies = [
   "asyncpg>=0.30.0",
-  "cryptography>=44.0.0",
+  "cryptography>=50.0.0",
   "fastapi>=0.135.0",
   "fetch",
   "httpx>=0.28.1",
