@@ -1,17 +1,19 @@
 __pycache__/
-.pytest_cache/
+*.egg-info/
+node_modules/
 
+# Build output
 build/
 dist/
-*.egg-info/
 
-downloaded_files/
-*.csv
-.env
+# Local configuration
+.env*
+!.env.example
 
-*.log
-*.pid
-*.pgid
-*.state.sqlite3
-*.state.sqlite3-shm
-*.state.sqlite3-wal
+# Generated data
+.data/
+logs/
+results/
+
+# results contain PII data
+/*.csv
