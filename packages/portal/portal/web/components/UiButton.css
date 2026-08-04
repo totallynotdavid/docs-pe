@@ -1,0 +1,52 @@
+button,
+.boton {
+  align-items: center;
+  background: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  color: var(--primary-foreground);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-medium);
+  height: 31px;
+  justify-content: center;
+  padding: 0 11px;
+  text-decoration: none;
+  transition:
+    background var(--motion-fast),
+    transform 100ms;
+}
+
+button:hover,
+.boton:hover {
+  background: color-mix(in oklab, var(--primary) 88%, white);
+  color: var(--primary-foreground);
+}
+
+button:active,
+.boton:active {
+  transform: scale(0.98);
+}
+
+.boton--secundario {
+  background: var(--background);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+
+.boton--secundario:hover {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.boton--peligro {
+  background: transparent;
+  border-color: color-mix(in oklab, var(--destructive) 35%, var(--border));
+  color: var(--destructive);
+}
+
+.boton--peligro:hover {
+  background: var(--color-red-5);
+  color: var(--red-11, var(--destructive));
+}
