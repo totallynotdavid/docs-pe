@@ -1,0 +1,134 @@
+.flujo-consulta {
+  max-width: 680px;
+}
+
+.flujo-consulta__encabezado {
+  margin-bottom: 30px;
+}
+
+.flujo-consulta__encabezado h1 {
+  font-size: 24px;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.flujo-consulta__encabezado p {
+  color: var(--foreground-secondary);
+  margin-top: 7px;
+}
+
+/* Doubled up so this beats `.formulario` regardless of which stylesheet the
+   asset collector happens to emit first. */
+.formulario.formulario-consulta {
+  gap: 0;
+  max-width: none;
+}
+
+.paso-consulta {
+  padding: 0 0 30px;
+}
+
+.paso-consulta + .paso-consulta {
+  border-top: 1px solid var(--border);
+  padding-top: 30px;
+}
+
+.paso-consulta__encabezado {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.paso-consulta__numero {
+  align-items: center;
+  background: var(--tertiary);
+  border-radius: 50%;
+  color: var(--foreground-secondary);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  height: 20px;
+  justify-content: center;
+  margin-top: 1px;
+  width: 20px;
+}
+
+.paso-consulta__encabezado h2 {
+  font-size: var(--font-size-body);
+  line-height: 20px;
+}
+
+.paso-consulta__encabezado p {
+  color: var(--foreground-secondary);
+  font-size: var(--font-size-caption);
+  margin-top: 3px;
+}
+
+.formulario-consulta .archivo-csv {
+  background: var(--surface);
+  border-width: 1px;
+  min-height: 132px;
+}
+
+.formulario-consulta .archivo-csv:hover,
+.formulario-consulta .archivo-csv--arrastrando {
+  background: var(--background-transparent-lighter);
+  border-color: var(--foreground-secondary);
+}
+
+.formulario-consulta .fuentes {
+  margin-bottom: 0;
+}
+
+.formulario-consulta .fuente:hover {
+  background: var(--background-transparent-lighter);
+  border-color: var(--border-strong);
+}
+
+.formulario-consulta .fuente:has(input:checked) {
+  background: var(--background);
+  border-color: var(--foreground);
+}
+
+.formulario-consulta .fuente__muestra {
+  display: none;
+  margin-top: 8px;
+}
+
+.formulario-consulta .fuente:has(input:checked) .fuente__muestra {
+  display: grid;
+}
+
+.consulta-accion {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding-top: 20px;
+}
+
+.consulta-accion__conexion {
+  color: var(--foreground-secondary);
+  font-size: var(--font-size-caption);
+}
+
+.consulta-accion__conexion strong {
+  color: var(--foreground);
+  font-weight: var(--font-weight-medium);
+}
+
+.consulta-accion__selector {
+  align-items: center !important;
+  display: flex !important;
+  font-size: var(--font-size-caption) !important;
+  gap: 8px !important;
+}
+
+.consulta-accion__selector select {
+  min-height: 31px;
+  width: auto;
+}

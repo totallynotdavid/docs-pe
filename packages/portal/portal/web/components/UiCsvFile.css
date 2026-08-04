@@ -1,0 +1,58 @@
+/* Wins over the grid `.formulario label`, which this element also matches. */
+.archivo-csv {
+  align-items: center !important;
+  background: var(--secondary);
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--foreground-secondary) !important;
+  cursor: pointer;
+  display: flex !important;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: center;
+  min-height: 156px;
+  padding: 20px;
+  position: relative;
+  text-align: center;
+  transition:
+    background var(--motion-fast),
+    border-color var(--motion-fast);
+}
+
+.archivo-csv:hover,
+.archivo-csv--arrastrando {
+  background: var(--color-blue-5);
+  border-color: var(--color-blue-11);
+}
+
+.archivo-csv__input {
+  cursor: pointer;
+  height: 100%;
+  inset: 0;
+  opacity: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.archivo-csv__icono {
+  color: var(--foreground-secondary);
+  display: flex;
+}
+
+.archivo-csv__titulo {
+  color: var(--foreground);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+}
+
+.archivo-csv__ayuda {
+  color: var(--foreground-tertiary);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-regular);
+}
+
+.archivo-csv__deteccion {
+  color: var(--foreground-secondary);
+  font-size: var(--font-size-caption);
+  margin-top: 9px;
+}

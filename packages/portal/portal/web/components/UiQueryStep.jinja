@@ -1,0 +1,12 @@
+{#def number, title, description, title_id #}
+{#css UiQueryFlow.css #}
+<section class="paso-consulta" aria-labelledby="{{ title_id }}">
+  <div class="paso-consulta__encabezado">
+    <span class="paso-consulta__numero">{{ number }}</span>
+    <div>
+      <h2 id="{{ title_id }}">{{ title }}</h2>
+      <p>{{ description }}</p>
+    </div>
+  </div>
+  {{ content }}
+</section>
