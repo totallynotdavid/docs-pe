@@ -1,9 +1,9 @@
 [tools]
-uv = "0.11.7"
-python = "3.14.4"
+uv = "0.12.0"
+python = "3.14.6"
 
 [tasks.install]
-run = "uv sync --all-groups"
+run = "uv sync --all-packages --all-groups"
 
 [tasks.update]
 run = "uv sync -U"
@@ -21,4 +21,7 @@ run = ["uv run mypy ."]
 run = "uv run pytest"
 
 [tasks.build]
-run = ["rm -rf dist build", "uv run pyinstaller robot.spec"]
+run = [
+  "rm -rf packages/fetch/dist packages/fetch/build",
+  "uv run pyinstaller --distpath packages/fetch/dist --workpath packages/fetch/build packages/fetch/fetch.spec",
+]

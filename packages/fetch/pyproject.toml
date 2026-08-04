@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=83.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fetch"
+version = "0.1.0"
+description = "Bulk lookup against the OSIPTEL and SUNAT public endpoints over sticky proxy sessions."
+requires-python = ">=3.11"
+
+authors = [{ name = "David Duran", email = "dadch1404@gmail.com" }]
+
+dependencies = ["httpx>=0.28.1"]
+
+[project.scripts]
+fetch = "fetch.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["fetch*"]
