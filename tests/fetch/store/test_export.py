@@ -39,7 +39,7 @@ def _failure(site: str, doc: str) -> Result:
     )
 
 
-def _read_csv(path: Path) -> list[list[str]]:
+def _read_rows(path: Path) -> list[list[str]]:
     with path.open(newline="", encoding="utf-8") as file_obj:
         return list(csv.reader(file_obj))
 
@@ -55,7 +55,7 @@ def test_export_site_writes_success_rows_under_the_sites_columns(
 
     export_site(store=store, output_csv=output_csv, site=site)
 
-    rows = _read_csv(site_csv_path(output_csv, "osiptel"))
+    rows = _read_rows(site_csv_path(output_csv, "osiptel"))
     assert rows == [
         ["doc", "modalidad", "numero", "operador"],
         ["20100000001", "POSTPAGO", "98857****", "CLARO"],
@@ -65,7 +65,7 @@ def test_export_site_writes_success_rows_under_the_sites_columns(
 def test_export_site_writes_each_projection_to_its_own_file(
     store: OutcomeStore, tmp_path: Path
 ) -> None:
-    def counts(rows: tuple[Row, ...]) -> tuple[Row, ...]:
+    def project_counts(rows: tuple[Row, ...]) -> tuple[Row, ...]:
         return ((rows[0][2], len(rows), len(rows)),)
 
     store.record_success(
@@ -80,7 +80,9 @@ def test_export_site_writes_each_projection_to_its_own_file(
     )
     output_csv = tmp_path / "out.csv"
     projection = Projection(
-        name="counts", columns=("carrier", "lines", "total_lines"), project=counts
+        name="counts",
+        columns=("carrier", "lines", "total_lines"),
+        project=project_counts,
     )
     site = _site(
         "osiptel", "modalidad", "numero", "operador", projections=(projection,)
@@ -88,10 +90,9 @@ def test_export_site_writes_each_projection_to_its_own_file(
 
     export_site(store=store, output_csv=output_csv, site=site)
 
-    counts_path = site_csv_path(output_csv, "osiptel").with_name(
-        "out.osiptel.counts.csv"
-    )
-    assert _read_csv(counts_path) == [
+    assert _read_rows(
+        site_csv_path(output_csv, "osiptel").with_name("out.osiptel.counts.csv")
+    ) == [
         ["doc", "carrier", "lines", "total_lines"],
         ["20100000001", "CLARO", "2", "2"],
     ]
@@ -106,7 +107,7 @@ def test_an_empty_success_payload_writes_no_data_row(
 
     export_site(store=store, output_csv=output_csv, site=site)
 
-    rows = _read_csv(site_csv_path(output_csv, "sunat"))
+    rows = _read_rows(site_csv_path(output_csv, "sunat"))
     assert rows == [["doc", "tipo_doc", "num_doc", "nombre"]]
 
 
@@ -119,7 +120,7 @@ def test_export_site_writes_error_rows_with_the_fixed_headers(
 
     export_site(store=store, output_csv=output_csv, site=site)
 
-    rows = _read_csv(site_csv_path(output_csv, "osiptel").with_suffix(".errors.csv"))
+    rows = _read_rows(site_csv_path(output_csv, "osiptel").with_suffix(".errors.csv"))
     assert rows[0] == ERROR_HEADERS
     assert len(rows) == 2
     assert rows[1][:6] == [
@@ -131,7 +132,8 @@ def test_export_site_writes_error_rows_with_the_fixed_headers(
         "proxy",
     ]
     assert re.fullmatch(
-        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(\+\d{2}:\d{2}|Z)?", rows[1][6]
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(\+\d{2}:\d{2}|Z)?",
+        rows[1][6],
     )
 
 
@@ -142,7 +144,7 @@ def test_export_site_writes_not_found_rows(store: OutcomeStore, tmp_path: Path) 
 
     export_site(store=store, output_csv=output_csv, site=site)
 
-    rows = _read_csv(
+    rows = _read_rows(
         site_csv_path(output_csv, "sunat_reps").with_suffix(".not_found.csv")
     )
     assert rows[0] == ["doc", "timestamp"]
@@ -162,10 +164,11 @@ def test_export_all_writes_every_site(store: OutcomeStore, tmp_path: Path) -> No
 
     export_all(store=store, output_csv=output_csv, sites=sites)
 
-    osiptel_rows = _read_csv(site_csv_path(output_csv, "osiptel"))
+    osiptel_rows = _read_rows(site_csv_path(output_csv, "osiptel"))
     assert osiptel_rows == [
         ["doc", "modalidad", "numero", "operador"],
         ["20100000001", "POSTPAGO", "98857****", "CLARO"],
     ]
-    sunat_rows = _read_csv(site_csv_path(output_csv, "sunat"))
+
+    sunat_rows = _read_rows(site_csv_path(output_csv, "sunat"))
     assert sunat_rows == [["doc", "tipo_doc", "num_doc", "nombre"]]
