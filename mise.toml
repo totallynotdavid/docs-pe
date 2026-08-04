@@ -56,6 +56,11 @@ mise x postgres -- pg_dump -h 127.0.0.1 -p 5432 -U postgres -d postgres \\
   > packages/portal/schema.sql
 """
 
+[tasks."portal:bootstrap"]
+description = "Provision the local portal administrator and first team"
+depends = ["portal:migrate"]
+run = "uv run --env-file .env portal-bootstrap"
+
 [tasks.check]
 run = ["uv run mypy ."]
 
