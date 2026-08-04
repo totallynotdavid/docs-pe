@@ -1,6 +1,7 @@
 [tools]
 uv = "0.12.0"
 python = "3.14.6"
+postgres = "18.4"
 
 [tasks.install]
 run = "uv sync --all-packages --all-groups"
@@ -13,6 +14,47 @@ run = "uv pip list --outdated"
 
 [tasks.format]
 run = ["uv run ruff format", "uv run ruff check --fix"]
+
+[tasks."portal:db:start"]
+description = "Start the local portal database"
+run = """
+data_dir="$PWD/.data/postgres"
+
+if [ ! -f "$data_dir/PG_VERSION" ]; then
+  mkdir -p "$data_dir"
+  mise x postgres -- initdb -D "$data_dir" -U postgres \\
+    --auth-host=trust --auth-local=trust --no-instructions
+fi
+
+if ! mise x postgres -- pg_isready -h 127.0.0.1 -p 5432 -U postgres -q; then
+  mise x postgres -- pg_ctl -D "$data_dir" -l "$data_dir/server.log" \\
+    -o "-h 127.0.0.1 -p 5432" -w start
+fi
+
+# This cluster is disposable, so disable durability for faster tests.
+# Reload on every start because the cluster may already be running.
+mise x postgres -- psql -q -h 127.0.0.1 -p 5432 -U postgres -d postgres \\
+  -c "ALTER SYSTEM SET fsync = 'off'" \\
+  -c "ALTER SYSTEM SET synchronous_commit = 'off'" \\
+  -c "ALTER SYSTEM SET full_page_writes = 'off'" \\
+  -c "SELECT pg_reload_conf()" > /dev/null
+"""
+
+[tasks."portal:migrate"]
+depends = ["portal:db:start"]
+run = "uv run --env-file .env portal-migrate"
+
+[tasks."portal:schema"]
+description = "Snapshot the current portal schema to packages/portal/schema.sql"
+depends = ["portal:migrate"]
+run = """
+mise x postgres -- pg_dump -h 127.0.0.1 -p 5432 -U postgres -d postgres \\
+  --schema-only --no-owner --no-privileges \\
+  --exclude-table=portal_schema_migrations \\
+  | grep -v -e '^\\\\restrict ' -e '^\\\\unrestrict ' \\
+            -e '^-- Dumped from database version' -e '^-- Dumped by pg_dump version' \\
+  > packages/portal/schema.sql
+"""
 
 [tasks.check]
 run = ["uv run mypy ."]
