@@ -333,7 +333,7 @@ One known issue affects the display size.
 `xvfb_metrics`. As a result:
 
 ```python
-xvfb_metrics="1920,1080"
+xvfb_metrics = "1920,1080"
 ```
 
 may still produce a 1366x768 display. PyAutoGUI then fails when asked to click
