@@ -5,9 +5,12 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
@@ -94,6 +97,18 @@ def create_app(
 
     app.add_middleware(SecurityHeaders)
 
+    if settings.is_production:
+        hostname = urlparse(settings.public_origin).hostname
+        assert hostname, "validated by PortalSettings.validate()"
+
+        app.add_middleware(
+            TrustedHostMiddleware,
+            allowed_hosts=[hostname],
+        )
+
+        if not settings.tls_terminated_upstream:
+            app.add_middleware(HTTPSRedirectMiddleware)
+
     install_error_handlers(app)
 
     for router in (
@@ -117,4 +132,6 @@ def main() -> None:
         create_app(),
         host="0.0.0.0",
         port=int(os.environ.get("PORT", "8000")),
+        proxy_headers=True,
+        forwarded_allow_ips="*",
     )
