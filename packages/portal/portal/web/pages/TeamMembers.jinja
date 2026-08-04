@@ -1,0 +1,55 @@
+{#def user, csrf_token, team, members, candidates, error #}
+<Layout :title="'Personas · ' ~ team.name ~ ' · Worker'"
+        :user="user"
+        :csrf_token="csrf_token">
+  <UiTopBar title="Personas del equipo" />
+  <UiContent>
+    <h1 class="solo-lector">Personas de {{ team.name }}</h1>
+    <UiPanel>
+      <UiPanelHeader title="Añadir persona"
+                     description="Las personas deben tener una cuenta creada en la plataforma." />
+      <UiPanelBody>
+        {% if error %}<UiMessage>{{ error }}</UiMessage>{% endif %}
+        <UiForm :action="'/equipos/' ~ team.id ~ '/ajustes/miembros'"
+                :csrf_token="csrf_token">
+          <UiField label="Persona">
+            <select name="email" required>
+              <option value="" selected disabled>Selecciona una persona</option>
+              {% for candidate in candidates %}<option value="{{ candidate.email }}">{{ candidate.email }}</option>{% endfor %}
+            </select>
+          </UiField>
+          <UiField label="Nivel de acceso">
+            <select name="role">
+              <option value="team_member">Puede consultar</option>
+              <option value="team_leader">Puede administrar</option>
+            </select>
+          </UiField>
+          <button type="submit">Guardar acceso</button>
+        </UiForm>
+      </UiPanelBody>
+    </UiPanel>
+    <UiPanel>
+      <UiPanelHeader title="Equipo actual"
+                     description="Las personas administradoras pueden actualizar la configuración." />
+      <UiList>
+        {% for member, role in members %}
+          <UiListItem>
+            <span>{{ member.email }}</span>
+            <UiActions>
+              <UiMeta>
+                {{ role|role_name }}
+              </UiMeta>
+              {% if member.id != user.id %}
+                <UiInlineAction :action="'/equipos/' ~ team.id ~ '/ajustes/miembros/quitar'"
+                                :csrf_token="csrf_token">
+                  <input type="hidden" name="email" value="{{ member.email }}">
+                  <button type="submit">Quitar</button>
+                </UiInlineAction>
+              {% endif %}
+            </UiActions>
+          </UiListItem>
+        {% endfor %}
+      </UiList>
+    </UiPanel>
+  </UiContent>
+</Layout>

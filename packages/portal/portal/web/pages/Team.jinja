@@ -1,0 +1,41 @@
+{#def user, csrf_token, team, jobs, page, total #}
+<Layout :title="team.name ~ ' · Worker'"
+        :user="user"
+        :csrf_token="csrf_token">
+  <UiTopBar :title="team.name">
+    <UiButton variant="secundario" :href="'/equipos/' ~ team.id ~ '/buscar'">
+      Buscar
+    </UiButton>
+    {% if team.role.value == 'team_leader' %}
+      <UiButton :href="'/equipos/' ~ team.id ~ '/procesos/nuevo'">
+        Nueva consulta
+      </UiButton>
+    {% endif %}
+  </UiTopBar>
+  <UiContent>
+    <h1 class="solo-lector">{{ team.name }}</h1>
+    {% if team.role.value == 'team_leader' %}
+      <UiPanel aria-labelledby="titulo-tareas">
+        <UiPanelHeader title="Tareas recientes"
+                       description="El estado se actualiza mientras se procesan."
+                       title_id="titulo-tareas">
+          <UiButton variant="secundario" :href="'/equipos/' ~ team.id ~ '/ajustes'">
+            Configuración
+          </UiButton>
+        </UiPanelHeader>
+        <div id="lista-procesos"
+             hx-get="/equipos/{{ team.id }}?page=1"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+          <JobsFragment :team="team" :jobs="jobs" :page="page" :total="total" />
+        </div>
+      </UiPanel>
+    {% else %}
+      <UiPanel>
+        <UiEmptyState>
+          Puedes buscar documentos en este equipo.
+        </UiEmptyState>
+      </UiPanel>
+    {% endif %}
+  </UiContent>
+</Layout>
