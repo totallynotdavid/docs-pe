@@ -68,6 +68,24 @@ section-order = [
   "local-folder",
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"packages/portal/**/*.py" = [
+  "B008",
+  "C901",
+  "EM101",
+  "EM102",
+  "N818",
+  "RUF029",
+  "TC001",
+  "TC002",
+  "TC003",
+  "TRY003",
+]
+
+[[tool.mypy.overrides]]
+module = ["asyncpg", "fetch.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 # Apply asyncio support to every async test.
 asyncio_mode = "auto"
