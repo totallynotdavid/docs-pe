@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=83.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "capture"
+version = "0.1.0"
+description = "Human-guided browser capture for discovering and replaying site requests."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+capture = "capture.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["capture*"]
+
+[tool.setuptools.package-data]
+capture = ["*.js", "sites/entel/*.js"]
