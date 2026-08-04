@@ -24,6 +24,9 @@ run = [
 description = "Refresh vendored browser assets"
 run = ["npm ci --no-audit --no-fund", "npm run vendor"]
 
+[tasks."portal:docker:build"]
+run = "docker build --file packages/portal/Dockerfile --tag osiptel-portal ."
+
 [tasks."portal:db:start"]
 description = "Start the local portal database"
 run = """
