@@ -81,6 +81,7 @@ run = [
 ]
 
 [tasks.test]
+depends = ["portal:db:start"]
 run = "uv run pytest"
 
 [tasks.build]
