@@ -6,7 +6,10 @@ import re
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from fastapi.testclient import TestClient
+from portal.domain.errors import ProvisioningError, Reason
 from portal.domain.models import TeamRole
 from portal.security import hash_password
 
@@ -17,6 +20,7 @@ if TYPE_CHECKING:
     import asyncpg
 
     from fastapi import FastAPI
+    from portal.application.provisioning import ProvisioningService
     from portal.repository.teams import PostgresTeamRepository
 
 
@@ -147,3 +151,52 @@ async def test_site_and_team_settings_use_email_selectors_and_keep_members_limit
         assert member_client.get(f"{team_url}/ajustes").status_code == 403
         assert member_client.get(f"{team_url}/procesos/nuevo").status_code == 403
     assert team_id
+
+
+async def test_ensure_first_team_creates_once_and_verifies_on_rerun(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    provisioning: ProvisioningService,
+) -> None:
+    admin_email = await _person(pool, "bootstrap@osiptel.test", is_site_admin=True)
+    admin_id = await pool.fetchval(
+        "SELECT id FROM portal_users WHERE email = $1", admin_email
+    )
+
+    created = await provisioning.ensure_first_team(
+        admin_id, name="Equipo Inicial", slug="equipo-inicial"
+    )
+    assert created.created is True
+    assert await team_repository.role_for(admin_id, created.team.id) is (
+        TeamRole.TEAM_LEADER
+    )
+
+    rerun = await provisioning.ensure_first_team(
+        admin_id, name="Equipo Inicial", slug="equipo-inicial"
+    )
+    assert rerun.created is False
+    assert rerun.team.id == created.team.id
+    assert await team_repository.role_for(admin_id, rerun.team.id) is (
+        TeamRole.TEAM_LEADER
+    )
+
+
+async def test_ensure_first_team_rejects_a_mismatched_rerun(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    provisioning: ProvisioningService,
+) -> None:
+    admin_email = await _person(pool, "bootstrap@osiptel.test", is_site_admin=True)
+    admin_id = await pool.fetchval(
+        "SELECT id FROM portal_users WHERE email = $1", admin_email
+    )
+    await team_repository.create_first_team(
+        "equipo-inicial", "Equipo Inicial", admin_id
+    )
+
+    with pytest.raises(ProvisioningError) as excinfo:
+        await provisioning.ensure_first_team(
+            admin_id, name="Otro Equipo", slug="otro-equipo"
+        )
+
+    assert excinfo.value.reason is Reason.INITIAL_TEAM_MISMATCH

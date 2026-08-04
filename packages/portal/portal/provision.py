@@ -10,7 +10,7 @@ from fetch.proxy.registry import PROVIDERS, spec_for
 
 from portal.application.provisioning import ProvisioningService
 from portal.credentials.secrets import AesGcmSecretProtector
-from portal.domain.models import CredentialState, TeamRole
+from portal.domain.models import CredentialState
 from portal.migrations import apply_migrations
 from portal.repository.auth import PostgresAuthRepository
 from portal.repository.credentials import PostgresCredentialRepository
@@ -78,28 +78,16 @@ async def provision(args: argparse.Namespace) -> None:
             AesGcmSecretProtector.from_environment(),
         )
 
-        team_count, initial_team_id = await team_repo.installation_status()
-
-        if team_count == 0:
-            team = await service.create_first_team(
-                administrator.id,
-                name=args.team_name,
-                slug=args.team_slug,
-            )
-            print(f"Team: {team.name} · {team.slug} (created)")
-        else:
-            team = await team_repo.team_by_slug(args.team_slug.strip().lower())
-            if team is None or team.id != initial_team_id:
-                raise RuntimeError(
-                    "the installation already has a different initial team"
-                )
-
-            await team_repo.add_member(
-                team.id,
-                administrator.id,
-                TeamRole.TEAM_LEADER,
-            )
-            print(f"Team: {team.name} · {team.slug} (verified)")
+        first_team = await service.ensure_first_team(
+            administrator.id,
+            name=args.team_name,
+            slug=args.team_slug,
+        )
+        team = first_team.team
+        print(
+            f"Team: {team.name} · {team.slug} "
+            f"({'created' if first_team.created else 'verified'})"
+        )
 
         print(f"Administrator: {administrator.email} (ready)")
 

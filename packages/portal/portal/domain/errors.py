@@ -26,6 +26,7 @@ class Reason(StrEnum):
     PROXY_PREFLIGHT_FAILED = "proxy_preflight_failed"
 
     INITIAL_TEAM_EXISTS = "initial_team_exists"
+    INITIAL_TEAM_MISMATCH = "initial_team_mismatch"
     TEAM_MISSING = "team_missing"
     TEAM_NAME_LENGTH = "team_name_length"
     SLUG_INVALID = "slug_invalid"

@@ -55,6 +55,12 @@ class TeamReadiness:
     next_step: str
 
 
+@dataclass(frozen=True)
+class FirstTeamResult:
+    team: Team
+    created: bool
+
+
 class ProvisioningService:
     def __init__(
         self,
@@ -97,6 +103,34 @@ class ProvisioningService:
             self._name(name),
             actor_id,
         )
+
+    async def ensure_first_team(
+        self,
+        actor_id: UUID,
+        *,
+        name: str,
+        slug: str,
+    ) -> FirstTeamResult:
+        """Rerunning bootstrap against an existing installation must verify, not fail."""
+        await self._require_site_admin(actor_id)
+
+        normalized_slug = self._slug(slug)
+        team_count, initial_team_id = await self._teams.installation_status()
+
+        if team_count == 0:
+            team = await self._teams.create_first_team(
+                normalized_slug,
+                self._name(name),
+                actor_id,
+            )
+            return FirstTeamResult(team, created=True)
+
+        existing = await self._teams.team_by_slug(normalized_slug)
+        if existing is None or existing.id != initial_team_id:
+            raise ProvisioningError(Reason.INITIAL_TEAM_MISMATCH)
+
+        await self._teams.add_member(existing.id, actor_id, TeamRole.TEAM_LEADER)
+        return FirstTeamResult(existing, created=False)
 
     async def create_team(
         self,
