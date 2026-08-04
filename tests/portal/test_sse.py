@@ -3,10 +3,12 @@ from __future__ import annotations
 from portal.web.sse import sse_event
 
 
-def test_every_line_of_a_multi_line_fragment_gets_a_data_prefix() -> None:
+def test_every_line_gets_a_data_prefix() -> None:
     """A bare newline would end the event early and truncate the fragment."""
     framed = sse_event(
-        event_id=7, event="progreso", data="<div>\n  <p>hola</p>\n</div>"
+        event_id=7,
+        event="progreso",
+        data="<div>\n  <p>hola</p>\n</div>",
     )
 
     assert framed == (

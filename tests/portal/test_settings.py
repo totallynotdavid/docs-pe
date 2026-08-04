@@ -1,5 +1,3 @@
-"""PortalSettings.from_environment fails fast on missing or malformed configuration."""
-
 from __future__ import annotations
 
 import pytest
@@ -17,16 +15,20 @@ _REQUIRED_ENV = {
 }
 
 
-def _set_environment(monkeypatch: pytest.MonkeyPatch, **overrides: str) -> None:
+def _set_required_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    **overrides: str,
+) -> None:
     for name, value in {**_REQUIRED_ENV, **overrides}.items():
         monkeypatch.setenv(name, value)
 
 
 @pytest.mark.parametrize("missing", sorted(_REQUIRED_ENV))
-def test_a_missing_required_variable_fails_fast(
-    monkeypatch: pytest.MonkeyPatch, missing: str
+def test_missing_required_variable_fails_fast(
+    monkeypatch: pytest.MonkeyPatch,
+    missing: str,
 ) -> None:
-    _set_environment(monkeypatch)
+    _set_required_environment(monkeypatch)
     monkeypatch.delenv(missing)
 
     with pytest.raises(RuntimeError, match=missing):
@@ -36,16 +38,16 @@ def test_a_missing_required_variable_fails_fast(
 def test_cookie_secure_rejects_anything_other_than_true_or_false(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_environment(monkeypatch, PORTAL_COOKIE_SECURE="yes")
+    _set_required_environment(monkeypatch, PORTAL_COOKIE_SECURE="yes")
 
     with pytest.raises(RuntimeError, match="PORTAL_COOKIE_SECURE"):
         PortalSettings.from_environment()
 
 
-def test_a_fully_specified_environment_is_never_silently_defaulted(
+def test_fully_specified_environment_is_never_silently_defaulted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _set_environment(monkeypatch)
+    _set_required_environment(monkeypatch)
 
     settings = PortalSettings.from_environment()
 
@@ -56,7 +58,7 @@ def test_a_fully_specified_environment_is_never_silently_defaulted(
     assert settings.tls_terminated_upstream is True
 
 
-def test_validate_rejects_a_production_origin_without_a_hostname() -> None:
+def test_validate_rejects_production_origin_without_hostname() -> None:
     settings = PortalSettings(
         database_dsn="postgresql://x",
         worker_bootstrap_token="token",
@@ -69,8 +71,11 @@ def test_validate_rejects_a_production_origin_without_a_hostname() -> None:
         settings.validate()
 
 
-def test_validate_requires_a_worker_bootstrap_token() -> None:
-    settings = PortalSettings(database_dsn="postgresql://x", worker_bootstrap_token="")
+def test_validate_requires_worker_bootstrap_token() -> None:
+    settings = PortalSettings(
+        database_dsn="postgresql://x",
+        worker_bootstrap_token="",
+    )
 
     with pytest.raises(RuntimeError, match="PORTAL_WORKER_BOOTSTRAP_TOKEN"):
         settings.validate()

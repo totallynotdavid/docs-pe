@@ -26,22 +26,27 @@ def _upload(name: str, content: bytes) -> UploadFile:
 def test_every_response_carries_a_policy_that_trusts_only_this_origin(
     app: FastAPI,
 ) -> None:
-    """Self-hosting every asset is what lets the policy have no exceptions."""
     with TestClient(app) as client:
         policy = client.get("/login").headers["content-security-policy"]
 
     assert "default-src 'self'" in policy
-    assert "unsafe-inline" not in policy and "unsafe-eval" not in policy
+    assert "unsafe-inline" not in policy
+    assert "unsafe-eval" not in policy
 
 
 def test_the_portal_serves_every_asset_a_page_asks_for(app: FastAPI) -> None:
-    """Under that policy a remote or missing asset is a page that does not work."""
     with TestClient(app) as client:
         page = client.get("/login")
 
         assert re.search(r'(?:src|href)="(?:https?:)?//', page.text) is None
+
         references = set(re.findall(r'(?:src|href)="(/estatico/[^"]+)"', page.text))
-        assert {"/estatico/htmx.min.js", "/estatico/htmx-ext-sse.min.js"} <= references
+
+        assert {
+            "/estatico/htmx.min.js",
+            "/estatico/htmx-ext-sse.min.js",
+        } <= references
+
         for reference in references:
             assert client.get(reference).status_code == 200, reference
 
@@ -56,30 +61,35 @@ def _declared_stylesheets(source: str) -> set[str]:
 
 
 def test_the_layout_carries_the_styles_htmx_can_swap_in_later() -> None:
-    """Asset collection sees one render; a fragment arrives after it.
-
-    A component reachable only through a swap would otherwise land on a page whose
-    stylesheet set was decided before it existed.
-    """
+    # Fragment styles must be present before HTMX swaps the fragment in.
     layout = (COMPONENTS_DIR / "Layout.jinja").read_text()
     covered = _declared_stylesheets(layout)
 
     for fragment in sorted(PAGES_DIR.glob("*Fragment.jinja")):
-        for tag in set(re.findall(r"<([A-Z][A-Za-z0-9]*)[\s/>]", fragment.read_text())):
+        tags = set(
+            re.findall(
+                r"<([A-Z][A-Za-z0-9]*)[\s/>]",
+                fragment.read_text(),
+            )
+        )
+
+        for tag in tags:
             component = COMPONENTS_DIR / f"{tag}.jinja"
             required = _declared_stylesheets(component.read_text())
+
             if (COMPONENTS_DIR / f"{tag}.css").exists():
                 required.add(f"{tag}.css")
+
             assert required <= covered, f"{fragment.name} -> {tag}"
 
 
 def test_every_component_stylesheet_is_reachable_but_no_template_is(
     app: FastAPI,
 ) -> None:
-    """The folder holds both, so serving it wholesale would publish the markup."""
     with TestClient(app) as client:
         for stylesheet in sorted(COMPONENTS_DIR.glob("*.css")):
             served = client.get(f"/estatico/componentes/{stylesheet.name}")
+
             assert served.status_code == 200, stylesheet.name
             assert served.headers["content-type"].startswith("text/css")
 
@@ -97,13 +107,21 @@ async def test_csv_upload_accepts_a_valid_file_and_strips_its_directories() -> N
     ("upload", "reason", "message"),
     [
         (None, Reason.CSV_REQUIRED, "seleccione un archivo CSV"),
-        (_upload("", b"10412345678"), Reason.CSV_REQUIRED, "seleccione un archivo CSV"),
+        (
+            _upload("", b"10412345678"),
+            Reason.CSV_REQUIRED,
+            "seleccione un archivo CSV",
+        ),
         (
             _upload("registros.txt", b"10412345678"),
             Reason.CSV_EXTENSION,
             "seleccione un archivo con extensión .csv",
         ),
-        (_upload("vacio.csv", b""), Reason.CSV_EMPTY, "el archivo CSV está vacío"),
+        (
+            _upload("vacio.csv", b""),
+            Reason.CSV_EMPTY,
+            "el archivo CSV está vacío",
+        ),
         (
             _upload("enorme.csv", b"0" * (MAX_CSV_UPLOAD_BYTES + 1)),
             Reason.CSV_TOO_LARGE,
@@ -112,9 +130,10 @@ async def test_csv_upload_accepts_a_valid_file_and_strips_its_directories() -> N
     ],
 )
 async def test_csv_upload_rejects_unusable_files(
-    upload: UploadFile | None, reason: Reason, message: str
+    upload: UploadFile | None,
+    reason: Reason,
+    message: str,
 ) -> None:
-    """The raise names a reason; the Spanish comes from one place, and must resolve."""
     with pytest.raises(InputValidationError) as raised:
         await read_csv_upload(upload)
 
