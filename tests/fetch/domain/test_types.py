@@ -13,15 +13,16 @@ def test_accepts_eight_digit_dni() -> None:
     assert str(Doc("42953322")) == "42953322"
 
 
+def test_strips_surrounding_whitespace() -> None:
+    assert str(Doc("  20100000001  ")) == "20100000001"
+
+
 def test_pads_a_seven_digit_dni_to_the_canonical_width() -> None:
     # Old 7-digit DNIs are the modern 8-digit form with a dropped leading zero.
     doc = Doc("2953322")
+
     assert str(doc) == "02953322"
     assert doc.kind is DocKind.DNI
-
-
-def test_strips_surrounding_whitespace() -> None:
-    assert str(Doc("  20100000001  ")) == "20100000001"
 
 
 @pytest.mark.parametrize(
@@ -61,9 +62,9 @@ def test_kind_is_derived_from_the_shape(value: str, kind: DocKind) -> None:
     ],
 )
 def test_ruc_kind_is_derived_from_the_leading_digits(
-    value: str, ruc_kind: RucKind
+    value: str,
+    ruc_kind: RucKind,
 ) -> None:
-    # Pin the routing key directly; the planner reads it via _serves in plan.py.
     assert Doc(value).ruc_kind is ruc_kind
 
 

@@ -23,7 +23,6 @@ def test_strips_surrounding_whitespace() -> None:
 
 @pytest.mark.parametrize(
     "value",
-    # too short, non-numeric, a 9-digit not-mobile (no leading 9), too long.
     ["123", "abc", "812345678", "1234567890123"],
 )
 def test_rejects_unclassifiable(value: str) -> None:
