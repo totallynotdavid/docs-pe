@@ -1,0 +1,28 @@
+{#def user, csrf_token, team, job #}
+<Layout :title="job.filename ~ ' · Worker'"
+        :user="user"
+        :csrf_token="csrf_token">
+  <UiTopBar :title="job.filename">
+    {% if team.role.value == 'team_leader' and not is_terminal(job) %}
+      <UiSubmission :action="'/equipos/' ~ team.id ~ '/procesos/' ~ job.id ~ '/cancelar'"
+                    :csrf_token="csrf_token">
+        <UiButton variant="peligro" type="submit">
+          Cancelar consulta
+        </UiButton>
+      </UiSubmission>
+    {% endif %}
+  </UiTopBar>
+  <UiContent>
+    <h1 class="solo-lector">Tarea {{ job.filename }}</h1>
+    <UiPanel>
+      <UiPanelBody>
+        <div id="progreso-proceso"
+             aria-live="polite"
+             aria-atomic="true"
+             {% if not is_terminal(job) %} hx-ext="sse" sse-connect="/equipos/{{ team.id }}/procesos/{{ job.id }}/progreso" sse-swap="progreso" sse-close="fin" {% endif %}>
+          <JobProgressFragment :job="job" />
+        </div>
+      </UiPanelBody>
+    </UiPanel>
+  </UiContent>
+</Layout>
