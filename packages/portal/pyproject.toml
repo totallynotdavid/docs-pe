@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "portal"
 version = "0.1.0"
-description = "Team-scoped portal control plane backed only by PostgreSQL."
+description = "Web portal and worker for managing fetch jobs."
 requires-python = ">=3.11"
 dependencies = [
   "asyncpg>=0.30.0",
@@ -23,10 +23,10 @@ dependencies = [
 
 [project.scripts]
 portal = "portal.web.app:main"
-portal-worker = "portal.worker.service:main"
 portal-bootstrap = "portal.bootstrap:main"
 portal-migrate = "portal.migrate:main"
 portal-provision = "portal.provision:main"
+portal-worker = "portal.worker.service:main"
 
 [tool.uv.sources]
 fetch = { workspace = true }
@@ -49,4 +49,4 @@ portal = [
 profile = "jinja"
 indent = 2
 extension = "jinja"
-custom_html = "[A-Z][a-zA-Z0-9]*" # keeps JinjaX component tags from being flattened.
+custom_html = "[A-Z][a-zA-Z0-9]*" # Preserve JinjaX component tags.

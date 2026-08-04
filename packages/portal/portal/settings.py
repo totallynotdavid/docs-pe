@@ -45,10 +45,12 @@ class PortalSettings:
             environment=_required("PORTAL_ENVIRONMENT").lower(),
             public_origin=_required("PORTAL_PUBLIC_ORIGIN"),
             cookie_secure=_required_bool("PORTAL_COOKIE_SECURE"),
-            tls_terminated_upstream=(
-                os.environ.get("PORTAL_TLS_TERMINATED_UPSTREAM", "").lower() == "true"
+            tls_terminated_upstream=_required_bool(
+                "PORTAL_TLS_TERMINATED_UPSTREAM",
             ),
-            object_root=Path(os.environ.get("PORTAL_OBJECT_ROOT", ".data/objects")),
+            object_root=Path(
+                os.environ.get("PORTAL_OBJECT_ROOT", ".data/objects"),
+            ),
         )
 
     def validate(self) -> None:
@@ -63,13 +65,13 @@ class PortalSettings:
         if not self.is_production:
             return
 
-        hostname = urlparse(self.public_origin).hostname
+        origin = urlparse(self.public_origin)
 
-        if not self.cookie_secure or urlparse(self.public_origin).scheme != "https":
+        if not self.cookie_secure or origin.scheme != "https":
             msg = "production requires HTTPS and Secure cookies"
             raise RuntimeError(msg)
 
-        if not hostname:
+        if not origin.hostname:
             msg = "PORTAL_PUBLIC_ORIGIN must include a hostname"
             raise RuntimeError(msg)
 

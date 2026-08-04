@@ -19,7 +19,7 @@ from portal.security import hash_password
 from portal.settings import PortalSettings
 
 
-def _arguments() -> argparse.ArgumentParser:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Idempotently provision the portal's initial installation."
     )
@@ -35,20 +35,22 @@ def _arguments() -> argparse.ArgumentParser:
 def _environment_value(name: str) -> str:
     value = os.environ.get(name, "")
     if not value:
-        msg = f"{name} is required"
-        raise RuntimeError(msg)
+        raise RuntimeError(f"{name} is required")
     return value
 
 
 def _proxy_values(provider: str) -> dict[str, str]:
     spec = spec_for(provider)
     values: dict[str, str] = {}
+
     for field in spec.fields:
         variable = f"PORTAL_PROVISION_{provider}_{field.name}".upper()
-        if field.secret:
-            values[field.name] = _environment_value(variable)
-        else:
-            values[field.name] = os.environ.get(variable, field.default)
+        values[field.name] = (
+            _environment_value(variable)
+            if field.secret
+            else os.environ.get(variable, field.default)
+        )
+
     return values
 
 
@@ -57,6 +59,8 @@ async def provision(args: argparse.Namespace) -> None:
     settings.validate()
 
     password = _environment_value(args.admin_password_env)
+    password_hash = hash_password(password)
+
     pool = await asyncpg.create_pool(settings.database_dsn)
 
     try:
@@ -68,7 +72,7 @@ async def provision(args: argparse.Namespace) -> None:
 
         administrator = await auth_repo.provision_site_admin(
             args.admin_email,
-            hash_password(password),
+            password_hash,
         )
 
         service = ProvisioningService(
@@ -83,22 +87,22 @@ async def provision(args: argparse.Namespace) -> None:
             name=args.team_name,
             slug=args.team_slug,
         )
-        team = first_team.team
+
         print(
-            f"Team: {team.name} · {team.slug} "
+            f"Team: {first_team.team.name} · {first_team.team.slug} "
             f"({'created' if first_team.created else 'verified'})"
         )
-
         print(f"Administrator: {administrator.email} (ready)")
 
-        if args.proxy_provider:
+        provider = args.proxy_provider
+        if provider:
             label = args.proxy_label.strip()
 
-            active = next(
+            credential = next(
                 (
                     credential
                     for credential in await credential_repo.credentials_for_team(
-                        team.id
+                        first_team.team.id
                     )
                     if credential.label == label
                     and credential.state is CredentialState.ACTIVE
@@ -106,31 +110,27 @@ async def provision(args: argparse.Namespace) -> None:
                 None,
             )
 
-            if active is None:
+            if credential is None:
                 credential = await service.configure_proxy(
                     administrator.id,
-                    team_id=team.id,
+                    team_id=first_team.team.id,
                     label=label,
-                    provider=args.proxy_provider,
-                    values=_proxy_values(args.proxy_provider),
+                    provider=provider,
+                    values=_proxy_values(provider),
                 )
-                print(
-                    f"Proxy: {credential.label} · {args.proxy_provider} "
-                    "(validated and active)"
-                )
+                print(f"Proxy: {credential.label} · {provider} (validated and active)")
             else:
-                print(f"Proxy: {active.label} · {args.proxy_provider} (verified)")
+                print(f"Proxy: {credential.label} · {provider} (verified)")
     finally:
         await pool.close()
 
 
 def main() -> None:
-    args = _arguments().parse_args()
+    args = build_parser().parse_args()
 
     try:
         asyncio.run(provision(args))
     except Exception as error:
-        # Commands may name a missing environment variable but never print its value.
         raise SystemExit(f"Provisioning did not complete: {error}") from error
 
 

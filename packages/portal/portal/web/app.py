@@ -39,9 +39,13 @@ def create_app(
     settings: PortalSettings | None = None,
     protector: AesGcmSecretProtector | None = None,
 ) -> FastAPI:
-    settings = settings or PortalSettings.from_environment()
+    if settings is None:
+        settings = PortalSettings.from_environment()
+
+    if protector is None:
+        protector = AesGcmSecretProtector.from_environment()
+
     settings.validate()
-    protector = protector or AesGcmSecretProtector.from_environment()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -76,10 +80,14 @@ def create_app(
         finally:
             await pool.close()
 
-    app = FastAPI(title="Worker", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(
+        title="Worker",
+        version="0.2.0",
+        lifespan=lifespan,
+    )
     app.state.settings = settings
 
-    # Register component assets before the static mount.
+    # Register component assets before the static mount can match them.
     app.include_router(assets.router)
     app.mount(
         "/estatico",
@@ -93,7 +101,10 @@ def create_app(
         hostname = urlparse(settings.public_origin).hostname
         assert hostname, "validated by PortalSettings.validate()"
 
-        app.add_middleware(TrustedHostMiddleware, allowed_hosts=[hostname])
+        app.add_middleware(
+            TrustedHostMiddleware,
+            allowed_hosts=[hostname],
+        )
 
         if not settings.tls_terminated_upstream:
             app.add_middleware(HTTPSRedirectMiddleware)

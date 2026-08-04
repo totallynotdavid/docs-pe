@@ -8,7 +8,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from portal.credentials.secrets import AesGcmSecretProtector
 from portal.repository.jobs import PostgresJobRepository
@@ -36,7 +36,7 @@ def _worker_identity(request: Request, settings: Settings) -> str:
     return worker_id
 
 
-def _worker_queue(request: Request) -> PostgresJobRepository:
+def _worker_jobs(request: Request) -> PostgresJobRepository:
     return request.app.state.worker_queue
 
 
@@ -45,7 +45,7 @@ def _secret_protector(request: Request) -> AesGcmSecretProtector:
 
 
 class ClaimRequest(BaseModel):
-    sources: list[str] = []
+    sources: list[str] = Field(default_factory=list)
 
 
 class PublishRequest(BaseModel):
@@ -55,7 +55,7 @@ class PublishRequest(BaseModel):
 
 
 WorkerId = Annotated[str, Depends(_worker_identity)]
-WorkerQueue = Annotated[PostgresJobRepository, Depends(_worker_queue)]
+WorkerJobs = Annotated[PostgresJobRepository, Depends(_worker_jobs)]
 SecretProtector = Annotated[AesGcmSecretProtector, Depends(_secret_protector)]
 
 
@@ -63,15 +63,16 @@ SecretProtector = Annotated[AesGcmSecretProtector, Depends(_secret_protector)]
 async def worker_claim(
     body: ClaimRequest,
     worker_id: WorkerId,
-    queue: WorkerQueue,
+    jobs: WorkerJobs,
     protector: SecretProtector,
 ) -> dict[str, object] | None:
-    claim = await queue.claim(worker_id, tuple(body.sources))
+    claim = await jobs.claim(worker_id, tuple(body.sources))
 
     if claim is None:
         return None
 
-    credential = await queue.credential_for_job(claim.job_id)
+    credential = await jobs.credential_for_job(claim.job_id)
+
     if credential is None:
         raise HTTPException(
             status_code=409,
@@ -95,7 +96,7 @@ async def worker_claim(
 async def worker_publish(
     body: PublishRequest,
     worker_id: WorkerId,
-    queue: WorkerQueue,
+    jobs: WorkerJobs,
     storage: Storage,
 ) -> dict[str, bool]:
     try:
@@ -106,7 +107,8 @@ async def worker_publish(
             detail="resultado de trabajador inválido",
         ) from error
 
-    team_id = await queue.item_team(body.item_id)
+    team_id = await jobs.item_team(body.item_id)
+
     if team_id is None:
         raise HTTPException(
             status_code=404,
@@ -125,9 +127,9 @@ async def worker_publish(
     )
 
     await storage.put_immutable(reference, content)
-    await queue.add_object_reference(reference)
+    await jobs.add_object_reference(reference)
 
-    published = await queue.publish(
+    published = await jobs.publish(
         body.item_id,
         worker_id,
         body.fence,
