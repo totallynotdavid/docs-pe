@@ -1,0 +1,101 @@
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import Depends, Form, HTTPException, Request
+
+from portal.application.provisioning import ProvisioningService
+from portal.application.service import PortalService
+from portal.domain.models import BrowserSession
+from portal.security import same_origin
+from portal.settings import PortalSettings
+from portal.storage.port import ObjectStorage
+from portal.web.errors import LoginRequired
+
+
+def _settings(request: Request) -> PortalSettings:
+    settings: PortalSettings = request.app.state.settings
+    return settings
+
+
+def _service(request: Request) -> PortalService:
+    service: PortalService = request.app.state.service
+    return service
+
+
+def _provisioning(request: Request) -> ProvisioningService:
+    provisioning: ProvisioningService = request.app.state.provisioning
+    return provisioning
+
+
+def _storage(request: Request) -> ObjectStorage:
+    storage: ObjectStorage = request.app.state.storage
+    return storage
+
+
+Settings = Annotated[PortalSettings, Depends(_settings)]
+Service = Annotated[PortalService, Depends(_service)]
+Provisioning = Annotated[ProvisioningService, Depends(_provisioning)]
+Storage = Annotated[ObjectStorage, Depends(_storage)]
+
+
+def require_same_origin(request: Request, settings: Settings) -> None:
+    if not same_origin(
+        origin=request.headers.get("origin"),
+        referer=request.headers.get("referer"),
+        trusted_origin=settings.public_origin,
+    ):
+        raise HTTPException(status_code=403, detail="origen no autorizado")
+
+
+RequireSameOrigin = Depends(require_same_origin)
+
+
+async def _optional_session(
+    request: Request,
+    service: Service,
+    settings: Settings,
+) -> BrowserSession | None:
+    return await service.browser_session(
+        request.cookies.get(settings.session_cookie),
+    )
+
+
+OptionalSession = Annotated[BrowserSession | None, Depends(_optional_session)]
+
+
+def _page_session(session: OptionalSession) -> BrowserSession:
+    if session is None:
+        raise LoginRequired
+
+    return session
+
+
+def _api_session(session: OptionalSession) -> BrowserSession:
+    if session is None:
+        raise HTTPException(status_code=401, detail="autenticación requerida")
+
+    return session
+
+
+async def _verified_session(
+    request: Request,
+    service: Service,
+    settings: Settings,
+    csrf_token: Annotated[str, Form()],
+) -> BrowserSession:
+    require_same_origin(request, settings)
+
+    return await service.verify_browser_csrf(
+        request.cookies.get(settings.session_cookie),
+        csrf_token,
+    )
+
+
+# Page requests redirect to login; API requests return 401.
+PageSession = Annotated[BrowserSession, Depends(_page_session)]
+ApiSession = Annotated[BrowserSession, Depends(_api_session)]
+VerifiedSession = Annotated[BrowserSession, Depends(_verified_session)]
+
+# Used when the verified session value itself is not needed.
+RequireVerifiedSession = Depends(_verified_session)

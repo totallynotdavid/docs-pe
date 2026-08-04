@@ -61,6 +61,10 @@ description = "Provision the local portal administrator and first team"
 depends = ["portal:migrate"]
 run = "uv run --env-file .env portal-bootstrap"
 
+[tasks."portal:dev"]
+depends = ["portal:bootstrap"]
+run = "uv run --env-file .env osiptel-portal"
+
 [tasks.check]
 run = ["uv run mypy ."]
 
