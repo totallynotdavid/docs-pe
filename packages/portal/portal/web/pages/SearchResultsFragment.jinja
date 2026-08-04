@@ -1,0 +1,27 @@
+{#def team, query, results, page, has_more #}
+{% if query %}
+  {% if results %}
+    <UiList>
+      {% for result in results %}
+        <UiListItem>
+          <a href="/equipos/{{ team.id }}/procesos/{{ result.job_id }}">{{ result.document }}</a>
+          <span>{{ result.filename }}</span>
+        </UiListItem>
+      {% endfor %}
+    </UiList>
+  {% else %}
+    <UiEmptyState>
+      No hay resultados.
+    </UiEmptyState>
+  {% endif %}
+{% else %}
+  <UiEmptyState>
+    Ingresa un documento para buscar.
+  </UiEmptyState>
+{% endif %}
+{% if page > 1 or has_more %}
+  <UiPagination label="Paginación de búsqueda">
+    {% if page > 1 %}<a href="?q={{ query }}&page={{ page - 1 }}">Anterior</a>{% endif %}
+    {% if has_more %}<a href="?q={{ query }}&page={{ page + 1 }}">Siguiente</a>{% endif %}
+  </UiPagination>
+{% endif %}
