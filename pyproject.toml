@@ -93,6 +93,7 @@ testpaths = ["tests"]
 
 [dependency-groups]
 dev = [
+  "djlint==1.43.1",
   "mypy>=2.1.0",
   "pyinstaller>=6.21.0",
   "pytest>=9.1.1",

@@ -44,3 +44,9 @@ portal = [
   "web/static/*.js",
   "web/static/*.woff2",
 ]
+
+[tool.djlint]
+profile = "jinja"
+indent = 2
+extension = "jinja"
+custom_html = "[A-Z][a-zA-Z0-9]*" # Preserve JinjaX component tags.
