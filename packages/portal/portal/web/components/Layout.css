@@ -1,0 +1,123 @@
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 13px;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--background-app);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-underline-offset: 3px;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-shadow);
+}
+
+h2 {
+  font-size: var(--font-size-heading-sm);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+.subtitulo {
+  color: var(--foreground-secondary);
+  margin: 6px 0 0;
+  max-width: 640px;
+}
+
+/* Visible to a screen reader, never to the eye. */
+.solo-lector {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.skip-link {
+  clip: rect(0 0 0 0);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+
+.skip-link:focus {
+  clip: auto;
+  height: auto;
+  left: 16px;
+  padding: 8px 12px;
+  position: fixed;
+  top: 16px;
+  width: auto;
+  z-index: 10;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  min-height: 100dvh;
+}
+
+.workspace {
+  min-width: 0;
+}
+
+/* The signed-out pages drop the shell and centre a single card instead. */
+body.sesion-publica {
+  align-items: center;
+  background: var(--secondary);
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+}
+
+body.sesion-publica .contenido {
+  max-width: 400px;
+  padding: 0;
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    display: block;
+  }
+}
