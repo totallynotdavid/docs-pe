@@ -21,10 +21,10 @@ def _accepts_ruc(doc: Doc) -> bool:
 
 
 def _site(name: str, *columns: str) -> Site:
-    async def ready(client: httpx.AsyncClient, site: Site) -> None:  # noqa: RUF029
+    async def ready(client: httpx.AsyncClient, site: Site) -> None:
         return None
 
-    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         return ()
 
     return Site(

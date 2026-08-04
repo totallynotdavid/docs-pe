@@ -58,7 +58,7 @@ def _site(
     *,
     allows_empty: bool = True,
 ) -> Site:
-    async def ready(client: httpx.AsyncClient, site: Site) -> None:  # noqa: RUF029
+    async def ready(client: httpx.AsyncClient, site: Site) -> None:
         return None
 
     return Site(
@@ -83,14 +83,14 @@ def _cfg(*, ban_cooldown_s: float = 0.0) -> WorkerConfig:
 def _no_real_egress_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     # _open_session probes the real egress IP on every session open; a unit test
     # must never make that live call.
-    async def fake_resolve(proxy: ProxySession) -> str:  # noqa: RUF029
+    async def fake_resolve(proxy: ProxySession) -> str:
         return "1.2.3.4"
 
     monkeypatch.setattr(session_mod, "resolve_egress_ip", fake_resolve)
 
 
 async def test_succeeds_on_the_first_attempt() -> None:
-    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         return (("value1",),)
 
     result = await fetch_one(
@@ -110,7 +110,7 @@ async def test_succeeds_on_the_first_attempt() -> None:
 
 
 async def test_a_ruc_not_found_error_is_a_terminal_not_found_with_no_retry() -> None:
-    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         msg = "no record"
         raise RucNotFoundError(msg)
 
@@ -132,7 +132,7 @@ async def test_a_ruc_not_found_error_is_a_terminal_not_found_with_no_retry() -> 
 
 
 async def test_allows_empty_false_and_empty_rows_retries_then_fails() -> None:
-    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         return ()
 
     result = await fetch_one(
@@ -161,7 +161,7 @@ async def test_allows_empty_false_and_empty_rows_retries_then_fails() -> None:
 async def test_a_fault_retries_up_to_max_attempts_with_the_classified_code(
     exc: BaseException, expected_code: str
 ) -> None:
-    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         raise exc
 
     result = await fetch_one(
@@ -183,7 +183,7 @@ async def test_a_fault_retries_up_to_max_attempts_with_the_classified_code(
 async def test_a_ban_error_rotates_the_session_with_a_cooldown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         msg = "blocked"
         raise BanSignalError(msg)
 
@@ -199,7 +199,7 @@ async def test_a_ban_error_rotates_the_session_with_a_cooldown(
     clock = _Clock(1000.0)
     monkeypatch.setattr(session_mod, "time", clock)
 
-    async def fake_sleep(seconds: float) -> None:  # noqa: RUF029
+    async def fake_sleep(seconds: float) -> None:
         clock.value += seconds
 
     monkeypatch.setattr(session_mod.asyncio, "sleep", fake_sleep)
@@ -226,7 +226,7 @@ async def test_a_ban_error_rotates_the_session_with_a_cooldown(
 
 
 async def test_made_healthy_contact_is_false_once_the_breaker_trips() -> None:
-    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         msg = "boom"
         raise TransientTransportError(msg)
 

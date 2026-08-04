@@ -54,7 +54,7 @@ def _site(
     *,
     lookup: Callable[[httpx.AsyncClient, Doc], Awaitable[tuple[Row, ...]]],
 ) -> Site:
-    async def ready(client: httpx.AsyncClient, site: Site) -> None:  # noqa: RUF029
+    async def ready(client: httpx.AsyncClient, site: Site) -> None:
         return None
 
     def accepts(doc: Doc) -> bool:
@@ -99,7 +99,7 @@ def _cfg(
 
 @pytest.fixture(autouse=True)
 def _no_real_egress(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_resolve(proxy: ProxySession) -> str:  # noqa: RUF029
+    async def fake_resolve(proxy: ProxySession) -> str:
         return "1.2.3.4"
 
     monkeypatch.setattr(session_mod, "resolve_egress_ip", fake_resolve)
@@ -116,7 +116,7 @@ def test_run_writes_a_success_csv_for_every_ruc(
 ) -> None:
     _install_provider(monkeypatch)
 
-    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         return (("ok",),)
 
     input_csv = _write_input(tmp_path, "20100000001", "20100000002")
@@ -144,11 +144,11 @@ def test_run_routes_each_ruc_kind_to_the_right_site(
     natural_hits: list[str] = []
     juridica_hits: list[str] = []
 
-    async def natural_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+    async def natural_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         natural_hits.append(str(doc))
         return (("N",),)
 
-    async def juridica_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+    async def juridica_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         juridica_hits.append(str(doc))
         return (("J",),)
 
@@ -173,7 +173,7 @@ def test_run_exports_failures_to_the_errors_csv(
 ) -> None:
     _install_provider(monkeypatch)
 
-    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         msg = "blocked"
         raise BanSignalError(msg)
 
@@ -210,11 +210,11 @@ def test_run_drops_already_done_rucs_on_a_resumed_run(
     first_hits: list[str] = []
     second_hits: list[str] = []
 
-    async def first_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+    async def first_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         first_hits.append(str(doc))
         return (("ok",),)
 
-    async def second_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+    async def second_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         second_hits.append(str(doc))
         return (("ok",),)
 
@@ -242,7 +242,7 @@ def test_run_releases_every_proxy_session_it_opened(
 ) -> None:
     provider = _install_provider(monkeypatch)
 
-    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         return (("ok",),)
 
     cfg = _cfg(

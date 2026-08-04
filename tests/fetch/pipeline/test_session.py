@@ -29,7 +29,6 @@ def _accepts_ruc(doc: Doc) -> bool:
 
 
 class _Clock:
-    # A stand-in for the time module session.py reads.
     def __init__(self, value: float) -> None:
         self.value = value
 
@@ -47,6 +46,7 @@ class _FakeProvider:
 
     def new_session(self, *, slot_id: int) -> ProxySession:
         self.new_session_calls += 1
+
         return ProxySession(
             proxy_id=f"proxy-{self.new_session_calls}",
             host="proxy.test",
@@ -61,10 +61,16 @@ class _FakeProvider:
 
 
 def _site() -> Site:
-    async def ready(client: httpx.AsyncClient, site: Site) -> None:  # noqa: RUF029
+    async def ready(
+        _client: httpx.AsyncClient,
+        _site: Site,
+    ) -> None:
         return None
 
-    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:  # noqa: RUF029
+    async def lookup(
+        _client: httpx.AsyncClient,
+        _doc: Doc,
+    ) -> tuple[Row, ...]:
         return ()
 
     return Site(
@@ -97,7 +103,7 @@ def _worker_session(*, proxy_id: str = "p1") -> WorkerSession:
 
 @pytest.fixture(autouse=True)
 def _no_real_egress_probe(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_resolve(proxy: ProxySession) -> str:  # noqa: RUF029
+    async def fake_resolve(_proxy: ProxySession) -> str:
         return "1.2.3.4"
 
     monkeypatch.setattr(session_mod, "resolve_egress_ip", fake_resolve)
@@ -108,12 +114,18 @@ async def test_ensure_session_reuses_an_open_session() -> None:
     state = WorkerState(session=existing)
     provider = _FakeProvider()
 
-    returned = await ensure_session(
-        state, site=_site(), provider=provider, slot_id=1, run_id="r", lane_id=1
+    session = await ensure_session(
+        state,
+        site=_site(),
+        provider=provider,
+        slot_id=1,
+        run_id="r",
+        lane_id=1,
     )
 
-    assert returned is existing
+    assert session is existing
     assert provider.new_session_calls == 0
+
     await existing.client.aclose()
 
 
@@ -121,10 +133,11 @@ async def test_ensure_session_waits_out_a_pending_cooldown_before_opening(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock = _Clock(1000.0)
-    monkeypatch.setattr(session_mod, "time", clock)
     waited: list[float] = []
 
-    async def fake_sleep(seconds: float) -> None:  # noqa: RUF029
+    monkeypatch.setattr(session_mod, "time", clock)
+
+    async def fake_sleep(seconds: float) -> None:
         waited.append(seconds)
         clock.value += seconds
 
@@ -134,12 +147,18 @@ async def test_ensure_session_waits_out_a_pending_cooldown_before_opening(
     provider = _FakeProvider()
 
     session = await ensure_session(
-        state, site=_site(), provider=provider, slot_id=1, run_id="r", lane_id=1
+        state,
+        site=_site(),
+        provider=provider,
+        slot_id=1,
+        run_id="r",
+        lane_id=1,
     )
 
     assert waited == [5.0]
     assert provider.new_session_calls == 1
     assert state.uses == 0
+
     await session.client.aclose()
 
 
@@ -148,7 +167,10 @@ async def test_after_success_increments_uses_without_closing_below_budget() -> N
     state = WorkerState(session=session, uses=0)
     provider = _FakeProvider()
     cfg = WorkerConfig(
-        session_budget=3, wait_min_s=0.0, wait_max_s=0.0, ban_cooldown_s=0.0
+        session_budget=3,
+        wait_min_s=0.0,
+        wait_max_s=0.0,
+        ban_cooldown_s=0.0,
     )
 
     await after_success(state, provider=provider, cfg=cfg)
@@ -156,6 +178,7 @@ async def test_after_success_increments_uses_without_closing_below_budget() -> N
     assert state.uses == 1
     assert state.session is session
     assert provider.released == []
+
     await session.client.aclose()
 
 
@@ -164,7 +187,10 @@ async def test_after_success_closes_once_the_budget_is_reached() -> None:
     state = WorkerState(session=session, uses=2)
     provider = _FakeProvider()
     cfg = WorkerConfig(
-        session_budget=3, wait_min_s=0.0, wait_max_s=0.0, ban_cooldown_s=0.0
+        session_budget=3,
+        wait_min_s=0.0,
+        wait_max_s=0.0,
+        ban_cooldown_s=0.0,
     )
 
     await after_success(state, provider=provider, cfg=cfg)
@@ -179,6 +205,7 @@ async def test_rotate_session_closes_and_sets_a_fresh_cooldown(
 ) -> None:
     clock = _Clock(1000.0)
     monkeypatch.setattr(session_mod, "time", clock)
+
     session = _worker_session(proxy_id="p1")
     state = WorkerState(session=session)
     provider = _FakeProvider()
@@ -196,6 +223,7 @@ async def test_rotate_session_never_shrinks_a_longer_pending_cooldown(
 ) -> None:
     clock = _Clock(1000.0)
     monkeypatch.setattr(session_mod, "time", clock)
+
     state = WorkerState(session=_worker_session(), cooldown_until=1050.0)
     provider = _FakeProvider()
 
@@ -227,9 +255,11 @@ async def test_close_session_is_a_no_op_once_already_closed() -> None:
 def test_session_ids_reflects_the_open_session() -> None:
     session = _worker_session(proxy_id="p1")
     state = WorkerState(session=session)
+
     assert session_ids(state) == ("existing-session", "p1")
 
 
 def test_session_ids_falls_back_to_the_last_known_proxy_when_closed() -> None:
     state = WorkerState(session=None, last_proxy_id="p1")
+
     assert session_ids(state) == ("", "p1")

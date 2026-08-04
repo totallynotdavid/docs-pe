@@ -117,7 +117,7 @@ async def test_acquire_waits_out_the_cooldown_before_returning(
     # provider is unhealthy; this pins that the loop actually terminates.
     clock = _Clock(1000.0)
 
-    async def fake_sleep(seconds: float) -> None:  # noqa: RUF029
+    async def fake_sleep(seconds: float) -> None:
         clock.value += seconds
 
     monkeypatch.setattr(breaker_mod.asyncio, "sleep", fake_sleep)

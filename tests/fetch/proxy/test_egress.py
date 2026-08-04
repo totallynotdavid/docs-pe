@@ -64,7 +64,7 @@ def _patch_transport(
 
 @pytest.fixture(autouse=True)
 def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_sleep(seconds: float) -> None:  # noqa: RUF029
+    async def fake_sleep(seconds: float) -> None:
         return None
 
     monkeypatch.setattr(egress_mod.asyncio, "sleep", fake_sleep)
