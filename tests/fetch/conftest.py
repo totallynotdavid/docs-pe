@@ -24,14 +24,6 @@ T = TypeVar("T")
 
 
 def as_async(fn: Callable[P, T]) -> Callable[P, Coroutine[Any, Any, T]]:
-    """Adapt a plain sync callable to the coroutine Site/ProxyProvider require.
-
-    Every fake in this suite is pure logic with nothing to await; writing each
-    one as `async def` just to match that shape trips RUF029 at every call
-    site. The one instance of that which is structurally unavoidable lives
-    here instead of being repeated.
-    """
-
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:  # noqa: RUF029
         return fn(*args, **kwargs)
 
@@ -46,10 +38,11 @@ def store(tmp_path: Path) -> Iterator[OutcomeStore]:
 
 @pytest.fixture(autouse=True)
 def _stub_egress_probe(monkeypatch: pytest.MonkeyPatch) -> None:
-    # _open_session probes the real egress IP on every session open; a unit test
-    # must never make that live call.
+    # Session setup probes the real egress IP, which unit tests must not call.
     monkeypatch.setattr(
-        session_mod, "resolve_egress_ip", as_async(lambda proxy: "1.2.3.4")
+        session_mod,
+        "resolve_egress_ip",
+        as_async(lambda proxy: "1.2.3.4"),
     )
 
 
@@ -72,7 +65,11 @@ class FakeClock:
         return self.value
 
 
-def fake_proxy_session(*, proxy_id: str = "p1", session_id: str = "s1") -> ProxySession:
+def fake_proxy_session(
+    *,
+    proxy_id: str = "p1",
+    session_id: str = "s1",
+) -> ProxySession:
     return ProxySession(
         proxy_id=proxy_id,
         host="proxy.test",
@@ -86,13 +83,22 @@ def fake_proxy_session(*, proxy_id: str = "p1", session_id: str = "s1") -> Proxy
 class FakeProvider:
     name = "fake"
 
-    def __init__(self, *, workers: int = 1, ban_cooldown_s: float = 0.0) -> None:
-        self.tuning = ProviderTuning(workers=workers, ban_cooldown_s=ban_cooldown_s)
+    def __init__(
+        self,
+        *,
+        workers: int = 1,
+        ban_cooldown_s: float = 0.0,
+    ) -> None:
+        self.tuning = ProviderTuning(
+            workers=workers,
+            ban_cooldown_s=ban_cooldown_s,
+        )
         self.released: list[str] = []
         self.sessions_opened = 0
 
     def new_session(self, *, slot_id: int) -> ProxySession:
         self.sessions_opened += 1
+
         return fake_proxy_session(
             proxy_id=f"proxy-{self.sessions_opened}",
             session_id=f"sess-{self.sessions_opened}",
@@ -109,7 +115,10 @@ def fake_site(
     accepts: Callable[[Doc], bool] = accepts_ruc,
     allows_empty: bool = True,
     session_budget: int = 50,
-    lookup: Callable[[httpx.AsyncClient, Doc], Awaitable[tuple[Row, ...]]]
+    lookup: Callable[
+        [httpx.AsyncClient, Doc],
+        Awaitable[tuple[Row, ...]],
+    ]
     | None = None,
     projections: tuple[Projection, ...] = (),
 ) -> Site:
