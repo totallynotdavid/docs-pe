@@ -1,0 +1,22 @@
+{#def user, csrf_token, error #}
+<Layout title="Ingresar · Worker" :user="user" :csrf_token="csrf_token">
+  <UiContent>
+    <UiAuthCard title="Iniciar sesión"
+                description="Accede al portal de Worker."
+                title_id="titulo-ingreso">
+      {% if error %}<UiMessage>No se pudo iniciar sesión.</UiMessage>{% endif %}
+      <UiForm action="/login" :csrf_token="csrf_token">
+        <UiField label="Correo electrónico">
+          <input type="email" name="email" autocomplete="email" required>
+        </UiField>
+        <UiField label="Contraseña">
+          <input type="password"
+                 name="password"
+                 autocomplete="current-password"
+                 required>
+        </UiField>
+        <button type="submit">Ingresar</button>
+      </UiForm>
+    </UiAuthCard>
+  </UiContent>
+</Layout>
