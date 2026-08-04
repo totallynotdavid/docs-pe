@@ -1,5 +1,3 @@
-"""Team authorization and submission planning, against the real repository."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -43,7 +41,8 @@ async def test_team_member_cannot_submit_a_process(
 
 
 async def test_credential_cannot_cross_team_boundary(
-    pool: asyncpg.Pool, service: PortalService
+    pool: asyncpg.Pool,
+    service: PortalService,
 ) -> None:
     team_a = await seed_team(pool)
     team_b = await seed_team(pool)
@@ -67,16 +66,20 @@ async def test_members_only_search_their_team_published_results(
     team_a = await seed_team(pool)
     team_b = await seed_team(pool)
     member_a = await seed_user(pool)
+
     await team_repository.add_member(team_a.team_id, member_a, TeamRole.TEAM_MEMBER)
+
     job_a = await service.submit(
         submit_command(team_a, await _input(pool, team_a.team_id))
     )
     job_b = await service.submit(
         submit_command(team_b, await _input(pool, team_b.team_id))
     )
+
     for job in (job_a, job_b):
         claimed = await job_repository.claim("trabajador", ("osiptel",))
         assert claimed is not None
+
         assert await job_repository.publish(
             claimed.item_id,
             "trabajador",
@@ -91,11 +94,14 @@ async def test_members_only_search_their_team_published_results(
 
 
 async def test_only_stable_fetch_sources_are_allowed(
-    pool: asyncpg.Pool, service: PortalService
+    pool: asyncpg.Pool,
+    service: PortalService,
 ) -> None:
     team = await seed_team(pool)
     command = submit_command(
-        team, await _input(pool, team.team_id), sources=("portabilidad",)
+        team,
+        await _input(pool, team.team_id),
+        sources=("portabilidad",),
     )
 
     with pytest.raises(SourceValidationError) as raised:
@@ -106,7 +112,8 @@ async def test_only_stable_fetch_sources_are_allowed(
 
 
 async def test_all_excluded_input_is_terminal_and_creates_outbox_intents(
-    pool: asyncpg.Pool, service: PortalService
+    pool: asyncpg.Pool,
+    service: PortalService,
 ) -> None:
     team = await seed_team(pool)
 
@@ -116,14 +123,19 @@ async def test_all_excluded_input_is_terminal_and_creates_outbox_intents(
 
     assert job.state is JobState.COMPLETED
     assert job.items == []
-    # admit_submission returns the admitted work; the exclusions are persisted and
-    # read back by `job`, which is what the detail page renders.
+
+    # The job detail reads exclusions from persisted state.
     stored = await service.job(team.actor_id, team.team_id, job.id)
+
     assert [excluded.reason for excluded in stored.exclusions] == ["documento_invalido"]
+
     events = await pool.fetch(
-        "SELECT event_type FROM portal_job_events WHERE job_id = $1", job.id
+        "SELECT event_type FROM portal_job_events WHERE job_id = $1",
+        job.id,
     )
+
     assert [row["event_type"] for row in events] == ["proceso.completed"]
+
     channels = await pool.fetch(
         """
         SELECT DISTINCT outbox.channel
@@ -133,6 +145,7 @@ async def test_all_excluded_input_is_terminal_and_creates_outbox_intents(
         """,
         job.id,
     )
+
     assert {row["channel"] for row in channels} == {
         channel.value for channel in DeliveryChannel
     }
