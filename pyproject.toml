@@ -95,7 +95,7 @@ testpaths = ["tests"]
 dev = [
   "djlint==1.43.1",
   "httpx2>=2.9.1",
-  "mypy>=2.1.0",
+  "mypy>=2.3.0",
   "pyinstaller>=6.21.0",
   "pytest>=9.1.1",
   "pytest-asyncio>=1.4.0",
