@@ -48,7 +48,7 @@ extend-select = [
   "UP", # pyupgrade
 ]
 
-ignore = ["COM812", "TRY300", "CPY001"]
+ignore = ["missing-trailing-comma", "try-consider-else", "missing-copyright-notice"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -70,16 +70,16 @@ section-order = [
 
 [tool.ruff.lint.per-file-ignores]
 "packages/portal/**/*.py" = [
-  "B008",
-  "C901",
-  "EM101",
-  "EM102",
-  "N818",
-  "RUF029",
-  "TC001",
-  "TC002",
-  "TC003",
-  "TRY003",
+  "function-call-in-default-argument",
+  "complex-structure",
+  "raw-string-in-exception",
+  "f-string-in-exception",
+  "error-suffix-on-exception-name",
+  "unused-async",
+  "typing-only-first-party-import",
+  "typing-only-third-party-import",
+  "typing-only-standard-library-import",
+  "raise-vanilla-args",
 ]
 
 [[tool.mypy.overrides]]

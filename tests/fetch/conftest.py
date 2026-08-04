@@ -24,7 +24,7 @@ T = TypeVar("T")
 
 
 def as_async(fn: Callable[P, T]) -> Callable[P, Coroutine[Any, Any, T]]:
-    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:  # noqa: RUF029
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:  # ruff: ignore[unused-async]
         return fn(*args, **kwargs)
 
     return wrapper

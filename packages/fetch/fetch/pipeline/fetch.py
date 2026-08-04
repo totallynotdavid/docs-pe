@@ -135,7 +135,7 @@ async def fetch_one(
 
             return result
 
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # ruff: ignore[blind-except]
             # Worker failures must not escape into the TaskGroup.
             decision = classify_exception(
                 exc,
