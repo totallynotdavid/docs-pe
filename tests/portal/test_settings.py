@@ -13,6 +13,7 @@ _REQUIRED_ENV = {
     "PORTAL_ENVIRONMENT": "production",
     "PORTAL_PUBLIC_ORIGIN": "https://portal.osiptel.test",
     "PORTAL_COOKIE_SECURE": "true",
+    "PORTAL_TLS_TERMINATED_UPSTREAM": "true",
 }
 
 
@@ -52,7 +53,7 @@ def test_a_fully_specified_environment_is_never_silently_defaulted(
     assert settings.public_origin == "https://portal.osiptel.test"
     assert settings.cookie_secure is True
     assert settings.worker_bootstrap_token == "ficha-de-prueba"
-    assert settings.tls_terminated_upstream is False
+    assert settings.tls_terminated_upstream is True
 
 
 def test_validate_rejects_a_production_origin_without_a_hostname() -> None:

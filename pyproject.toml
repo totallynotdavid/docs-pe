@@ -82,10 +82,6 @@ section-order = [
   "TRY003",
 ]
 
-"tests/fetch/**/*.py" = [
-  "RUF029",
-]
-
 [[tool.mypy.overrides]]
 module = ["asyncpg", "fetch.*"]
 ignore_missing_imports = true

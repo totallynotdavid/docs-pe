@@ -5,15 +5,13 @@ import csv
 
 from typing import TYPE_CHECKING
 
-import pytest
-
 from fetch.cli import RunConfig
 from fetch.domain.errors import BanSignalError
-from fetch.domain.types import Doc, DocKind, RucKind, Site, SiteTuning
+from fetch.domain.types import RucKind, Site
 from fetch.pipeline import run as run_mod
-from fetch.pipeline import session as session_mod
 from fetch.pipeline.run import run
-from fetch.proxy.base import ProviderTuning, ProxySession
+
+from tests.fetch.conftest import FakeProvider, accepts_ruc_kinds, as_async, fake_site
 
 
 if TYPE_CHECKING:
@@ -21,31 +19,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     import httpx
+    import pytest
 
-    from fetch.domain.types import Row
-
-
-class _FakeProvider:
-    name = "fake"
-    tuning = ProviderTuning(workers=2, ban_cooldown_s=0.0)
-
-    def __init__(self) -> None:
-        self._n = 0
-        self.released: list[str] = []
-
-    def new_session(self, *, slot_id: int) -> ProxySession:
-        self._n += 1
-        return ProxySession(
-            proxy_id=f"proxy-{self._n}",
-            host="proxy.test",
-            port="9999",
-            username="u",
-            password="p",
-            session_id=f"sess-{self._n}",
-        )
-
-    async def release(self, session: ProxySession) -> None:
-        self.released.append(session.proxy_id)
+    from fetch.domain.types import Doc, Row
 
 
 def _site(
@@ -54,20 +30,11 @@ def _site(
     *,
     lookup: Callable[[httpx.AsyncClient, Doc], Awaitable[tuple[Row, ...]]],
 ) -> Site:
-    async def ready(client: httpx.AsyncClient, site: Site) -> None:
-        return None
-
-    def accepts(doc: Doc) -> bool:
-        return doc.kind is DocKind.RUC and doc.ruc_kind in kinds
-
-    return Site(
-        name=name,
-        columns=("value",),
-        accepts=accepts,
-        allows_empty=True,
-        tuning=SiteTuning(session_budget=1),
-        endpoints=(),
-        ready=ready,
+    return fake_site(
+        name,
+        "value",
+        accepts=accepts_ruc_kinds(*kinds),
+        session_budget=1,
         lookup=lookup,
     )
 
@@ -97,16 +64,8 @@ def _cfg(
     )
 
 
-@pytest.fixture(autouse=True)
-def _no_real_egress(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_resolve(proxy: ProxySession) -> str:
-        return "1.2.3.4"
-
-    monkeypatch.setattr(session_mod, "resolve_egress_ip", fake_resolve)
-
-
-def _install_provider(monkeypatch: pytest.MonkeyPatch) -> _FakeProvider:
-    provider = _FakeProvider()
+def _install_provider(monkeypatch: pytest.MonkeyPatch) -> FakeProvider:
+    provider = FakeProvider(workers=2)
     monkeypatch.setattr(run_mod, "load_proxy_providers", lambda: [provider])
     return provider
 
@@ -116,14 +75,14 @@ def test_run_writes_a_success_csv_for_every_ruc(
 ) -> None:
     _install_provider(monkeypatch)
 
-    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
+    def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         return (("ok",),)
 
     input_csv = _write_input(tmp_path, "20100000001", "20100000002")
     cfg = _cfg(
         tmp_path,
         input_csv,
-        (_site("osiptel", frozenset({RucKind.JURIDICA}), lookup=lookup),),
+        (_site("osiptel", frozenset({RucKind.JURIDICA}), lookup=as_async(lookup)),),
     )
 
     asyncio.run(run(cfg, run_id="r1"))
@@ -144,11 +103,11 @@ def test_run_routes_each_ruc_kind_to_the_right_site(
     natural_hits: list[str] = []
     juridica_hits: list[str] = []
 
-    async def natural_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
+    def natural_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         natural_hits.append(str(doc))
         return (("N",),)
 
-    async def juridica_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
+    def juridica_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         juridica_hits.append(str(doc))
         return (("J",),)
 
@@ -157,8 +116,14 @@ def test_run_routes_each_ruc_kind_to_the_right_site(
         tmp_path,
         input_csv,
         (
-            _site("natural", frozenset({RucKind.NATURAL}), lookup=natural_lookup),
-            _site("juridica", frozenset({RucKind.JURIDICA}), lookup=juridica_lookup),
+            _site(
+                "natural", frozenset({RucKind.NATURAL}), lookup=as_async(natural_lookup)
+            ),
+            _site(
+                "juridica",
+                frozenset({RucKind.JURIDICA}),
+                lookup=as_async(juridica_lookup),
+            ),
         ),
     )
 
@@ -173,7 +138,7 @@ def test_run_exports_failures_to_the_errors_csv(
 ) -> None:
     _install_provider(monkeypatch)
 
-    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
+    def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         msg = "blocked"
         raise BanSignalError(msg)
 
@@ -181,7 +146,7 @@ def test_run_exports_failures_to_the_errors_csv(
     cfg = _cfg(
         tmp_path,
         input_csv,
-        (_site("osiptel", frozenset({RucKind.JURIDICA}), lookup=lookup),),
+        (_site("osiptel", frozenset({RucKind.JURIDICA}), lookup=as_async(lookup)),),
     )
 
     asyncio.run(run(cfg, run_id="r"))
@@ -210,18 +175,22 @@ def test_run_drops_already_done_rucs_on_a_resumed_run(
     first_hits: list[str] = []
     second_hits: list[str] = []
 
-    async def first_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
+    def first_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         first_hits.append(str(doc))
         return (("ok",),)
 
-    async def second_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
+    def second_lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         second_hits.append(str(doc))
         return (("ok",),)
 
     cfg = _cfg(
         tmp_path,
         _write_input(tmp_path, "20100000001", "20100000002"),
-        (_site("osiptel", frozenset({RucKind.JURIDICA}), lookup=first_lookup),),
+        (
+            _site(
+                "osiptel", frozenset({RucKind.JURIDICA}), lookup=as_async(first_lookup)
+            ),
+        ),
     )
     asyncio.run(run(cfg, run_id="r1"))
     assert sorted(first_hits) == ["20100000001", "20100000002"]
@@ -231,7 +200,11 @@ def test_run_drops_already_done_rucs_on_a_resumed_run(
     cfg2 = _cfg(
         tmp_path,
         _write_input(tmp_path, "20100000001", "20100000002", "20100000003"),
-        (_site("osiptel", frozenset({RucKind.JURIDICA}), lookup=second_lookup),),
+        (
+            _site(
+                "osiptel", frozenset({RucKind.JURIDICA}), lookup=as_async(second_lookup)
+            ),
+        ),
     )
     asyncio.run(run(cfg2, run_id="r2"))
     assert second_hits == ["20100000003"]
@@ -242,13 +215,13 @@ def test_run_releases_every_proxy_session_it_opened(
 ) -> None:
     provider = _install_provider(monkeypatch)
 
-    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
+    def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
         return (("ok",),)
 
     cfg = _cfg(
         tmp_path,
         _write_input(tmp_path, "20100000001", "20100000002", "20100000003"),
-        (_site("osiptel", frozenset({RucKind.JURIDICA}), lookup=lookup),),
+        (_site("osiptel", frozenset({RucKind.JURIDICA}), lookup=as_async(lookup)),),
     )
     asyncio.run(run(cfg, run_id="r"))
 

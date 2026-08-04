@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import httpx
 import pytest
 
-from fetch.domain.types import DocKind, Site, SiteTuning
 from fetch.pipeline import session as session_mod
 from fetch.pipeline.session import (
     WorkerConfig,
@@ -17,106 +14,33 @@ from fetch.pipeline.session import (
     rotate_session,
     session_ids,
 )
-from fetch.proxy.base import ProviderTuning, ProxySession
 
-
-if TYPE_CHECKING:
-    from fetch.domain.types import Doc, Row
-
-
-def _accepts_ruc(doc: Doc) -> bool:
-    return doc.kind is DocKind.RUC
-
-
-class _Clock:
-    def __init__(self, value: float) -> None:
-        self.value = value
-
-    def monotonic(self) -> float:
-        return self.value
-
-
-class _FakeProvider:
-    name = "fake"
-    tuning = ProviderTuning(workers=1, ban_cooldown_s=0.0)
-
-    def __init__(self) -> None:
-        self.released: list[str] = []
-        self.new_session_calls = 0
-
-    def new_session(self, *, slot_id: int) -> ProxySession:
-        self.new_session_calls += 1
-
-        return ProxySession(
-            proxy_id=f"proxy-{self.new_session_calls}",
-            host="proxy.test",
-            port="9999",
-            username="u",
-            password="p",
-            session_id=f"sess-{self.new_session_calls}",
-        )
-
-    async def release(self, session: ProxySession) -> None:
-        self.released.append(session.proxy_id)
-
-
-def _site() -> Site:
-    async def ready(
-        _client: httpx.AsyncClient,
-        _site: Site,
-    ) -> None:
-        return None
-
-    async def lookup(
-        _client: httpx.AsyncClient,
-        _doc: Doc,
-    ) -> tuple[Row, ...]:
-        return ()
-
-    return Site(
-        name="fake_site",
-        columns=(),
-        accepts=_accepts_ruc,
-        allows_empty=True,
-        tuning=SiteTuning(session_budget=50),
-        endpoints=(),
-        ready=ready,
-        lookup=lookup,
-    )
+from tests.fetch.conftest import (
+    FakeClock,
+    FakeProvider,
+    as_async,
+    fake_proxy_session,
+    fake_site,
+)
 
 
 def _worker_session(*, proxy_id: str = "p1") -> WorkerSession:
     return WorkerSession(
-        proxy=ProxySession(
-            proxy_id=proxy_id,
-            host="proxy.test",
-            port="9999",
-            username="u",
-            password="p",
-            session_id="sess-1",
-        ),
+        proxy=fake_proxy_session(proxy_id=proxy_id, session_id="sess-1"),
         client=httpx.AsyncClient(),
         session_id="existing-session",
         egress_ip="9.9.9.9",
     )
 
 
-@pytest.fixture(autouse=True)
-def _no_real_egress_probe(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_resolve(_proxy: ProxySession) -> str:
-        return "1.2.3.4"
-
-    monkeypatch.setattr(session_mod, "resolve_egress_ip", fake_resolve)
-
-
 async def test_ensure_session_reuses_an_open_session() -> None:
     existing = _worker_session()
     state = WorkerState(session=existing)
-    provider = _FakeProvider()
+    provider = FakeProvider()
 
     session = await ensure_session(
         state,
-        site=_site(),
+        site=fake_site(),
         provider=provider,
         slot_id=1,
         run_id="r",
@@ -124,7 +48,7 @@ async def test_ensure_session_reuses_an_open_session() -> None:
     )
 
     assert session is existing
-    assert provider.new_session_calls == 0
+    assert provider.sessions_opened == 0
 
     await existing.client.aclose()
 
@@ -132,23 +56,23 @@ async def test_ensure_session_reuses_an_open_session() -> None:
 async def test_ensure_session_waits_out_a_pending_cooldown_before_opening(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    clock = _Clock(1000.0)
+    clock = FakeClock()
     waited: list[float] = []
 
     monkeypatch.setattr(session_mod, "time", clock)
 
-    async def fake_sleep(seconds: float) -> None:
+    def advance(seconds: float) -> None:
         waited.append(seconds)
         clock.value += seconds
 
-    monkeypatch.setattr(session_mod.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(session_mod.asyncio, "sleep", as_async(advance))
 
     state = WorkerState(cooldown_until=1005.0)
-    provider = _FakeProvider()
+    provider = FakeProvider()
 
     session = await ensure_session(
         state,
-        site=_site(),
+        site=fake_site(),
         provider=provider,
         slot_id=1,
         run_id="r",
@@ -156,7 +80,7 @@ async def test_ensure_session_waits_out_a_pending_cooldown_before_opening(
     )
 
     assert waited == [5.0]
-    assert provider.new_session_calls == 1
+    assert provider.sessions_opened == 1
     assert state.uses == 0
 
     await session.client.aclose()
@@ -165,7 +89,7 @@ async def test_ensure_session_waits_out_a_pending_cooldown_before_opening(
 async def test_after_success_increments_uses_without_closing_below_budget() -> None:
     session = _worker_session()
     state = WorkerState(session=session, uses=0)
-    provider = _FakeProvider()
+    provider = FakeProvider()
     cfg = WorkerConfig(
         session_budget=3,
         wait_min_s=0.0,
@@ -185,7 +109,7 @@ async def test_after_success_increments_uses_without_closing_below_budget() -> N
 async def test_after_success_closes_once_the_budget_is_reached() -> None:
     session = _worker_session(proxy_id="p1")
     state = WorkerState(session=session, uses=2)
-    provider = _FakeProvider()
+    provider = FakeProvider()
     cfg = WorkerConfig(
         session_budget=3,
         wait_min_s=0.0,
@@ -203,12 +127,12 @@ async def test_after_success_closes_once_the_budget_is_reached() -> None:
 async def test_rotate_session_closes_and_sets_a_fresh_cooldown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    clock = _Clock(1000.0)
+    clock = FakeClock()
     monkeypatch.setattr(session_mod, "time", clock)
 
     session = _worker_session(proxy_id="p1")
     state = WorkerState(session=session)
-    provider = _FakeProvider()
+    provider = FakeProvider()
 
     await rotate_session(state, provider=provider, cooldown_s=10.0)
 
@@ -221,11 +145,11 @@ async def test_rotate_session_closes_and_sets_a_fresh_cooldown(
 async def test_rotate_session_never_shrinks_a_longer_pending_cooldown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    clock = _Clock(1000.0)
+    clock = FakeClock()
     monkeypatch.setattr(session_mod, "time", clock)
 
     state = WorkerState(session=_worker_session(), cooldown_until=1050.0)
-    provider = _FakeProvider()
+    provider = FakeProvider()
 
     await rotate_session(state, provider=provider, cooldown_s=5.0)
 
@@ -235,7 +159,7 @@ async def test_rotate_session_never_shrinks_a_longer_pending_cooldown(
 async def test_close_session_calls_release_and_clears_state() -> None:
     session = _worker_session(proxy_id="p9")
     state = WorkerState(session=session)
-    provider = _FakeProvider()
+    provider = FakeProvider()
 
     await close_session(state, provider=provider)
 
@@ -245,7 +169,7 @@ async def test_close_session_calls_release_and_clears_state() -> None:
 
 async def test_close_session_is_a_no_op_once_already_closed() -> None:
     state = WorkerState(session=None)
-    provider = _FakeProvider()
+    provider = FakeProvider()
 
     await close_session(state, provider=provider)
 

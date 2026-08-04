@@ -1,36 +1,17 @@
 from __future__ import annotations
 
-import asyncio
-
 from typing import TYPE_CHECKING
 
-from fetch.domain.types import Doc, DocKind, RucKind, Site, SiteTuning
+from fetch.domain.types import Doc, DocKind, RucKind, Site
 from fetch.store.plan import count_unrouted, plan_pending, read_docs
+
+from tests.fetch.conftest import accepts_ruc_kinds as _accepts_ruc_kinds
+from tests.fetch.conftest import fake_site
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
-
-    import httpx
-
-    from fetch.domain.types import Row
-
-
-async def _ready(client: httpx.AsyncClient, site: Site) -> None:
-    await asyncio.sleep(0)
-
-
-async def _lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
-    await asyncio.sleep(0)
-    return ()
-
-
-def _accepts_ruc_kinds(*kinds: RucKind) -> Callable[[Doc], bool]:
-    def accepts(doc: Doc) -> bool:
-        return doc.kind is DocKind.RUC and doc.ruc_kind in kinds
-
-    return accepts
 
 
 def _accepts_any(doc: Doc) -> bool:
@@ -38,16 +19,7 @@ def _accepts_any(doc: Doc) -> bool:
 
 
 def _site(name: str, accepts: Callable[[Doc], bool]) -> Site:
-    return Site(
-        name=name,
-        columns=(),
-        accepts=accepts,
-        allows_empty=True,
-        tuning=SiteTuning(session_budget=1),
-        endpoints=(),
-        ready=_ready,
-        lookup=_lookup,
-    )
+    return fake_site(name, accepts=accepts, session_budget=1)
 
 
 def test_reads_valid_docs_and_dedupes(tmp_path: Path) -> None:

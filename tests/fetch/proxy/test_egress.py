@@ -6,9 +6,10 @@ import httpx
 import pytest
 
 from fetch.proxy import egress as egress_mod
-from fetch.proxy.base import ProxySession
 from fetch.proxy.egress import _extract_ip, _is_valid_ip, resolve_egress_ip
 from fetch.proxy.transport import _NormalizingTransport
+
+from tests.fetch.conftest import as_async, fake_proxy_session
 
 
 if TYPE_CHECKING:
@@ -42,17 +43,6 @@ def test_is_valid_ip(value: str, *, expected: bool) -> None:
     assert _is_valid_ip(value) is expected
 
 
-def _fake_session() -> ProxySession:
-    return ProxySession(
-        proxy_id="p1",
-        host="proxy.test",
-        port="1",
-        username="u",
-        password="p",
-        session_id="s1",
-    )
-
-
 def _patch_transport(
     monkeypatch: pytest.MonkeyPatch, handler: Callable[[httpx.Request], httpx.Response]
 ) -> None:
@@ -64,10 +54,7 @@ def _patch_transport(
 
 @pytest.fixture(autouse=True)
 def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_sleep(seconds: float) -> None:
-        return None
-
-    monkeypatch.setattr(egress_mod.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(egress_mod.asyncio, "sleep", as_async(lambda seconds: None))
 
 
 async def test_returns_the_first_successful_probe(
@@ -82,7 +69,7 @@ async def test_returns_the_first_successful_probe(
         return httpx.Response(200, json={"query": "1.2.3.4"})
 
     _patch_transport(monkeypatch, handler)
-    assert await resolve_egress_ip(_fake_session()) == "1.2.3.4"
+    assert await resolve_egress_ip(fake_proxy_session()) == "1.2.3.4"
     assert calls["n"] == 2
 
 
@@ -98,7 +85,7 @@ async def test_retries_a_second_round_when_every_url_fails_once(
         return httpx.Response(200, json={"ip": "5.6.7.8"})
 
     _patch_transport(monkeypatch, handler)
-    assert await resolve_egress_ip(_fake_session()) == "5.6.7.8"
+    assert await resolve_egress_ip(fake_proxy_session()) == "5.6.7.8"
     assert calls["n"] == 4
 
 
@@ -109,4 +96,4 @@ async def test_gives_up_and_returns_empty_after_three_rounds(
         return httpx.Response(500)
 
     _patch_transport(monkeypatch, handler)
-    assert await resolve_egress_ip(_fake_session()) == ""
+    assert await resolve_egress_ip(fake_proxy_session()) == ""

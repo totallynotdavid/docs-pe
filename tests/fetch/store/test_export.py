@@ -5,49 +5,17 @@ import re
 
 from typing import TYPE_CHECKING
 
-from fetch.domain.types import (
-    Doc,
-    DocKind,
-    Projection,
-    Result,
-    Site,
-    SiteTuning,
-    Status,
-)
+from fetch.domain.types import Doc, Projection, Result, Status
 from fetch.store.export import ERROR_HEADERS, export_all, export_site, site_csv_path
+
+from tests.fetch.conftest import fake_site as _site
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import httpx
-
     from fetch.domain.types import Row
     from fetch.store.outcomes import OutcomeStore
-
-
-def _accepts_ruc(doc: Doc) -> bool:
-    return doc.kind is DocKind.RUC
-
-
-def _site(name: str, *columns: str, projections: tuple[Projection, ...] = ()) -> Site:
-    async def ready(client: httpx.AsyncClient, site: Site) -> None:
-        return None
-
-    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
-        return ()
-
-    return Site(
-        name=name,
-        columns=columns,
-        accepts=_accepts_ruc,
-        allows_empty=True,
-        tuning=SiteTuning(session_budget=1),
-        endpoints=(),
-        ready=ready,
-        lookup=lookup,
-        projections=projections,
-    )
 
 
 def _success(site: str, doc: str, rows: tuple[Row, ...]) -> Result:

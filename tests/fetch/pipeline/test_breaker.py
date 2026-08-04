@@ -5,22 +5,15 @@ from typing import TYPE_CHECKING
 from fetch.pipeline import breaker as breaker_mod
 from fetch.pipeline.breaker import CircuitBreaker
 
+from tests.fetch.conftest import FakeClock, as_async
+
 
 if TYPE_CHECKING:
     import pytest
 
 
-class _Clock:
-    # A stand-in for the time module the breaker reads.
-    def __init__(self, value: float) -> None:
-        self.value = value
-
-    def monotonic(self) -> float:
-        return self.value
-
-
 def _make(
-    clock: _Clock,
+    clock: FakeClock,
     monkeypatch: pytest.MonkeyPatch,
     *,
     threshold: int = 10,
@@ -38,7 +31,7 @@ def _make(
 
 
 def test_stays_closed_below_the_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
-    clock = _Clock(1000.0)
+    clock = FakeClock()
     cb = _make(clock, monkeypatch, threshold=3, base_cooldown_s=5.0)
     cb.record_failure()
     cb.record_failure()
@@ -46,7 +39,7 @@ def test_stays_closed_below_the_threshold(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_trips_open_at_the_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
-    clock = _Clock(1000.0)
+    clock = FakeClock()
     cb = _make(clock, monkeypatch, threshold=3, base_cooldown_s=5.0)
     for _ in range(3):
         cb.record_failure()
@@ -60,7 +53,7 @@ def test_trips_open_at_the_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_backoff_doubles_on_each_successive_trip(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    clock = _Clock(1000.0)
+    clock = FakeClock()
     cb = _make(
         clock, monkeypatch, threshold=1, base_cooldown_s=5.0, max_cooldown_s=300.0
     )
@@ -76,7 +69,7 @@ def test_backoff_doubles_on_each_successive_trip(
 
 
 def test_cooldown_is_capped_at_the_maximum(monkeypatch: pytest.MonkeyPatch) -> None:
-    clock = _Clock(1000.0)
+    clock = FakeClock()
     cb = _make(clock, monkeypatch, threshold=1, base_cooldown_s=5.0, max_cooldown_s=7.0)
     cb.record_failure()
     clock.value = 1005.1
@@ -91,7 +84,7 @@ def test_cooldown_is_capped_at_the_maximum(monkeypatch: pytest.MonkeyPatch) -> N
 def test_a_success_closes_the_breaker_and_resets_the_backoff(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    clock = _Clock(1000.0)
+    clock = FakeClock()
     cb = _make(clock, monkeypatch, threshold=1, base_cooldown_s=5.0)
     cb.record_failure()
     cb.record_success()
@@ -105,7 +98,7 @@ def test_a_success_closes_the_breaker_and_resets_the_backoff(
 async def test_acquire_returns_immediately_when_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    clock = _Clock(1000.0)
+    clock = FakeClock()
     cb = _make(clock, monkeypatch, threshold=3)
     await cb.acquire()
 
@@ -115,12 +108,12 @@ async def test_acquire_waits_out_the_cooldown_before_returning(
 ) -> None:
     # acquire()'s own loop (open, sleep, recheck) is what every lane sits in while a
     # provider is unhealthy; this pins that the loop actually terminates.
-    clock = _Clock(1000.0)
+    clock = FakeClock()
 
-    async def fake_sleep(seconds: float) -> None:
+    def advance(seconds: float) -> None:
         clock.value += seconds
 
-    monkeypatch.setattr(breaker_mod.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(breaker_mod.asyncio, "sleep", as_async(advance))
     cb = _make(clock, monkeypatch, threshold=1, base_cooldown_s=5.0)
     cb.record_failure()
     assert cb.is_open()

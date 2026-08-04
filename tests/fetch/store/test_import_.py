@@ -2,41 +2,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fetch.domain.types import DocKind, Site, SiteTuning
 from fetch.store.export import site_csv_path
 from fetch.store.import_ import import_site
+
+from tests.fetch.conftest import fake_site as _site
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import httpx
-
-    from fetch.domain.types import Doc, Row
     from fetch.store.outcomes import OutcomeStore
-
-
-def _accepts_ruc(doc: Doc) -> bool:
-    return doc.kind is DocKind.RUC
-
-
-def _site(name: str, *columns: str) -> Site:
-    async def ready(client: httpx.AsyncClient, site: Site) -> None:
-        return None
-
-    async def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
-        return ()
-
-    return Site(
-        name=name,
-        columns=columns,
-        accepts=_accepts_ruc,
-        allows_empty=True,
-        tuning=SiteTuning(session_budget=1),
-        endpoints=(),
-        ready=ready,
-        lookup=lookup,
-    )
 
 
 def test_a_missing_export_file_imports_nothing(
