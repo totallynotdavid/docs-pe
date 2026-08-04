@@ -35,7 +35,6 @@ if TYPE_CHECKING:
     from portal.repository.credentials import PostgresCredentialRepository
     from portal.repository.teams import PostgresTeamRepository
 
-
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _MIN_PASSWORD = 12
@@ -111,7 +110,7 @@ class ProvisioningService:
         name: str,
         slug: str,
     ) -> FirstTeamResult:
-        """Rerunning bootstrap against an existing installation must verify, not fail."""
+        """Rerunning bootstrap against an existing installation verifies it."""
         await self._require_site_admin(actor_id)
 
         normalized_slug = self._slug(slug)
@@ -126,10 +125,16 @@ class ProvisioningService:
             return FirstTeamResult(team, created=True)
 
         existing = await self._teams.team_by_slug(normalized_slug)
+
         if existing is None or existing.id != initial_team_id:
             raise ProvisioningError(Reason.INITIAL_TEAM_MISMATCH)
 
-        await self._teams.add_member(existing.id, actor_id, TeamRole.TEAM_LEADER)
+        await self._teams.add_member(
+            existing.id,
+            actor_id,
+            TeamRole.TEAM_LEADER,
+        )
+
         return FirstTeamResult(existing, created=False)
 
     async def create_team(
@@ -260,8 +265,11 @@ class ProvisioningService:
     ) -> CredentialVersion:
         await self._require_leader(actor_id, team_id)
 
+        if provider not in PROVIDERS:
+            raise CredentialConfigurationError(Reason.PROXY_UNAVAILABLE)
+
         clean_label = self._label(label)
-        spec = self._spec(provider)
+        spec = spec_for(provider)
 
         try:
             normalized = spec.normalize(values)
@@ -305,14 +313,10 @@ class ProvisioningService:
 
     @staticmethod
     def provider_fields(provider: str) -> tuple[Field, ...]:
-        return ProvisioningService._spec(provider).fields
-
-    @staticmethod
-    def _spec(provider: str):
         if provider not in PROVIDERS:
             raise CredentialConfigurationError(Reason.PROXY_UNAVAILABLE)
 
-        return spec_for(provider)
+        return spec_for(provider).fields
 
     async def _require_site_admin(self, actor_id: UUID) -> PortalUser:
         user = await self._auth.user_by_id(actor_id)

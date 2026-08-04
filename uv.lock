@@ -1273,6 +1273,7 @@ dependencies = [
     { name = "jinja2" },
     { name = "jinjax" },
     { name = "pwdlib", extra = ["argon2"] },
+    { name = "pydantic" },
     { name = "python-multipart" },
     { name = "uvicorn" },
 ]
@@ -1283,11 +1284,12 @@ requires-dist = [
     { name = "cryptography", specifier = ">=44.0.0" },
     { name = "fastapi", specifier = ">=0.135.0" },
     { name = "fetch", editable = "packages/fetch" },
-    { name = "httpx", specifier = ">=0.28.0" },
-    { name = "jinja2", specifier = ">=3.1.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "jinja2", specifier = ">=3.1.6" },
     { name = "jinjax", specifier = ">=0.65" },
     { name = "pwdlib", extras = ["argon2"], specifier = ">=0.3.0" },
-    { name = "python-multipart", specifier = ">=0.0.20" },
+    { name = "pydantic", specifier = ">=2.13.4" },
+    { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "uvicorn", specifier = ">=0.41.0" },
 ]
 

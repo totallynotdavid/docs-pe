@@ -8,6 +8,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 
 from portal.credentials.secrets import AesGcmSecretProtector
 from portal.repository.jobs import PostgresJobRepository
@@ -36,13 +37,21 @@ def _worker_identity(request: Request, settings: Settings) -> str:
 
 
 def _worker_queue(request: Request) -> PostgresJobRepository:
-    queue: PostgresJobRepository = request.app.state.worker_queue
-    return queue
+    return request.app.state.worker_queue
 
 
 def _secret_protector(request: Request) -> AesGcmSecretProtector:
-    protector: AesGcmSecretProtector = request.app.state.secret_protector
-    return protector
+    return request.app.state.secret_protector
+
+
+class ClaimRequest(BaseModel):
+    sources: list[str] = []
+
+
+class PublishRequest(BaseModel):
+    item_id: UUID
+    fence: int
+    content: str
 
 
 WorkerId = Annotated[str, Depends(_worker_identity)]
@@ -52,27 +61,17 @@ SecretProtector = Annotated[AesGcmSecretProtector, Depends(_secret_protector)]
 
 @router.post("/claim")
 async def worker_claim(
-    request: Request,
+    body: ClaimRequest,
     worker_id: WorkerId,
     queue: WorkerQueue,
     protector: SecretProtector,
 ) -> dict[str, object] | None:
-    body = await request.json()
+    claim = await queue.claim(worker_id, tuple(body.sources))
 
-    if not isinstance(body, dict):
-        raise HTTPException(
-            status_code=400,
-            detail="solicitud de trabajador inválida",
-        )
-
-    sources = tuple(str(value) for value in body.get("sources", []))
-    work = await queue.claim(worker_id, sources)
-
-    if work is None:
+    if claim is None:
         return None
 
-    credential = await queue.credential_for_job(work.job_id)
-
+    credential = await queue.credential_for_job(claim.job_id)
     if credential is None:
         raise HTTPException(
             status_code=409,
@@ -80,11 +79,11 @@ async def worker_claim(
         )
 
     return {
-        "item_id": str(work.item_id),
-        "job_id": str(work.job_id),
-        "source": work.source,
-        "document": work.document,
-        "fence": work.lease_fence,
+        "item_id": str(claim.item_id),
+        "job_id": str(claim.job_id),
+        "source": claim.source,
+        "document": claim.document,
+        "fence": claim.lease_fence,
         "credential": {
             "provider": credential.provider,
             "config": protector.reveal(credential.config_ciphertext),
@@ -94,31 +93,20 @@ async def worker_claim(
 
 @router.post("/publish")
 async def worker_publish(
-    request: Request,
+    body: PublishRequest,
     worker_id: WorkerId,
     queue: WorkerQueue,
     storage: Storage,
 ) -> dict[str, bool]:
-    body = await request.json()
-
-    if not isinstance(body, dict):
-        raise HTTPException(
-            status_code=400,
-            detail="resultado de trabajador inválido",
-        )
-
     try:
-        item_id = UUID(str(body["item_id"]))
-        fence = int(body["fence"])
-        content = base64.b64decode(str(body["content"]), validate=True)
-    except (KeyError, TypeError, ValueError) as error:
+        content = base64.b64decode(body.content, validate=True)
+    except ValueError as error:
         raise HTTPException(
             status_code=400,
             detail="resultado de trabajador inválido",
         ) from error
 
-    team_id = await queue.item_team(item_id)
-
+    team_id = await queue.item_team(body.item_id)
     if team_id is None:
         raise HTTPException(
             status_code=404,
@@ -130,7 +118,7 @@ async def worker_publish(
         team_id=team_id,
         provider="portal-worker",
         container="results",
-        object_key=f"{item_id}/{uuid4()}",
+        object_key=f"{body.item_id}/{uuid4()}",
         sha256=hashlib.sha256(content).hexdigest(),
         size_bytes=len(content),
         content_type="application/json",
@@ -140,9 +128,9 @@ async def worker_publish(
     await queue.add_object_reference(reference)
 
     published = await queue.publish(
-        item_id,
+        body.item_id,
         worker_id,
-        fence,
+        body.fence,
         reference.id,
     )
 
