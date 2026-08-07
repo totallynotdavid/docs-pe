@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from portal.repository.teams import PostgresTeamRepository
 
 
-async def _input(pool: asyncpg.Pool, team_id: UUID) -> UUID:
+async def create_input(pool: asyncpg.Pool, team_id: UUID) -> UUID:
     return await object_reference(pool, team_id, f"entradas/{uuid4().hex}.csv")
 
 
@@ -31,7 +31,12 @@ async def test_team_member_cannot_submit_a_process(
     team = await seed_team(pool)
     member_id = await seed_user(pool)
     await team_repository.add_member(team.team_id, member_id, TeamRole.TEAM_MEMBER)
-    command = submit_command(team, await _input(pool, team.team_id), actor_id=member_id)
+
+    command = submit_command(
+        team,
+        await create_input(pool, team.team_id),
+        actor_id=member_id,
+    )
 
     with pytest.raises(PermissionDenied) as raised:
         await service.submit(command)
@@ -46,9 +51,10 @@ async def test_credential_cannot_cross_team_boundary(
 ) -> None:
     team_a = await seed_team(pool)
     team_b = await seed_team(pool)
+
     command = submit_command(
         team_a._replace(credential_id=team_b.credential_id),
-        await _input(pool, team_a.team_id),
+        await create_input(pool, team_a.team_id),
     )
 
     with pytest.raises(PermissionDenied) as raised:
@@ -67,30 +73,34 @@ async def test_members_only_search_their_team_published_results(
     team_b = await seed_team(pool)
     member_a = await seed_user(pool)
 
-    await team_repository.add_member(team_a.team_id, member_a, TeamRole.TEAM_MEMBER)
+    await team_repository.add_member(
+        team_a.team_id,
+        member_a,
+        TeamRole.TEAM_MEMBER,
+    )
 
     job_a = await service.submit(
-        submit_command(team_a, await _input(pool, team_a.team_id))
+        submit_command(team_a, await create_input(pool, team_a.team_id))
     )
     job_b = await service.submit(
-        submit_command(team_b, await _input(pool, team_b.team_id))
+        submit_command(team_b, await create_input(pool, team_b.team_id))
     )
 
     for job in (job_a, job_b):
         claimed = await job_repository.claim("trabajador", ("osiptel",))
         assert claimed is not None
 
-        assert await job_repository.publish(
+        published = await job_repository.publish(
             claimed.item_id,
             "trabajador",
             claimed.lease_fence,
             await object_reference(pool, job.team_id, f"salida/{job.id}.json"),
         )
+        assert published
 
-    published = await service.published_results(member_a, team_a.team_id)
+    results = await service.published_results(member_a, team_a.team_id)
 
-    assert [job.id for job in published] == [job_a.id]
-    assert job_b.id not in {job.id for job in published}
+    assert [job.id for job in results] == [job_a.id]
 
 
 async def test_only_stable_fetch_sources_are_allowed(
@@ -98,9 +108,10 @@ async def test_only_stable_fetch_sources_are_allowed(
     service: PortalService,
 ) -> None:
     team = await seed_team(pool)
+
     command = submit_command(
         team,
-        await _input(pool, team.team_id),
+        await create_input(pool, team.team_id),
         sources=("portabilidad",),
     )
 
@@ -118,13 +129,16 @@ async def test_all_excluded_input_is_terminal_and_creates_outbox_intents(
     team = await seed_team(pool)
 
     job = await service.submit(
-        submit_command(team, await _input(pool, team.team_id), value="inválido")
+        submit_command(
+            team,
+            await create_input(pool, team.team_id),
+            value="inválido",
+        )
     )
 
     assert job.state is JobState.COMPLETED
     assert job.items == []
 
-    # The job detail reads exclusions from persisted state.
     stored = await service.job(team.actor_id, team.team_id, job.id)
 
     assert [excluded.reason for excluded in stored.exclusions] == ["invalid_document"]
@@ -136,7 +150,7 @@ async def test_all_excluded_input_is_terminal_and_creates_outbox_intents(
 
     assert [row["event_type"] for row in events] == ["job.completed"]
 
-    channels = await pool.fetch(
+    rows = await pool.fetch(
         """
         SELECT DISTINCT outbox.channel
           FROM portal_notification_outbox AS outbox
@@ -146,6 +160,6 @@ async def test_all_excluded_input_is_terminal_and_creates_outbox_intents(
         job.id,
     )
 
-    assert {row["channel"] for row in channels} == {
+    assert {row["channel"] for row in rows} == {
         channel.value for channel in DeliveryChannel
     }

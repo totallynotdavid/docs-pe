@@ -5,7 +5,7 @@ import io
 
 from pathlib import Path
 
-from fastapi import UploadFile
+from litestar.datastructures import UploadFile
 
 from portal.domain.errors import InputValidationError, Reason
 from portal.domain.models import InputLine

@@ -1,26 +1,31 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Form, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from dataclasses import dataclass
+from typing import Annotated
+
+from litestar import Response, Router, get, post
+from litestar.di import NamedDependency
+from litestar.enums import RequestEncodingType
+from litestar.params import Body
+from litestar.response import Redirect
+from litestar_htmx import HTMXRequest
 
 from portal.application.provisioning import ProvisioningService
+from portal.application.service import PortalService
 from portal.domain.errors import PortalError
 from portal.domain.models import BrowserSession
-from portal.web.deps import PageSession, Provisioning, VerifiedSession
+from portal.settings import PortalSettings
+from portal.web.deps import require_verified_session
 from portal.web.render import render
 
 
-router = APIRouter(prefix="/administracion")
-
-
-@router.get("", response_class=HTMLResponse)
-async def administration_home(
-    session: PageSession,
-    provisioning: Provisioning,
+@get("")
+async def admin_home(
+    page_session: NamedDependency[BrowserSession],
+    provisioning: NamedDependency[ProvisioningService],
 ) -> Response:
-    await provisioning.installation_status(session.user.id)
-
-    return RedirectResponse("/administracion/equipos", status_code=303)
+    await provisioning.require_site_admin(page_session.user.id)
+    return Redirect("/admin/teams", status_code=303)
 
 
 async def _users_context(
@@ -37,28 +42,42 @@ async def _users_context(
     }
 
 
-@router.get("/usuarios", response_class=HTMLResponse)
-async def administration_users_get(
-    session: PageSession,
-    provisioning: Provisioning,
+@get("/users")
+async def admin_users_get(
+    page_session: NamedDependency[BrowserSession],
+    provisioning: NamedDependency[ProvisioningService],
 ) -> Response:
-    context = await _users_context(session, provisioning)
-
+    context = await _users_context(page_session, provisioning)
     return render("SiteUsers", **context)
 
 
-@router.post("/usuarios", response_class=HTMLResponse)
-async def administration_users_post(
-    session: VerifiedSession,
-    provisioning: Provisioning,
-    email: str = Form(),
-    password: str = Form(),
+@dataclass
+class NewUserForm:
+    email: str
+    password: str
+    csrf_token: str
+
+
+@post("/users", status_code=200)
+async def admin_users_post(
+    request: HTMXRequest,
+    service: NamedDependency[PortalService],
+    settings: NamedDependency[PortalSettings],
+    provisioning: NamedDependency[ProvisioningService],
+    data: Annotated[NewUserForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
 ) -> Response:
+    session = await require_verified_session(
+        request,
+        service,
+        settings,
+        data.csrf_token,
+    )
+
     try:
         await provisioning.create_user(
             session.user.id,
-            email=email,
-            password=password,
+            email=data.email,
+            password=data.password,
         )
     except (PortalError, ValueError) as error:
         context = await _users_context(
@@ -66,10 +85,9 @@ async def administration_users_post(
             provisioning,
             error=str(error),
         )
-
         return render("SiteUsers", **context)
 
-    return RedirectResponse("/administracion/usuarios", status_code=303)
+    return Redirect("/admin/users", status_code=303)
 
 
 async def _teams_context(
@@ -88,30 +106,44 @@ async def _teams_context(
     }
 
 
-@router.get("/equipos", response_class=HTMLResponse)
-async def administration_teams_get(
-    session: PageSession,
-    provisioning: Provisioning,
+@get("/teams")
+async def admin_teams_get(
+    page_session: NamedDependency[BrowserSession],
+    provisioning: NamedDependency[ProvisioningService],
 ) -> Response:
-    context = await _teams_context(session, provisioning)
-
+    context = await _teams_context(page_session, provisioning)
     return render("SiteTeams", **context)
 
 
-@router.post("/equipos", response_class=HTMLResponse)
-async def administration_teams_post(
-    session: VerifiedSession,
-    provisioning: Provisioning,
-    name: str = Form(),
-    slug: str = Form(),
-    leader_email: str = Form(),
+@dataclass
+class NewTeamForm:
+    name: str
+    slug: str
+    leader_email: str
+    csrf_token: str
+
+
+@post("/teams", status_code=200)
+async def admin_teams_post(
+    request: HTMXRequest,
+    service: NamedDependency[PortalService],
+    settings: NamedDependency[PortalSettings],
+    provisioning: NamedDependency[ProvisioningService],
+    data: Annotated[NewTeamForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
 ) -> Response:
+    session = await require_verified_session(
+        request,
+        service,
+        settings,
+        data.csrf_token,
+    )
+
     try:
         team = await provisioning.create_team(
             session.user.id,
-            name=name,
-            slug=slug,
-            leader_email=leader_email,
+            name=data.name,
+            slug=data.slug,
+            leader_email=data.leader_email,
         )
     except (PortalError, ValueError) as error:
         context = await _teams_context(
@@ -119,7 +151,18 @@ async def administration_teams_post(
             provisioning,
             error=str(error),
         )
-
         return render("SiteTeams", **context)
 
-    return RedirectResponse(f"/equipos/{team.id}/ajustes", status_code=303)
+    return Redirect(f"/teams/{team.id}/settings", status_code=303)
+
+
+router = Router(
+    path="/admin",
+    route_handlers=[
+        admin_home,
+        admin_users_get,
+        admin_users_post,
+        admin_teams_get,
+        admin_teams_post,
+    ],
+)

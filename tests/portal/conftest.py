@@ -11,10 +11,9 @@ from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
 import asyncpg
-import httpx
 import pytest
 
-from fastapi.testclient import TestClient
+from litestar.testing import AsyncTestClient, TestClient
 from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
 from portal.credentials.secrets import AesGcmSecretProtector
@@ -30,11 +29,11 @@ from portal.web.app import create_app
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterator
+    from collections.abc import AsyncIterator
 
-    import httpx2
+    import httpx
 
-    from fastapi import FastAPI
+    from litestar import Litestar
 
 
 POSTGRES_DSN = (
@@ -42,15 +41,13 @@ POSTGRES_DSN = (
 )
 SECRET_KEY = base64.urlsafe_b64encode(b"c" * 32).decode("ascii")
 
-ORIGIN = "http://testserver"
+ORIGIN = "http://testserver.local"
 PASSWORD = "una-clave-larga-y-segura"
 WORKER_TOKEN = "ficha-de-prueba"
 
 
 @pytest.fixture(scope="session")
 def portal_cluster() -> str:
-    """Require PostgreSQL only when a test requests this fixture."""
-
     async def ping() -> None:
         connection = await asyncpg.connect(POSTGRES_DSN, timeout=5)
         await connection.close()
@@ -60,7 +57,7 @@ def portal_cluster() -> str:
     except OSError as error:
         pytest.exit(
             f"PostgreSQL is not reachable at {POSTGRES_DSN} ({error}). "
-            "Run `mise run test`, or `mise run portal:db:start` first.",
+            "Run `mise run test`, or `mise run db:start` first.",
             returncode=1,
         )
 
@@ -132,7 +129,9 @@ def team_repository(portal_db: PortalDatabase) -> PostgresTeamRepository:
 
 
 @pytest.fixture
-def credential_repository(portal_db: PortalDatabase) -> PostgresCredentialRepository:
+def credential_repository(
+    portal_db: PortalDatabase,
+) -> PostgresCredentialRepository:
     return PostgresCredentialRepository(portal_db.pool)
 
 
@@ -149,7 +148,10 @@ def service(
     job_repository: PostgresJobRepository,
 ) -> PortalService:
     return PortalService(
-        auth_repository, team_repository, credential_repository, job_repository
+        auth_repository,
+        team_repository,
+        credential_repository,
+        job_repository,
     )
 
 
@@ -166,7 +168,10 @@ def provisioning(
     protector: AesGcmSecretProtector,
 ) -> ProvisioningService:
     return ProvisioningService(
-        auth_repository, team_repository, credential_repository, protector
+        auth_repository,
+        team_repository,
+        credential_repository,
+        protector,
     )
 
 
@@ -175,8 +180,8 @@ def app(
     portal_db: PortalDatabase,
     protector: AesGcmSecretProtector,
     tmp_path_factory: pytest.TempPathFactory,
-) -> Iterator[FastAPI]:
-    yield create_app(
+) -> Litestar:
+    return create_app(
         PortalSettings(
             database_dsn=portal_db.dsn,
             worker_bootstrap_token=WORKER_TOKEN,
@@ -187,16 +192,8 @@ def app(
 
 
 @pytest.fixture
-async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
-    """Run the app and asyncpg pool on the same event loop."""
-
-    async with (
-        app.router.lifespan_context(app),
-        httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
-            base_url=ORIGIN,
-        ) as http_client,
-    ):
+async def client(app: Litestar) -> AsyncIterator[AsyncTestClient]:
+    async with AsyncTestClient(app=app, base_url=ORIGIN) as http_client:
         yield http_client
 
 
@@ -340,7 +337,7 @@ def login(
     client: TestClient,
     email: str,
     password: str = PASSWORD,
-) -> httpx2.Response:
+) -> httpx.Response:
     page = client.get("/login")
 
     return client.post(
@@ -359,8 +356,8 @@ def session_csrf(client: TestClient) -> str:
     return csrf_token(client.get("/").text)
 
 
-def sync_client(app: FastAPI) -> TestClient:
-    return TestClient(app)
+def sync_client(app: Litestar) -> TestClient:
+    return TestClient(app, base_url=ORIGIN)
 
 
 @dataclass(frozen=True)
@@ -425,7 +422,7 @@ def submit_job(
     filename: str = "registros.csv",
 ) -> UUID:
     response = client.post(
-        f"/equipos/{team_id}/procesos",
+        f"/teams/{team_id}/jobs",
         data={
             "credential_version_id": str(credential_id),
             "sources": "osiptel",

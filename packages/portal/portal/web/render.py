@@ -1,41 +1,39 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from fastapi import Request
-from fastapi.responses import HTMLResponse
 from jinja2 import Environment
 from jinjax import Catalog
+from litestar.enums import MediaType
+from litestar.response import Response
 
 from portal.domain.models import CredentialState, Job, JobState, TeamRole
 from portal.messages import choice_label, field_label, provider_label
+from portal.web.assets import COMPONENTS_DIR, PAGES_DIR, build_component_stylesheet
 
 
-COMPONENTS_DIR = Path(__file__).with_name("components")
-PAGES_DIR = Path(__file__).with_name("pages")
-COMPONENT_ASSETS_URL = "/estatico/componentes/"
+if TYPE_CHECKING:
+    from litestar_htmx import HTMXRequest
 
 
 def render_fragment(name: str, /, **context: Any) -> str:
     return _CATALOG.render(name, **context)
 
 
-def render(name: str, /, **context: Any) -> HTMLResponse:
-    return HTMLResponse(render_fragment(name, **context))
+def render(name: str, /, **context: Any) -> Response[str]:
+    return Response(render_fragment(name, **context), media_type=MediaType.HTML)
 
 
 def render_hx(
-    request: Request,
+    request: HTMXRequest,
     page: str,
     fragment: str,
     /,
     **context: Any,
-) -> HTMLResponse:
-    swap = request.headers.get("hx-request") == "true"
-    response = render(fragment if swap else page, **context)
+) -> Response[str]:
+    response = render(fragment if request.htmx else page, **context)
 
-    # Prevent caches from serving an htmx fragment as a full page.
+    # Prevent caches from serving an HTMX fragment as a full page.
     response.headers["Vary"] = "HX-Request"
 
     return response
@@ -55,13 +53,9 @@ def component_catalog() -> Catalog:
     environment.globals["field_label"] = field_label
     environment.globals["choice_label"] = choice_label
     environment.globals["provider_label"] = provider_label
+    environment.globals["component_stylesheet_url"] = build_component_stylesheet()
 
-    # Components and pages share one namespace. Passing the environment directly
-    # preserves its autoescaping and registered filters.
-    catalog = Catalog(
-        jinja_env=environment,
-        root_url=COMPONENT_ASSETS_URL,
-    )
+    catalog = Catalog(jinja_env=environment)
     catalog.add_folder(COMPONENTS_DIR)
     catalog.add_folder(PAGES_DIR)
 

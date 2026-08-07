@@ -2,11 +2,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from starlette.datastructures import MutableHeaders
+from litestar.datastructures.headers import MutableScopeHeaders
 
 
 if TYPE_CHECKING:
-    from starlette.types import ASGIApp, Message, Receive, Scope, Send
+    from litestar.types import (
+        ASGIApp,
+        HTTPResponseBodyEvent,
+        HTTPResponseStartEvent,
+        Message,
+        Receive,
+        Scope,
+        Send,
+    )
 
 
 CONTENT_SECURITY_POLICY = (
@@ -19,7 +27,7 @@ CONTENT_SECURITY_POLICY = (
 
 
 class SecurityHeaders:
-    """Raw ASGI middleware so streaming responses and disconnect detection work."""
+    """Add security headers to HTTP responses."""
 
     def __init__(self, app: ASGIApp) -> None:
         self._app = app
@@ -29,11 +37,46 @@ class SecurityHeaders:
             await self._app(scope, receive, send)
             return
 
-        async def send_with_policy(message: Message) -> None:
+        async def send_with_security_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
-                MutableHeaders(scope=message)["content-security-policy"] = (
+                MutableScopeHeaders.from_message(message)["content-security-policy"] = (
                     CONTENT_SECURITY_POLICY
                 )
+
             await send(message)
 
-        await self._app(scope, receive, send_with_policy)
+        await self._app(scope, receive, send_with_security_headers)
+
+
+class HTTPSRedirect:
+    """Redirect plain HTTP requests to HTTPS."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["scheme"] == "https":
+            await self._app(scope, receive, send)
+            return
+
+        headers = MutableScopeHeaders(scope)
+        host = headers.get("host", "")
+        query_string = scope["query_string"].decode("latin-1")
+
+        target = f"https://{host}{scope['path']}"
+        if query_string:
+            target = f"{target}?{query_string}"
+
+        start: HTTPResponseStartEvent = {
+            "type": "http.response.start",
+            "status": 307,
+            "headers": [(b"location", target.encode("latin-1"))],
+        }
+        body: HTTPResponseBodyEvent = {
+            "type": "http.response.body",
+            "body": b"",
+            "more_body": False,
+        }
+
+        await send(start)
+        await send(body)

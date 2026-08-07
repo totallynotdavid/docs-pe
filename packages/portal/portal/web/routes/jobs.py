@@ -3,28 +3,28 @@ from __future__ import annotations
 import asyncio
 
 from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, Request, Response, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from litestar import Request, Response, Router, get, post
+from litestar.datastructures import UploadFile
+from litestar.di import NamedDependency
+from litestar.enums import RequestEncodingType
+from litestar.params import Body, FromPath
+from litestar.response import Redirect
+from litestar.response.sse import ServerSentEvent, ServerSentEventMessage
+from litestar_htmx import HTMXRequest
 
 from portal.application.service import PortalService
 from portal.domain.errors import PortalError
 from portal.domain.models import TERMINAL_JOB_STATES, BrowserSession
-from portal.web.deps import (
-    ApiSession,
-    PageSession,
-    Service,
-    Settings,
-    Storage,
-    VerifiedSession,
-)
+from portal.settings import PortalSettings
+from portal.storage.port import ObjectStorage
+from portal.web.deps import require_verified_session
 from portal.web.render import render, render_fragment
-from portal.web.sse import sse_event
 from portal.web.uploads import csv_input_lines, read_csv_upload
 
-
-router = APIRouter(prefix="/equipos/{team_id}/procesos")
 
 SOURCE_OPTIONS = (
     {
@@ -63,9 +63,6 @@ SOURCE_OPTIONS = (
 
 PROGRESS_POLL_SECONDS = 0.5
 
-# Prevent the browser from reconnecting after completion.
-_STREAM_END_EVENT = sse_event(event="fin", data="")
-
 
 async def _form_context(
     session: BrowserSession,
@@ -75,53 +72,71 @@ async def _form_context(
     error: str,
 ) -> dict[str, object]:
     credentials = await service.credentials(session.user.id, team_id)
+    active_credentials = tuple(
+        credential for credential in credentials if credential.is_active
+    )
 
     return {
         "user": session.user,
         "csrf_token": session.csrf_token,
         "team": await service.team(session.user.id, team_id),
-        "credentials": tuple(
-            credential for credential in credentials if credential.is_active
-        ),
+        "credentials": active_credentials,
         "source_options": SOURCE_OPTIONS,
         "error": error,
     }
 
 
-@router.get("/nuevo", response_class=HTMLResponse)
+@get("/new")
 async def new_job_get(
-    session: PageSession,
-    service: Service,
-    team_id: UUID,
+    page_session: NamedDependency[BrowserSession],
+    service: NamedDependency[PortalService],
+    team_id: FromPath[UUID],
 ) -> Response:
-    context = await _form_context(session, service, team_id, error="")
+    context = await _form_context(page_session, service, team_id, error="")
 
     return render("JobForm", **context)
 
 
-@router.post("")
+@dataclass
+class JobSubmissionForm:
+    credential_version_id: UUID
+    csrf_token: str
+    sources: list[str] = field(default_factory=list)
+    filename: str = ""
+    input_file: UploadFile | None = None
+
+
+@post("", status_code=200)
 async def new_job_post(
-    session: VerifiedSession,
-    service: Service,
-    storage: Storage,
-    team_id: UUID,
-    credential_version_id: UUID = Form(),
-    filename: str = Form(default=""),
-    input_file: UploadFile | None = File(default=None),
-    sources: list[str] = Form(),
+    request: HTMXRequest,
+    service: NamedDependency[PortalService],
+    settings: NamedDependency[PortalSettings],
+    storage: NamedDependency[ObjectStorage],
+    team_id: FromPath[UUID],
+    data: Annotated[
+        JobSubmissionForm,
+        Body(media_type=RequestEncodingType.MULTI_PART),
+    ],
 ) -> Response:
+    session = await require_verified_session(
+        request,
+        service,
+        settings,
+        data.csrf_token,
+    )
+
     try:
-        uploaded_filename, content = await read_csv_upload(input_file)
+        uploaded_filename, content = await read_csv_upload(data.input_file)
 
         job = await service.submit_input(
             actor_id=session.user.id,
             team_id=team_id,
-            credential_version_id=credential_version_id,
-            filename=filename.strip() or uploaded_filename,
+            credential_version_id=data.credential_version_id,
+            filename=data.filename.strip() or uploaded_filename,
             content=content,
             content_type="text/csv; charset=utf-8",
             lines=csv_input_lines(content),
-            sources=tuple(sources),
+            sources=tuple(data.sources),
             storage=storage,
         )
     except (PortalError, ValueError, RuntimeError) as error:
@@ -134,120 +149,118 @@ async def new_job_post(
 
         return render("JobForm", **context)
 
-    return RedirectResponse(
-        f"/equipos/{team_id}/procesos/{job.id}",
-        status_code=303,
-    )
+    return Redirect(f"/teams/{team_id}/jobs/{job.id}", status_code=303)
 
 
-@router.get("/{job_id}", response_class=HTMLResponse)
+@get("/{job_id:uuid}")
 async def job_detail(
-    session: PageSession,
-    service: Service,
-    team_id: UUID,
-    job_id: UUID,
+    page_session: NamedDependency[BrowserSession],
+    service: NamedDependency[PortalService],
+    team_id: FromPath[UUID],
+    job_id: FromPath[UUID],
 ) -> Response:
     return render(
         "JobDetail",
-        user=session.user,
-        csrf_token=session.csrf_token,
-        team=await service.team(session.user.id, team_id),
-        job=await service.job(session.user.id, team_id, job_id),
+        user=page_session.user,
+        csrf_token=page_session.csrf_token,
+        team=await service.team(page_session.user.id, team_id),
+        job=await service.job(page_session.user.id, team_id, job_id),
     )
 
 
-@router.post("/{job_id}/cancelar")
+@dataclass
+class CancelJobForm:
+    csrf_token: str
+
+
+@post("/{job_id:uuid}/cancel", status_code=200)
 async def cancel_job(
-    session: VerifiedSession,
-    service: Service,
-    team_id: UUID,
-    job_id: UUID,
+    request: HTMXRequest,
+    service: NamedDependency[PortalService],
+    settings: NamedDependency[PortalSettings],
+    team_id: FromPath[UUID],
+    job_id: FromPath[UUID],
+    data: Annotated[
+        CancelJobForm,
+        Body(media_type=RequestEncodingType.URL_ENCODED),
+    ],
 ) -> Response:
-    await service.cancel(session.user.id, team_id, job_id)
-
-    return RedirectResponse(
-        f"/equipos/{team_id}/procesos/{job_id}",
-        status_code=303,
-    )
-
-
-@router.get("/{job_id}/progreso")
-async def job_progress(
-    request: Request,
-    session: ApiSession,
-    service: Service,
-    settings: Settings,
-    team_id: UUID,
-    job_id: UUID,
-) -> Response:
-    # Authorize before opening the stream.
-    await service.job(session.user.id, team_id, job_id)
-
-    stream = _progress_stream(
+    session = await require_verified_session(
         request,
         service,
-        token=request.cookies.get(settings.session_cookie),
-        actor_id=session.user.id,
-        team_id=team_id,
-        job_id=job_id,
-        sequence=_last_event_id(request),
+        settings,
+        data.csrf_token,
     )
 
-    return StreamingResponse(
-        stream,
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
+    await service.cancel(session.user.id, team_id, job_id)
+
+    return Redirect(f"/teams/{team_id}/jobs/{job_id}", status_code=303)
 
 
-async def _progress_stream(
+@get("/{job_id:uuid}/progress")
+async def job_progress(
     request: Request,
+    api_session: NamedDependency[BrowserSession],
+    service: NamedDependency[PortalService],
+    settings: NamedDependency[PortalSettings],
+    team_id: FromPath[UUID],
+    job_id: FromPath[UUID],
+) -> ServerSentEvent:
+    # Authorize before opening the stream.
+    await service.job(api_session.user.id, team_id, job_id)
+
+    return ServerSentEvent(
+        _progress_events(
+            service,
+            token=request.cookies.get(settings.session_cookie),
+            actor_id=api_session.user.id,
+            team_id=team_id,
+            job_id=job_id,
+            last_sequence=_last_event_id(request),
+        )
+    )
+
+
+async def _progress_events(
     service: PortalService,
     *,
     token: str | None,
     actor_id: UUID,
     team_id: UUID,
     job_id: UUID,
-    sequence: int,
-) -> AsyncIterator[str]:
+    last_sequence: int,
+) -> AsyncIterator[ServerSentEventMessage]:
     while True:
-        # Stop if the session expires or is replaced.
-        current_session = await service.browser_session(token)
+        session = await service.browser_session(token)
 
-        if current_session is None or current_session.user.id != actor_id:
+        if session is None or session.user.id != actor_id:
             return
 
         events = await service.job_events_after(
             actor_id,
             team_id,
             job_id,
-            sequence,
+            last_sequence,
         )
 
         for event in events:
-            sequence = event.sequence
+            last_sequence = event.sequence
             job = await service.job(actor_id, team_id, job_id)
 
-            yield sse_event(
-                event_id=event.sequence,
-                event="progreso",
+            yield ServerSentEventMessage(
+                id=event.sequence,
+                event="progress",
                 data=render_fragment("JobProgressFragment", job=job),
             )
 
             if job.state in TERMINAL_JOB_STATES:
-                yield _STREAM_END_EVENT
+                yield ServerSentEventMessage(event="done", data="")
                 return
-
-        if await request.is_disconnected():
-            return
 
         job = await service.job(actor_id, team_id, job_id)
 
         if job.state in TERMINAL_JOB_STATES:
-            yield _STREAM_END_EVENT
+            yield ServerSentEventMessage(event="done", data="")
             return
 
         await asyncio.sleep(PROGRESS_POLL_SECONDS)
@@ -258,3 +271,15 @@ def _last_event_id(request: Request) -> int:
         return max(int(request.headers.get("last-event-id", "0")), 0)
     except ValueError:
         return 0
+
+
+router = Router(
+    path="/teams/{team_id:uuid}/jobs",
+    route_handlers=[
+        new_job_get,
+        new_job_post,
+        job_detail,
+        cancel_job,
+        job_progress,
+    ],
+)

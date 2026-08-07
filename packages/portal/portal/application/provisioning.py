@@ -73,6 +73,9 @@ class ProvisioningService:
         self._credentials = credentials
         self._secret_protector = secret_protector
 
+    async def require_site_admin(self, actor_id: UUID) -> None:
+        await self._require_site_admin(actor_id)
+
     async def installation_status(self, actor_id: UUID) -> InstallationStatus:
         await self._require_site_admin(actor_id)
 

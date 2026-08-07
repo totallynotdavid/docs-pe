@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING
 
-from fastapi import Depends, Form, HTTPException, Request
+from litestar.di import NamedDependency, Provide
+from litestar.exceptions import NotAuthorizedException, PermissionDeniedException
 
 from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
@@ -13,78 +14,81 @@ from portal.storage.port import ObjectStorage
 from portal.web.errors import LoginRequired
 
 
-def _settings(request: Request) -> PortalSettings:
-    settings: PortalSettings = request.app.state.settings
-    return settings
+if TYPE_CHECKING:
+    from litestar import Request
+    from litestar.connection import ASGIConnection
+    from litestar.datastructures import State
+    from litestar.handlers.base import BaseRouteHandler
 
 
-def _service(request: Request) -> PortalService:
-    service: PortalService = request.app.state.service
-    return service
+def provide_settings(state: State) -> PortalSettings:
+    return state.settings
 
 
-def _provisioning(request: Request) -> ProvisioningService:
-    provisioning: ProvisioningService = request.app.state.provisioning
-    return provisioning
+def provide_service(state: State) -> PortalService:
+    return state.service
 
 
-def _storage(request: Request) -> ObjectStorage:
-    storage: ObjectStorage = request.app.state.storage
-    return storage
+def provide_provisioning(state: State) -> ProvisioningService:
+    return state.provisioning
 
 
-Settings = Annotated[PortalSettings, Depends(_settings)]
-Service = Annotated[PortalService, Depends(_service)]
-Provisioning = Annotated[ProvisioningService, Depends(_provisioning)]
-Storage = Annotated[ObjectStorage, Depends(_storage)]
+def provide_storage(state: State) -> ObjectStorage:
+    return state.storage
 
 
-def require_same_origin(request: Request, settings: Settings) -> None:
+def _deny_unless_same_origin(
+    connection: ASGIConnection,
+    settings: PortalSettings,
+) -> None:
     if not same_origin(
-        origin=request.headers.get("origin"),
-        referer=request.headers.get("referer"),
+        origin=connection.headers.get("origin"),
+        referer=connection.headers.get("referer"),
         trusted_origin=settings.public_origin,
     ):
-        raise HTTPException(status_code=403, detail="origen no autorizado")
+        raise PermissionDeniedException(detail="origen no autorizado")
 
 
-RequireSameOrigin = Depends(require_same_origin)
+def require_same_origin(
+    connection: ASGIConnection,
+    _: BaseRouteHandler,
+) -> None:
+    _deny_unless_same_origin(connection, connection.app.state.settings)
 
 
-async def _optional_session(
+async def provide_optional_session(
     request: Request,
-    service: Service,
-    settings: Settings,
+    service: NamedDependency[PortalService],
+    settings: NamedDependency[PortalSettings],
 ) -> BrowserSession | None:
-    return await service.browser_session(
-        request.cookies.get(settings.session_cookie),
-    )
+    return await service.browser_session(request.cookies.get(settings.session_cookie))
 
 
-OptionalSession = Annotated[BrowserSession | None, Depends(_optional_session)]
-
-
-def _page_session(session: OptionalSession) -> BrowserSession:
-    if session is None:
+async def provide_page_session(
+    optional_session: NamedDependency[BrowserSession | None],
+) -> BrowserSession:
+    if optional_session is None:
         raise LoginRequired
 
-    return session
+    return optional_session
 
 
-def _api_session(session: OptionalSession) -> BrowserSession:
-    if session is None:
-        raise HTTPException(status_code=401, detail="autenticación requerida")
-
-    return session
-
-
-async def _verified_session(
-    request: Request,
-    service: Service,
-    settings: Settings,
-    csrf_token: Annotated[str, Form()],
+async def provide_api_session(
+    optional_session: NamedDependency[BrowserSession | None],
 ) -> BrowserSession:
-    require_same_origin(request, settings)
+    if optional_session is None:
+        raise NotAuthorizedException(detail="autenticación requerida")
+
+    return optional_session
+
+
+async def require_verified_session(
+    request: Request,
+    service: PortalService,
+    settings: PortalSettings,
+    csrf_token: str,
+) -> BrowserSession:
+    _deny_unless_same_origin(request, settings)
 
     return await service.verify_browser_csrf(
         request.cookies.get(settings.session_cookie),
@@ -92,10 +96,12 @@ async def _verified_session(
     )
 
 
-# Page requests redirect to login; API requests return 401.
-PageSession = Annotated[BrowserSession, Depends(_page_session)]
-ApiSession = Annotated[BrowserSession, Depends(_api_session)]
-VerifiedSession = Annotated[BrowserSession, Depends(_verified_session)]
-
-# Used when the verified session value itself is not needed.
-RequireVerifiedSession = Depends(_verified_session)
+DEPENDENCIES = {
+    "settings": Provide(provide_settings, sync_to_thread=False),
+    "service": Provide(provide_service, sync_to_thread=False),
+    "provisioning": Provide(provide_provisioning, sync_to_thread=False),
+    "storage": Provide(provide_storage, sync_to_thread=False),
+    "optional_session": Provide(provide_optional_session),
+    "page_session": Provide(provide_page_session),
+    "api_session": Provide(provide_api_session),
+}
