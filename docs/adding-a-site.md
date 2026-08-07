@@ -32,7 +32,7 @@ uv run capture --input docs.csv --output debts.csv --site entel
 
 This generates `debts.entel-capture.js`. Open the site in your own Chrome, paste
 the script into DevTools, complete one lookup manually so the script captures
-the request template, then click **RUN CLIENTS**. See
+the request template, then click `RUN CLIENTS`. See
 [packages/capture/readme.md](../packages/capture/readme.md) for the mechanics.
 
 Capture uses your real, logged-in-for-months Chrome profile: no proxy config, no
@@ -63,13 +63,13 @@ Each package requires the same two things, independently:
 2. `sites/<name>/parse.py`: convert the response into a result row
 3. One entry in that package's `sites/registry.py`
 
-No shared code between packages: see
-[architecture.md](architecture.md#key-invariants) ("do not add cross-package
-imports") for why. Concretely: `browser/sites/entel/parse.py` and a hypothetical
-`fetch/sites/entel/parse.py` would each maintain their own parser, even though
-they're parsing the same site. This is deliberate: it lets a site be reliable in
-`capture` while still broken in `browser`, or reliable in `browser` while
-`fetch` doesn't exist for it yet, without one package's fix touching another's.
+No shared code between packages: see [architecture.md](architecture.md) ("do not
+add cross-package imports") for why. Concretely: `browser/sites/entel/parse.py`
+and a hypothetical `fetch/sites/entel/parse.py` would each maintain their own
+parser, even though they're parsing the same site. This is deliberate: it lets a
+site be reliable in `capture` while still broken in `browser`, or reliable in
+`browser` while `fetch` doesn't exist for it yet, without one package's fix
+touching another's.
 
 ## Step 4: Write down what you learned about the site
 
@@ -77,11 +77,5 @@ Site behavior (gate type, wire protocol, error codes, failure rates) goes in
 `docs/sites/<name>.md`, not in the package readme that happens to implement it
 first. The fact that Entel's reCAPTCHA score depends on browser reputation is
 true regardless of whether you're reading it from `browser` or `capture`: put it
-once, in [sites/entel.md](sites/entel.md), and link to it from both.
-
-## See also
-
-- [packages/capture/readme.md](../packages/capture/readme.md)
-- [packages/browser/readme.md](../packages/browser/readme.md)
-- [packages/fetch/readme.md](../packages/fetch/readme.md)
-- [sites/](sites/): what's already known about each implemented site
+once, in [sites/entel.md](sites/entel.md), and link to it from both. See
+[sites/](sites/) for what's already known about each implemented site.

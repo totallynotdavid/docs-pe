@@ -8,7 +8,7 @@ throughput and cost numbers from real jobs, see [results.md](results.md).
 
 ## Providers
 
-**GeoNode**: residential proxies, reliable across sites, supports per-lane port
+GeoNode is a residential proxy, reliable across sites, with per-lane port
 allocation.
 
 ```env
@@ -22,10 +22,15 @@ GEONODE_LIFETIME_MINUTES=10     # 3..1440
 
 Gateway selection depends on your location and the target site. `fr_whitelist`
 is a curated subset. Lifetime is session expiration; shorter lifetime rotates
-exits more aggressively.
+exits more aggressively. GeoNode uses one port per lane slot, starting at 10000,
+allocated globally across all sites; a random `sessionId` in the username string
+rotates the exit, and sessions are explicitly released via API (example proxy
+ID: `proxy-1-port-10023`). It allocates 901 sticky-port slots total, so with
+more than 900 concurrent lanes across all sites, ports collide and sessions
+interfere: reduce concurrency or split runs across boxes.
 
-**DataImpulse**: rotating datacenter proxies, cheaper per request, but 20-32%
-failure rate on OSIPTEL (see [sites/osiptel.md](sites/osiptel.md)).
+DataImpulse is a rotating datacenter proxy, cheaper per request, but has a
+20-32% failure rate on OSIPTEL (see [sites/osiptel.md](sites/osiptel.md)).
 
 ```env
 DATAIMPULSE_USERNAME=<username>
@@ -34,53 +39,11 @@ DATAIMPULSE_COUNTRY=pe          # lowercase ISO-3166, required for OSIPTEL
 DATAIMPULSE_SESSION_MINUTES=3   # >= 1
 ```
 
-Provider fields follow `<PROVIDER>_<FIELD>` and are defined by each provider's
-`Field` schema in `fetch/proxy/base.py`. The same schema validates environment
-variables, stored credentials, and the portal form. Adding a provider requires
-one module and one entry in `fetch/proxy/registry.py`.
-
-## Lane allocation
-
-Lanes are configured globally in `PROXY_PROVIDER`:
-
-```env
-PROXY_PROVIDER=geonode:30,dataimpulse:18
-```
-
-This creates 30 GeoNode lanes and 18 DataImpulse lanes (48 total). Lanes are
-created per provider, so provider failover happens at the lane level: if all
-GeoNode lanes fail, DataImpulse lanes keep working.
-
-Omitting `:lanes` uses the provider default. Unknown names or duplicates fail at
-startup.
-
-`browser` uses a single session, so it takes only the first provider listed and
-ignores lane counts.
-
-## Sticky sessions
-
-A sticky session is one authenticated proxy connection that stays open across
-multiple requests. Rotating it means closing the connection and opening a new
-one, sometimes to a different exit IP.
-
-**GeoNode:**
-
-- One port per lane slot, starting at 10000, allocated globally across all sites
-- A random `sessionId` in the username string rotates the exit
-- Sessions are explicitly released via API
-- Example proxy ID: `proxy-1-port-10023`
-- Allocates 901 sticky-port slots total. With more than 900 concurrent lanes
-  across all sites, ports collide and sessions interfere. Reduce concurrency or
-  split runs across boxes.
-
-**DataImpulse:**
-
-- One rotating port (`gw.dataimpulse.com:823`)
-- Stickiness is stored in the `sessid` field of the username
-- Sessions expire by TTL (configurable); no explicit release needed
-- Example proxy ID: `dataimpulse-slot-5`
-
-`proxy_id` tells you which provider produced a row without joining anything:
+DataImpulse uses one rotating port (`gw.dataimpulse.com:823`); stickiness is
+stored in the `sessid` field of the username, and sessions expire by TTL
+(configurable), no explicit release needed (example proxy ID:
+`dataimpulse-slot-5`). `proxy_id` tells you which provider produced a row
+without joining anything:
 
 ```sql
 select
@@ -91,34 +54,24 @@ from outcomes
 group by 1, 2;
 ```
 
-## Peru exits are mandatory for OSIPTEL
+Provider fields follow `<PROVIDER>_<FIELD>` and are defined by each provider's
+`Field` schema in `fetch/proxy/base.py`. The same schema validates environment
+variables, stored credentials, and the portal form. Adding a provider requires
+one module and one entry in `fetch/proxy/registry.py`.
 
-Set both explicitly in every `.env`:
+Lanes themselves are configured globally, across both providers, in
+`PROXY_PROVIDER`:
 
 ```env
-GEONODE_COUNTRY=PE
-DATAIMPULSE_COUNTRY=pe
+PROXY_PROVIDER=geonode:30,dataimpulse:18
 ```
 
-OSIPTEL's WAF blocks non-Peru exits. An empty `GEONODE_COUNTRY` is especially
-dangerous: GeoNode silently falls back to its global residential pool, and
-OSIPTEL blocks 85-95% of those exits. See [sites/osiptel.md](sites/osiptel.md)
-for the failure-mode breakdown and measured success rates.
-
-## Provider selection by site
-
-| Site       | Provider     | Why                                      |
-| ---------- | ------------ | ---------------------------------------- |
-| OSIPTEL    | GeoNode only | DataImpulse fails 20-32% (geo-gated WAF) |
-| SUNAT      | Both         | Not geo-gated; use both to split load    |
-| SUNAT reps | Both         | Same behavior as SUNAT                   |
-
-Provider suitability is a property of the site, not the account: the same
-DataImpulse account that fails against OSIPTEL handles half a SUNAT run without
-issue. Details and measured failure rates: [sites/osiptel.md](sites/osiptel.md),
-[sites/sunat.md](sites/sunat.md).
-
-## Preflight check
+This creates 30 GeoNode lanes and 18 DataImpulse lanes (48 total). Lanes are
+created per provider, so provider failover happens at the lane level: if all
+GeoNode lanes fail, DataImpulse lanes keep working. Omitting `:lanes` uses the
+provider default; unknown names or duplicates fail at startup. `browser` uses a
+single session, so it takes only the first provider listed and ignores lane
+counts.
 
 Before starting a run, verify your proxy configuration is working:
 
@@ -132,10 +85,32 @@ print(f"Exit IP: {result}")
 This opens a real provider session and returns the exit IP. Use it to confirm
 the country setting is correct before running a large job.
 
-## See also
+## Peru exits are mandatory for OSIPTEL
 
-- [architecture.md](architecture.md): lane/circuit-breaker mechanics in the
-  pipeline
-- [troubleshooting.md](troubleshooting.md): 407s, circuit breaker false alarms,
-  port exhaustion
-- [results.md](results.md): throughput and cost per lookup by configuration
+Set both explicitly in every `.env`:
+
+```env
+GEONODE_COUNTRY=PE
+DATAIMPULSE_COUNTRY=pe
+```
+
+OSIPTEL's WAF blocks most non-Peru exits, and an empty `GEONODE_COUNTRY` is
+especially dangerous since GeoNode silently falls back to its global pool. See
+[sites/osiptel.md](sites/osiptel.md#waf-and-peru-exit-requirement) for the
+measured failure rates and what a block actually looks like on the wire.
+
+## Provider selection by site
+
+| Site       | Provider     | Why                                      |
+| ---------- | ------------ | ---------------------------------------- |
+| OSIPTEL    | GeoNode only | DataImpulse fails 20-32% (geo-gated WAF) |
+| SUNAT      | Both         | Not geo-gated; use both to split load    |
+| SUNAT reps | Both         | Same behavior as SUNAT                   |
+
+Provider suitability is a property of the site, not the account: the same
+DataImpulse account that fails against OSIPTEL handles half a SUNAT run without
+issue. Details and measured failure rates: [sites/osiptel.md](sites/osiptel.md),
+[sites/sunat.md](sites/sunat.md). For lane and circuit-breaker mechanics in the
+pipeline, see [architecture.md](architecture.md); for diagnosing 407s, circuit
+breaker false alarms, or port exhaustion, see
+[troubleshooting.md](troubleshooting.md).

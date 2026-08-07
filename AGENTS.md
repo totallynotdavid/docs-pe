@@ -35,6 +35,7 @@ Each package readme covers its own domain:
   rejection retry
 - `packages/capture/readme.md`: reverse-engineer sites using your own Chrome
 - `packages/portal/readme.md`: job queue, web UI, provisioning
+- `packages/portal/operations.md`: SQL runbook for manual portal intervention
 
 `docs/` covers cross-cutting concerns. Package readmes link into it; don't
 restate its content in a package readme:
@@ -81,21 +82,19 @@ so an async test is a plain async def test_* with no decorator.
 
 Rules that break things silently when ignored
 
-**Do not add cross-package imports.** See `docs/architecture.md#key-invariants`.
-Browser, capture, and fetch each keep their own copy of a site's parser,
-columns, and document vocabulary. Portal imports fetch only.
+Do not add cross-package imports. See `docs/architecture.md`. Browser, capture,
+and fetch each keep their own copy of a site's parser, columns, and document
+vocabulary. Portal imports fetch only.
 
-**Do not classify faults inside a site.** See
-`docs/architecture.md#3-execution`. `domain/policy.py` owns the mapping from
-fault to retry action. A site that grows its own retry rule silently escapes
-circuit breaker accounting.
+Do not classify faults inside a site. See `docs/architecture.md`.
+`domain/policy.py` owns the mapping from fault to retry action. A site that
+grows its own retry rule silently escapes circuit breaker accounting.
 
-**Do not read progress from a CSV or log tail.** See
-`docs/architecture.md#state-database-schema` and `docs/troubleshooting.md`. The
-state database is the source of truth. Output CSVs don't exist until a run ends;
-a mid-run empty directory is normal. A relaunch retries known-bad documents
-first, so logs open with a burst that looks like collapse. Query outcomes
-instead.
+Do not read progress from a CSV or log tail. See `docs/architecture.md` and
+`docs/troubleshooting.md`. The state database is the source of truth. Output
+CSVs don't exist until a run ends; a mid-run empty directory is normal. A
+relaunch retries known-bad documents first, so logs open with a burst that looks
+like collapse. Query outcomes instead.
 
 `GEONODE_COUNTRY=PE` and `DATAIMPULSE_COUNTRY=pe` must be set explicitly. See
 `docs/proxies.md#peru-exits-are-mandatory-for-osiptel`. OSIPTEL's WAF blocks

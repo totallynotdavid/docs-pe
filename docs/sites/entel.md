@@ -16,8 +16,6 @@ same document often succeeds on a later attempt. This is what `browser`'s
 `--reject-retries` and `RejectedError` handling exist for; see
 [packages/browser/readme.md](../../packages/browser/readme.md).
 
-## Rejection response
-
 Rejected lookups return HTTP 200 with:
 
 - `HasErrorDebt: true`
@@ -161,8 +159,14 @@ Observed 2026-07-17:
 This suggests acceptance depends on browser-level signals beyond the visible
 request body. The exact signal remains unidentified. Whether a person or script
 initiates the request isn't sufficient by itself; input method also affects
-results (see below). This is why [capture](../../packages/capture/readme.md)
-exists, to use an established browser profile.
+results, as a separate controlled comparison (same browser, site, form, IP)
+showed: CDP input with `isTrusted: true` still produced `HasErrorDebt: true`
+(rejected), while PyAutoGUI through X11 was accepted 3 of 3. A CDP-generated
+click reports `isTrusted: true`, but that doesn't make it equivalent to OS-level
+input; the OutSystems input mask also treated the two differently, with CDP
+`send_keys` entering only the first character while PyAutoGUI entered the
+complete value. This is why [capture](../../packages/capture/readme.md) exists,
+to use an established browser profile.
 
 ## Ruled-out variables
 
@@ -199,23 +203,9 @@ valid.
 
 The flow "mint in browser, request via `httpx`" doesn't work without reproducing
 an additional browser-bound property. Whether that's TLS-related remains
-unresolved. **This is why Entel stays in `browser` instead of moving to
-`fetch`**: the token cannot be reused from a plain HTTP client, so a browser has
-to remain part of the request path.
-
-## CDP input vs OS-level input
-
-Controlled comparison (same browser, site, form, IP):
-
-| Input method               | Result               |
-| -------------------------- | -------------------- |
-| CDP with `isTrusted: true` | `HasErrorDebt: true` |
-| PyAutoGUI through X11      | Accepted, 3 of 3     |
-
-A CDP-generated click reports `isTrusted: true`, but that doesn't make it
-equivalent to OS-level input. The OutSystems input mask also treated input
-methods differently: CDP `send_keys` entered only the first character; PyAutoGUI
-entered the complete value.
+unresolved. This is why Entel stays in `browser` instead of moving to `fetch`:
+the token cannot be reused from a plain HTTP client, so a browser has to remain
+part of the request path.
 
 ## Development environment notes
 
@@ -223,15 +213,13 @@ These were found while investigating the input-method difference above; they
 apply to any worker driving Entel through PyAutoGUI/Xvfb, not just the initial
 investigation.
 
-**Display and input:** Xvfb is sufficient: a PyAutoGUI-driven form on a headless
-virtual display returned real debt, and XTEST input through Xvfb was accepted.
-PyAutoGUI sends input to whichever window has OS focus; sharing a display
-between sessions can silently corrupt runs (input containing only one character,
-input receiving no text, another window receiving keystrokes). **Each worker
-should use its own display.**
-
-PyAutoGUI uses screen coordinates. Elements below the viewport should be
-centered first:
+Xvfb itself is sufficient: a PyAutoGUI-driven form on a headless virtual display
+returned real debt, and XTEST input through Xvfb was accepted. PyAutoGUI sends
+input to whichever window has OS focus, though, so sharing a display between
+sessions can silently corrupt runs (input containing only one character, input
+receiving no text, another window receiving keystrokes); each worker needs its
+own display. PyAutoGUI also uses screen coordinates, so elements below the
+viewport should be centered first:
 
 ```javascript
 element.scrollIntoView({ block: "center" });
@@ -239,36 +227,26 @@ element.scrollIntoView({ block: "center" });
 
 On a 1080p display, dropdown options rendered near `y=1157` before scrolling.
 
-**WSL:** SeleniumBase's `xvfb=True` doesn't work under WSLg (tested
-environment). WSLg mounts `/tmp/.X11-unix` read-only without the sticky bit; a
-new X server can't create a Unix socket there, and `chmod` can't change the
-directory. Start Xvfb manually instead:
+Under WSL, SeleniumBase's `xvfb=True` doesn't work (tested under WSLg): WSLg
+mounts `/tmp/.X11-unix` read-only without the sticky bit, so a new X server
+can't create a Unix socket there and `chmod` can't change the directory. Start
+Xvfb manually instead, then run SeleniumBase with `headed=True`:
 
 ```sh
 Xvfb :99 -screen 0 1920x1080x24 -listen tcp -nolisten unix
 export DISPLAY=127.0.0.1:99
 ```
 
-Then run SeleniumBase with `headed=True`. `-nolisten unix` prevents Xvfb from
-accessing `/tmp/.X11-unix`. `XAUTHORITY` must point to an existing file (may be
-empty).
+`-nolisten unix` prevents Xvfb from accessing `/tmp/.X11-unix`; `XAUTHORITY`
+must point to an existing file (may be empty).
 
-**SeleniumBase display size:** on normal Linux, `SB(uc=True, xvfb=True)` works.
-One known issue: `activate_cdp_mode()` creates a second virtual display without
-forwarding `xvfb_metrics`, so `xvfb_metrics = "1920,1080"` may still produce a
-1366x768 display, and PyAutoGUI then fails when clicking outside that screen.
-Documented in SeleniumBase discussion
-[#3664](https://github.com/seleniumbase/SeleniumBase/discussions/3664).
-
-UC mode also removes the proxy authentication extension, so an authenticated
-upstream proxy produces blank pages. `browser/local_proxy.py` handles this with
-a local unauthenticated relay: see
+On normal Linux, `SB(uc=True, xvfb=True)` works, but `activate_cdp_mode()`
+creates a second virtual display without forwarding `xvfb_metrics`, so
+`xvfb_metrics = "1920,1080"` may still produce a 1366x768 display and PyAutoGUI
+then fails when clicking outside that screen (documented in SeleniumBase
+discussion
+[#3664](https://github.com/seleniumbase/SeleniumBase/discussions/3664)). UC mode
+also removes the proxy authentication extension, so an authenticated upstream
+proxy produces blank pages; `browser/local_proxy.py` handles this with a local
+unauthenticated relay: see
 [packages/browser/readme.md](../../packages/browser/readme.md#the-local-proxy).
-
-## See also
-
-- [packages/browser/readme.md](../../packages/browser/readme.md): automated
-  Entel lookup, reject-retry flags
-- [packages/capture/readme.md](../../packages/capture/readme.md): using your own
-  Chrome profile for Entel
-- [architecture.md](../architecture.md): system overview

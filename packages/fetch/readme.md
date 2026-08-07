@@ -8,13 +8,11 @@ CSVs backed by a resumable state database.
 uv run --env-file .env fetch --input docs.csv --output out.csv --sites osiptel
 ```
 
-## When to use this
-
-Sites that answer over plain HTTP. Sites requiring JavaScript, reCAPTCHA, or a
-real Chrome profile stay in [browser](../browser/readme.md). Once a site works
-reliably over HTTP, fetch is the workhorse: faster, simpler, and less
-infrastructure than browser automation. See
-[docs/adding-a-site.md](../../docs/adding-a-site.md) for how a site gets here.
+Fetch handles sites that answer over plain HTTP. Sites requiring JavaScript,
+reCAPTCHA, or a real Chrome profile stay in [browser](../browser/readme.md);
+once a site works reliably over HTTP, fetch is the workhorse, faster, simpler,
+and less infrastructure than browser automation (see
+[docs/adding-a-site.md](../../docs/adding-a-site.md) for how a site gets here).
 
 ## Supported sites
 
@@ -25,8 +23,12 @@ infrastructure than browser automation. See
 | `sunat_reps` | RUC-20 (entities)        | legal reps: one row per person, `nombre`, `cargo`, `fecha_desde` |
 
 The unit of work is a `(doc, site)` pair, independently resumable. Select
-multiple sites in one run; they're queued independently. Wire protocol, failure
-modes, and reconciliation rules for each site:
+multiple sites in one run; they're queued independently. Input is a
+single-column CSV containing 7-8 digit DNIs (7-digit values are padded to 8),
+11-digit RUCs, or a mix of both; kind is detected per row, empty or malformed
+rows are dropped and counted as ignored, and documents are strings, not integers
+(roughly 30% of DNIs begin with zero). Wire protocol, failure modes, and
+reconciliation rules for each site:
 [docs/sites/osiptel.md](../../docs/sites/osiptel.md),
 [docs/sites/sunat.md](../../docs/sites/sunat.md).
 
@@ -66,13 +68,6 @@ fail at startup; omitting `:lanes` uses the provider default. Provider
 credentials (`GEONODE_*`, `DATAIMPULSE_*`), lane tuning, and per-site provider
 selection: [docs/proxies.md](../../docs/proxies.md).
 
-## Input
-
-A single-column CSV containing 7-8 digit DNIs (7-digit values are padded to 8),
-11-digit RUCs, or a mix of both. Kind is detected per row. Empty or malformed
-rows are dropped and counted as ignored. Documents are strings, not integers;
-roughly 30% of DNIs begin with zero.
-
 ## Outputs and state
 
 Files are written atomically once when the run ends (success, error, or Ctrl-C).
@@ -86,25 +81,14 @@ Files are written atomically once when the run ends (success, error, or Ctrl-C).
 | `out.state.sqlite3`           | State database; the source of truth                                                    |
 
 OSIPTEL also exports `out.osiptel.counts.csv` with per-carrier line counts.
-
 Exports use CRLF line endings: remove `\r` before diffing or comparing
-(`tr -d '\r'`).
-
-**During a run**, read progress from the state database, not the CSV (which
-doesn't exist yet): see
-[docs/troubleshooting.md](../../docs/troubleshooting.md#check-the-state-database-not-logs).
-
-## Resume behavior
+(`tr -d '\r'`). During a run, read progress from the state database, not the CSV
+(which doesn't exist yet): see
+[docs/troubleshooting.md](../../docs/troubleshooting.md#read-progress-from-the-state-database-not-logs).
 
 Re-running with the same `--output` skips every `(doc, site)` pair that
 succeeded or reached the retry cap. To rebuild state from previous exports
-without a state database, use `--import` once. To start fresh, delete the state
-database (`rm results.state.sqlite3`).
-
-Full retry/resume semantics, circuit breaker behavior, and lane/sticky-session
-mechanics: [docs/architecture.md](../../docs/architecture.md).
-
-## Troubleshooting
-
-[docs/troubleshooting.md](../../docs/troubleshooting.md): circuit breaker false
-alarms, 407s, port exhaustion, reading an active run.
+without a state database, use `--import` once; to start fresh, delete the state
+database (`rm results.state.sqlite3`). Full retry/resume semantics, circuit
+breaker behavior, and lane/sticky-session mechanics:
+[docs/architecture.md](../../docs/architecture.md).

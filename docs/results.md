@@ -1,8 +1,8 @@
 # Results ledger
 
 Historical, empirical data from completed jobs. Use it to calibrate expectations
-for new runs and to sanity-check a job in progress. **This is a log, not a
-reference doc**: add new rows as jobs complete, don't fold new mechanism
+for new runs and to sanity-check a job in progress. This is a log, not a
+reference doc: add new rows as jobs complete, don't fold new mechanism
 explanations in here. If you're explaining _why_ something behaves a certain
 way, that belongs in [architecture.md](architecture.md),
 [proxies.md](proxies.md), or [sites/](sites/); link to it instead of re-deriving
@@ -118,9 +118,3 @@ lookups.
 A 235,000-document SUNAT job transfers ~6 GB; the dashboard reported 937-982 KB
 per billed request (~36 lookups' worth of traffic per billed request). In
 practice, throughput is limited by latency and lane count, not bandwidth.
-
-## See also
-
-- [architecture.md](architecture.md): job lifecycle and reconciliation mechanics
-- [proxies.md](proxies.md): provider config behind these numbers
-- [sites/](sites/): per-site behavior

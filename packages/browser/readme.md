@@ -8,8 +8,6 @@ intervention via reCAPTCHA rejection retry and browser session restart.
 uv run --env-file .env browser --input subjects.csv --output debts.csv --site entel
 ```
 
-## When to use this
-
 Sites that can't be driven over plain HTTP stay here. Once a site works over
 HTTP (no JS, no gates), move it to [fetch](../fetch/readme.md): it's faster and
 simpler. If a site's gate scores automation itself below an acceptable rate
@@ -27,7 +25,10 @@ with your own established Chrome profile. See
 `entel` is gated by reCAPTCHA v3; `portabilidad` by Cloudflare Turnstile. Wire
 protocol and gate behavior for each:
 [docs/sites/entel.md](../../docs/sites/entel.md),
-[docs/sites/portabilidad.md](../../docs/sites/portabilidad.md).
+[docs/sites/portabilidad.md](../../docs/sites/portabilidad.md). Input is a CSV
+of subjects; the classifier detects Peru mobile (9 digits starting with 9), DNI
+(7 or 8 digits), and RUC (11 digits), and each subject is routed only to sites
+that accept its kind.
 
 ## Command-line interface
 
@@ -64,12 +65,6 @@ GEONODE_PASSWORD=...
 
 Provider credentials and tuning: [docs/proxies.md](../../docs/proxies.md).
 
-## Input and subject classification
-
-Input is a CSV of subjects. The classifier detects Peru mobile (9 digits
-starting with 9), DNI (7 or 8 digits), and RUC (11 digits). Each subject is
-routed only to sites that accept its kind.
-
 ## Outputs and state
 
 `<output>.state.sqlite3` stores every observation (the source of truth). The CSV
@@ -81,21 +76,18 @@ Re-running retries any subject not yet succeeded.
 | `<output>.csv`           | Latest result per subject |
 | `<output>.state.sqlite3` | State database            |
 
-## How it works
+## The local proxy
 
 The backend launches a browser and exposes it as a `Session` object. Each site
 implements `page.py` (navigate, interact, capture responses) and `parse.py`
 (convert page data into a `LookupResult`). The session protocol is
 site-agnostic; sites never depend on SeleniumBase directly.
 
-## The local proxy
-
 SeleniumBase's Pure CDP mode authenticates upstream proxies via CDP Fetch
 interception. A Python handler intercepts requests and supplies credentials.
-
-This works for simple pages. Entel's OutSystems application stalls because its
-subresource requests compete with the interception handler. The problem occurs
-on Chrome 147-150.
+This works for simple pages, but Entel's OutSystems application stalls because
+its subresource requests compete with the interception handler (the problem
+occurs on Chrome 147-150).
 
 `local_proxy.py` avoids interception. Chrome connects to an unauthenticated
 relay on `127.0.0.1`, and the relay attaches upstream credentials itself. Each
@@ -108,28 +100,17 @@ Both sites return an ambiguous rejection under normal conditions: why varies per
 site (reCAPTCHA score, stale Turnstile token); see
 [docs/sites/entel.md](../../docs/sites/entel.md) and
 [docs/sites/portabilidad.md](../../docs/sites/portabilidad.md). Mechanically,
-both are handled the same way:
-
-`RejectedError` marks a rejection. The code mints a fresh token and retries up
-to `--reject-retries` times before recording the subject as rejected. A
-structured reject proves the session is healthy; it never triggers a session
-restart by itself. A hard `BrowserError` (e.g., crash) propagates immediately.
+both are handled the same way: `RejectedError` marks a rejection, the code mints
+a fresh token and retries up to `--reject-retries` times before recording the
+subject as rejected. A structured reject proves the session is healthy; it never
+triggers a session restart by itself. A hard `BrowserError` (e.g., crash)
+propagates immediately.
 
 If several consecutive subjects exhaust their retry budget, the session is
 considered cold and restarts with a fresh proxy exit (up to
-`--max-session-restarts` times).
-
-Rejected subjects aren't lost. They remain in the database marked as rejected,
-the run exits non-zero, and a later run retries them.
-
-## Troubleshooting
-
-[docs/troubleshooting.md](../../docs/troubleshooting.md): session restarts not
-helping, reading an active run. High reject rates specifically:
-[docs/sites/entel.md](../../docs/sites/entel.md#why-automation-fails).
-
-## See also
-
-- [docs/architecture.md](../../docs/architecture.md): system overview
-- [docs/sites/entel.md](../../docs/sites/entel.md): reCAPTCHA behavior, CSRF,
-  input handling
+`--max-session-restarts` times). Rejected subjects aren't lost, though: they
+remain in the database marked as rejected, the run exits non-zero, and a later
+run retries them. See [docs/troubleshooting.md](../../docs/troubleshooting.md)
+for session restarts that aren't helping, or
+[why reject rates run high](../../docs/sites/entel.md#why-automation-fails) in
+the first place.
