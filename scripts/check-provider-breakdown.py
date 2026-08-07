@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-"""Show job status breakdown by provider."""
 
 import sqlite3
 import sys
@@ -16,18 +15,18 @@ if not db_path.exists():
     print(f"State database not found at {db_path}")
     sys.exit(1)
 
-c = sqlite3.connect(str(db_path))
-results = c.execute("""
-    select
-      case
-        when proxy_id like 'dataimpulse%' then 'dataimpulse'
-        else 'geonode'
-      end as provider,
-      status,
-      count(*)
-    from outcomes
-    group by provider, status
-""").fetchall()
+with sqlite3.connect(db_path) as db:
+    results = db.execute("""
+        select
+          case
+            when proxy_id like 'dataimpulse%' then 'dataimpulse'
+            else 'geonode'
+          end as provider,
+          status,
+          count(*)
+        from outcomes
+        group by provider, status
+    """).fetchall()
 
 print("Outcomes by provider and status:")
 for provider, status, count in results:

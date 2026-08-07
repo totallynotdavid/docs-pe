@@ -22,9 +22,7 @@ def _upload(name: str, content: bytes) -> UploadFile:
     return UploadFile(content_type="text/csv", filename=name, file_data=content)
 
 
-def test_every_response_carries_a_policy_that_trusts_only_this_origin(
-    app: Litestar,
-) -> None:
+def test_responses_use_same_origin_content_security_policy(app: Litestar) -> None:
     with TestClient(app) as client:
         policy = client.get("/login").headers["content-security-policy"]
 
@@ -33,21 +31,20 @@ def test_every_response_carries_a_policy_that_trusts_only_this_origin(
     assert "unsafe-eval" not in policy
 
 
-def test_the_portal_serves_every_asset_a_page_asks_for(app: Litestar) -> None:
+def test_login_page_uses_available_local_assets(app: Litestar) -> None:
     with TestClient(app) as client:
         page = client.get("/login")
 
         assert re.search(r'(?:src|href)="(?:https?:)?//', page.text) is None
 
         references = set(re.findall(r'(?:src|href)="(/static/[^"]+)"', page.text))
-
-        assert {"/static/htmx.min.js"} <= references
+        assert "/static/htmx.min.js" in references
 
         for reference in references:
             assert client.get(reference).status_code == 200, reference
 
 
-def test_the_component_stylesheet_bundle_covers_every_component_css() -> None:
+def test_component_bundle_contains_every_component_stylesheet() -> None:
     url = build_component_stylesheet()
     bundled = (STATIC_DIR / url.removeprefix("/static/")).read_text()
 
@@ -55,7 +52,7 @@ def test_the_component_stylesheet_bundle_covers_every_component_css() -> None:
         assert stylesheet.read_text() in bundled, stylesheet.name
 
 
-async def test_csv_upload_accepts_a_valid_file_and_strips_its_directories() -> None:
+async def test_csv_upload_accepts_valid_file_and_strips_directories() -> None:
     name, content = await read_csv_upload(_upload("../../barranca.CSV", b"10412345678"))
 
     assert name == "barranca.CSV"
@@ -88,7 +85,7 @@ async def test_csv_upload_accepts_a_valid_file_and_strips_its_directories() -> N
         ),
     ],
 )
-async def test_csv_upload_rejects_unusable_files(
+async def test_csv_upload_rejects_invalid_files(
     upload: UploadFile | None,
     reason: Reason,
     message: str,

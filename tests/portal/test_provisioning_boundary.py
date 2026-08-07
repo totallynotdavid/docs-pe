@@ -26,19 +26,21 @@ if TYPE_CHECKING:
     from portal.repository.teams import PostgresTeamRepository
 
 
-async def _user(
+async def _seed_user(
     pool: asyncpg.Pool,
     email: str,
     *,
     is_site_admin: bool = False,
 ) -> str:
     user_id = await seed_user(pool, email=email)
+
     await pool.execute(
         "UPDATE portal_users SET password_hash = $2, is_site_admin = $3 WHERE id = $1",
         user_id,
         hash_password(PASSWORD),
         is_site_admin,
     )
+
     return email
 
 
@@ -47,7 +49,11 @@ async def test_first_team_setup_is_the_only_empty_installation_path(
     team_repository: PostgresTeamRepository,
     app: Litestar,
 ) -> None:
-    admin_email = await _user(pool, "admin@osiptel.test", is_site_admin=True)
+    admin_email = await _seed_user(
+        pool,
+        "admin@osiptel.test",
+        is_site_admin=True,
+    )
     admin_id = await pool.fetchval(
         "SELECT id FROM portal_users WHERE email = $1",
         admin_email,
@@ -56,7 +62,8 @@ async def test_first_team_setup_is_the_only_empty_installation_path(
     with sync_client(app) as client:
         assert login(client, admin_email).status_code == 303
 
-        assert client.get("/", follow_redirects=False).headers["location"] == "/setup"
+        response = client.get("/", follow_redirects=False)
+        assert response.headers["location"] == "/setup"
 
         page = client.get("/setup")
         assert "UUID" not in page.text
@@ -74,10 +81,13 @@ async def test_first_team_setup_is_the_only_empty_installation_path(
         )
 
         assert response.status_code == 303
-        assert response.headers["location"].endswith("/settings/proxy")
-        assert "config_ciphertext" not in client.get(response.headers["location"]).text
+
+        location = response.headers["location"]
+        assert location.endswith("/settings/proxy")
+        assert "config_ciphertext" not in client.get(location).text
 
     team = await team_repository.team_by_slug("equipo-lima")
+
     assert team is not None
     assert await team_repository.role_for(admin_id, team.id) is TeamRole.TEAM_LEADER
 
@@ -87,9 +97,13 @@ async def test_site_and_team_settings_use_email_selectors_and_keep_members_limit
     team_repository: PostgresTeamRepository,
     app: Litestar,
 ) -> None:
-    admin_email = await _user(pool, "admin@osiptel.test", is_site_admin=True)
-    leader_email = await _user(pool, "lider@osiptel.test")
-    member_email = await _user(pool, "miembro@osiptel.test")
+    admin_email = await _seed_user(
+        pool,
+        "admin@osiptel.test",
+        is_site_admin=True,
+    )
+    leader_email = await _seed_user(pool, "lider@osiptel.test")
+    member_email = await _seed_user(pool, "miembro@osiptel.test")
 
     admin_id = await pool.fetchval(
         "SELECT id FROM portal_users WHERE email = $1",
@@ -120,13 +134,11 @@ async def test_site_and_team_settings_use_email_selectors_and_keep_members_limit
 
         team_url = response.headers["location"].removesuffix("/settings")
 
-        assert (
-            admin_client.post(
-                "/admin/members",
-                headers={"Origin": ORIGIN},
-            ).status_code
-            == 404
+        response = admin_client.post(
+            "/admin/members",
+            headers={"Origin": ORIGIN},
         )
+        assert response.status_code == 404
 
     with sync_client(app) as leader_client:
         assert login(leader_client, leader_email).status_code == 303
@@ -160,7 +172,11 @@ async def test_ensure_first_team_creates_once_and_verifies_on_rerun(
     team_repository: PostgresTeamRepository,
     provisioning: ProvisioningService,
 ) -> None:
-    admin_email = await _user(pool, "bootstrap@osiptel.test", is_site_admin=True)
+    admin_email = await _seed_user(
+        pool,
+        "bootstrap@osiptel.test",
+        is_site_admin=True,
+    )
     admin_id = await pool.fetchval(
         "SELECT id FROM portal_users WHERE email = $1",
         admin_email,
@@ -196,7 +212,11 @@ async def test_ensure_first_team_rejects_a_mismatched_rerun(
     team_repository: PostgresTeamRepository,
     provisioning: ProvisioningService,
 ) -> None:
-    admin_email = await _user(pool, "bootstrap@osiptel.test", is_site_admin=True)
+    admin_email = await _seed_user(
+        pool,
+        "bootstrap@osiptel.test",
+        is_site_admin=True,
+    )
     admin_id = await pool.fetchval(
         "SELECT id FROM portal_users WHERE email = $1",
         admin_email,

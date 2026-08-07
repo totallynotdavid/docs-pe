@@ -19,11 +19,7 @@ class ObjectReference:
 
 @runtime_checkable
 class ObjectStorage(Protocol):
-    """Stores bytes by object reference, never by filesystem path.
-
-    Litestar runtime-checks Protocol-typed dependencies, so this protocol must
-    remain runtime-checkable.
-    """
+    """Must remain runtime-checkable for Litestar dependency validation."""
 
     async def put_immutable(
         self,

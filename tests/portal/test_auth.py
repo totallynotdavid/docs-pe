@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from portal.repository.teams import PostgresTeamRepository
 
 
-async def test_postgresql_login_limit_uses_a_timestamp_window(
+async def test_postgresql_login_is_allowed_without_recent_failures(
     auth_repository: PostgresAuthRepository,
 ) -> None:
     now = datetime.now(UTC)
@@ -34,7 +34,7 @@ async def test_postgresql_login_limit_uses_a_timestamp_window(
     )
 
 
-async def test_login_csrf_cookie_rotation_and_generic_failure(
+async def test_login_page_and_generic_failure(
     pool: asyncpg.Pool,
     team_repository: PostgresTeamRepository,
     app: Litestar,
@@ -47,7 +47,24 @@ async def test_login_csrf_cookie_rotation_and_generic_failure(
         assert "Cerrar sesión" not in page.text
         assert "Iniciar sesión" in page.text
 
-        bad_origin = client.post(
+        unknown = login(client, "nadie@osiptel.test")
+        wrong = login(client, "admin@osiptel.test", "otra-clave-larga")
+
+        assert unknown.headers["location"] == "/login?error=1"
+        assert wrong.headers["location"] == "/login?error=1"
+
+
+async def test_login_rejects_bad_origin(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    app: Litestar,
+) -> None:
+    await build_experience(pool, team_repository)
+
+    with sync_client(app) as client:
+        page = client.get("/login")
+
+        response = client.post(
             "/login",
             data={
                 "email": "nadie@osiptel.test",
@@ -57,21 +74,35 @@ async def test_login_csrf_cookie_rotation_and_generic_failure(
             headers={"Origin": "https://evil.example"},
         )
 
-        assert bad_origin.status_code == 403
+        assert response.status_code == 403
 
-        unknown = login(client, "nadie@osiptel.test")
-        wrong = login(client, "admin@osiptel.test", "otra-clave-larga")
 
-        assert unknown.headers["location"] == "/login?error=1"
-        assert wrong.headers["location"] == "/login?error=1"
+async def test_successful_login_sets_session_cookie(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    app: Litestar,
+) -> None:
+    await build_experience(pool, team_repository)
 
-        admin_login = login(client, "admin@osiptel.test")
-        cookie = admin_login.headers["set-cookie"]
+    with sync_client(app) as client:
+        response = login(client, "admin@osiptel.test")
+        cookie = response.headers["set-cookie"]
 
-        assert admin_login.status_code == 303
+        assert response.status_code == 303
         assert "HttpOnly" in cookie
         assert "SameSite=lax" in cookie
         assert client.get("/admin").status_code == 200
+
+
+async def test_logout_requires_valid_origin(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    app: Litestar,
+) -> None:
+    await build_experience(pool, team_repository)
+
+    with sync_client(app) as client:
+        assert login(client, "admin@osiptel.test").status_code == 303
 
         csrf = session_csrf(client)
 
@@ -84,20 +115,33 @@ async def test_login_csrf_cookie_rotation_and_generic_failure(
             data={"csrf_token": csrf},
             headers={"Origin": "https://evil.example"},
         )
+
+        assert missing_origin.status_code == 403
+        assert bad_origin.status_code == 403
+
+
+async def test_logout_ends_the_session(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    app: Litestar,
+) -> None:
+    await build_experience(pool, team_repository)
+
+    with sync_client(app) as client:
+        assert login(client, "admin@osiptel.test").status_code == 303
+
         logout = client.post(
             "/logout",
-            data={"csrf_token": csrf},
+            data={"csrf_token": session_csrf(client)},
             headers={"Origin": ORIGIN},
             follow_redirects=False,
         )
 
-        assert missing_origin.status_code == 403
-        assert bad_origin.status_code == 403
         assert logout.status_code == 303
         assert client.get("/", follow_redirects=False).status_code == 303
 
 
-async def test_a_forged_csrf_token_on_a_protected_route_is_rejected(
+async def test_forged_csrf_token_is_rejected(
     pool: asyncpg.Pool,
     team_repository: PostgresTeamRepository,
     app: Litestar,

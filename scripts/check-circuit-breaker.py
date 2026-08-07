@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-"""Show recent outcomes by provider (to diagnose circuit breaker)."""
 
 import sqlite3
 import sys
@@ -16,20 +15,20 @@ if not db_path.exists():
     print(f"State database not found at {db_path}")
     sys.exit(1)
 
-c = sqlite3.connect(str(db_path))
-results = c.execute("""
-    select
-      case
-        when proxy_id like 'dataimpulse%' then 'dataimpulse'
-        else 'geonode'
-      end as provider,
-      status,
-      count(*) as count
-    from outcomes
-    where timestamp > datetime('now', '-10 minutes')
-    group by provider, status
-    order by timestamp desc
-""").fetchall()
+with sqlite3.connect(db_path) as connection:
+    results = connection.execute("""
+        select
+          case
+            when proxy_id like 'dataimpulse%' then 'dataimpulse'
+            else 'geonode'
+          end as provider,
+          status,
+          count(*) as count
+        from outcomes
+        where finished_at > datetime('now', '-10 minutes')
+        group by provider, status
+        order by provider, status
+    """).fetchall()
 
 if not results:
     print("No recent outcomes (last 10 minutes)")

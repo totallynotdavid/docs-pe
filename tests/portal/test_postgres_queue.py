@@ -61,20 +61,20 @@ async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results
     ]
 
     jobs = await asyncio.gather(*(service.submit(command) for command in commands))
-    running = [job for job in jobs if job.state is JobState.RUNNING]
-    queued = sorted(
+    running_jobs = [job for job in jobs if job.state is JobState.RUNNING]
+    queued_jobs = sorted(
         (job for job in jobs if job.state is JobState.QUEUED),
         key=lambda job: job.queue_sequence,
     )
 
-    assert len(running) == 5
-    assert [job.queue_sequence for job in queued] == [6, 7, 8, 9, 10]
+    assert len(running_jobs) == 5
+    assert [job.queue_sequence for job in queued_jobs] == [6, 7, 8, 9, 10]
 
     claimed = await job_repository.claim("trabajador-prueba", ("osiptel",))
 
     assert claimed is not None
 
-    partial_job = next(job for job in running if job.id != claimed.job_id)
+    partial_job = next(job for job in running_jobs if job.id != claimed.job_id)
     result_reference = await object_reference(
         pool,
         team_id,
@@ -104,7 +104,7 @@ async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results
         is False
     )
 
-    assert queued[0].id == await pool.fetchval(
+    assert queued_jobs[0].id == await pool.fetchval(
         """
         SELECT id FROM portal_jobs
          WHERE state = 'running'
@@ -124,7 +124,11 @@ async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results
         == result_reference
     )
 
-    partial_cancelled = await service.cancel(actor_id, team_id, partial_job.id)
+    partial_cancelled = await service.cancel(
+        actor_id,
+        team_id,
+        partial_job.id,
+    )
 
     assert partial_cancelled.state is JobState.CANCELLED
     assert await pool.fetchval("SELECT count(*) FROM portal_notification_outbox") == 6
@@ -137,18 +141,24 @@ async def test_an_expired_lease_returns_its_item_to_the_queue(
 ) -> None:
     await _submit_one(pool, service)
 
-    first = await job_repository.claim("trabajador-uno", ("osiptel",))
+    first_claim = await job_repository.claim(
+        "trabajador-uno",
+        ("osiptel",),
+    )
 
-    assert first is not None
-    assert await _attempts(pool, first.item_id) == 1
+    assert first_claim is not None
+    assert await _attempts(pool, first_claim.item_id) == 1
 
     await _expire_leases(pool)
 
-    second = await job_repository.claim("trabajador-dos", ("osiptel",))
+    second_claim = await job_repository.claim(
+        "trabajador-dos",
+        ("osiptel",),
+    )
 
-    assert second is not None
-    assert second.item_id == first.item_id
-    assert await _attempts(pool, second.item_id) == 2
+    assert second_claim is not None
+    assert second_claim.item_id == first_claim.item_id
+    assert await _attempts(pool, second_claim.item_id) == 2
 
 
 async def test_a_repeatedly_expired_item_retires_and_fails_its_job(
@@ -159,13 +169,22 @@ async def test_a_repeatedly_expired_item_retires_and_fails_its_job(
     job = await _submit_one(pool, service)
 
     for _ in range(MAX_LEASE_ATTEMPTS):
-        claimed = await job_repository.claim("trabajador", ("osiptel",))
+        claimed = await job_repository.claim(
+            "trabajador",
+            ("osiptel",),
+        )
 
         assert claimed is not None
 
         await _expire_leases(pool)
 
-    assert await job_repository.claim("trabajador", ("osiptel",)) is None
+    assert (
+        await job_repository.claim(
+            "trabajador",
+            ("osiptel",),
+        )
+        is None
+    )
 
     item = await pool.fetchrow(
         "SELECT state, reason FROM portal_job_items WHERE job_id = $1",
@@ -280,6 +299,9 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
         json={"sources": ["osiptel"]},
         headers=headers,
     )
+
+    assert response.status_code == 200
+
     claimed = response.json()
 
     assert claimed["document"] == "10412345678"
@@ -298,6 +320,7 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
         headers=headers,
     )
 
+    assert published.status_code == 200
     assert published.json() == {"published": True}
 
     finished = await pool.fetchrow(

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-"""Check job status from state database."""
 
 import sqlite3
 import sys
@@ -16,8 +15,10 @@ if not db_path.exists():
     print(f"State database not found at {db_path}")
     sys.exit(1)
 
-c = sqlite3.connect(str(db_path))
-results = c.execute("select status, count(*) from outcomes group by status").fetchall()
+with sqlite3.connect(db_path) as connection:
+    results = connection.execute(
+        "select status, count(*) from outcomes group by status"
+    ).fetchall()
 
 print("Job status:")
 for status, count in results:

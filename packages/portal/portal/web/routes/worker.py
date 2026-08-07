@@ -25,8 +25,13 @@ if TYPE_CHECKING:
 
 def provide_worker_id(request: Request, state: State) -> str:
     expected = state.settings.worker_bootstrap_token
-    token = request.headers.get("authorization", "").removeprefix("Bearer ")
+    authorization = request.headers.get("authorization", "")
     worker_id = request.headers.get("x-portal-worker", "").strip()
+
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="worker not authorized")
+
+    token = authorization.removeprefix("Bearer ")
 
     if not expected or not worker_id or not secrets.compare_digest(token, expected):
         raise HTTPException(status_code=401, detail="worker not authorized")

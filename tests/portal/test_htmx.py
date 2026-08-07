@@ -54,15 +54,22 @@ async def test_htmx_search_finds_a_published_result(
     job_repository: PostgresJobRepository,
     app: Litestar,
 ) -> None:
-    people = await build_experience(pool, team_repository)
+    experience = await build_experience(pool, team_repository)
 
     with sync_client(app) as client:
         assert login(client, "lider@osiptel.test").status_code == 303
         await _publish_result(
-            pool, job_repository, client, people.team_id, people.credential_id
+            pool,
+            job_repository,
+            client,
+            experience.team_id,
+            experience.credential_id,
         )
 
-        search = client.get(f"/teams/{people.team_id}/search?q=104", headers=HTMX)
+        search = client.get(
+            f"/teams/{experience.team_id}/search?q=104",
+            headers=HTMX,
+        )
 
     assert search.status_code == 200
     assert "10412345678" in search.text
@@ -75,17 +82,25 @@ async def test_htmx_search_shows_an_empty_state_for_no_matches(
     job_repository: PostgresJobRepository,
     app: Litestar,
 ) -> None:
-    people = await build_experience(pool, team_repository)
+    experience = await build_experience(pool, team_repository)
 
     with sync_client(app) as client:
         assert login(client, "lider@osiptel.test").status_code == 303
         await _publish_result(
-            pool, job_repository, client, people.team_id, people.credential_id
+            pool,
+            job_repository,
+            client,
+            experience.team_id,
+            experience.credential_id,
         )
 
-        partial = client.get(f"/teams/{people.team_id}/search?q=999", headers=HTMX)
+        search = client.get(
+            f"/teams/{experience.team_id}/search?q=999",
+            headers=HTMX,
+        )
 
-    assert "No hay resultados" in partial.text
+    assert search.status_code == 200
+    assert "No hay resultados" in search.text
 
 
 async def test_htmx_job_list_pagination_links_to_the_next_and_previous_pages(
@@ -93,9 +108,9 @@ async def test_htmx_job_list_pagination_links_to_the_next_and_previous_pages(
     team_repository: PostgresTeamRepository,
     app: Litestar,
 ) -> None:
-    people = await build_experience(pool, team_repository)
-    team_id = people.team_id
-    credential_id = people.credential_id
+    experience = await build_experience(pool, team_repository)
+    team_id = experience.team_id
+    credential_id = experience.credential_id
 
     with sync_client(app) as client:
         assert login(client, "lider@osiptel.test").status_code == 303
@@ -106,7 +121,6 @@ async def test_htmx_job_list_pagination_links_to_the_next_and_previous_pages(
         first_page = client.get(f"/teams/{team_id}?page=1", headers=HTMX)
         second_page = client.get(f"/teams/{team_id}?page=2", headers=HTMX)
 
-    # The label text is copy; the link's target page is the behavior.
     assert f'hx-get="/teams/{team_id}?page=2"' in first_page.text
     assert f'hx-get="/teams/{team_id}?page=1"' in second_page.text
 
@@ -116,11 +130,16 @@ async def test_notifications_lists_a_completed_job(
     team_repository: PostgresTeamRepository,
     app: Litestar,
 ) -> None:
-    people = await build_experience(pool, team_repository)
+    experience = await build_experience(pool, team_repository)
 
     with sync_client(app) as client:
         assert login(client, "lider@osiptel.test").status_code == 303
-        submit_job(client, people.team_id, people.credential_id, "no-es-documento")
+        submit_job(
+            client,
+            experience.team_id,
+            experience.credential_id,
+            "no-es-documento",
+        )
 
         notifications = client.get("/notifications", headers=HTMX)
 
@@ -133,9 +152,9 @@ async def test_htmx_urls_serve_pages_and_fragments(
     team_repository: PostgresTeamRepository,
     app: Litestar,
 ) -> None:
-    people = await build_experience(pool, team_repository)
-    team_id = people.team_id
-    credential_id = people.credential_id
+    experience = await build_experience(pool, team_repository)
+    team_id = experience.team_id
+    credential_id = experience.credential_id
 
     with sync_client(app) as client:
         assert login(client, "lider@osiptel.test").status_code == 303
@@ -150,10 +169,9 @@ async def test_htmx_urls_serve_pages_and_fragments(
 
             assert page.status_code == 200
             assert fragment.status_code == 200
-
             assert "<!DOCTYPE html>" in page.text
             assert "<!DOCTYPE html>" not in fragment.text
 
-            # Without Vary, a shared cache could replay the fragment to a browser.
+            # A shared cache must distinguish full pages from HTMX fragments.
             assert page.headers["vary"] == "HX-Request"
             assert fragment.headers["vary"] == "HX-Request"

@@ -29,7 +29,7 @@ from portal.web.app import create_app
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterator
+    from collections.abc import AsyncIterator
 
     import httpx
 
@@ -48,8 +48,6 @@ WORKER_TOKEN = "ficha-de-prueba"
 
 @pytest.fixture(scope="session")
 def portal_cluster() -> str:
-    """Require PostgreSQL only when a test requests this fixture."""
-
     async def ping() -> None:
         connection = await asyncpg.connect(POSTGRES_DSN, timeout=5)
         await connection.close()
@@ -131,7 +129,9 @@ def team_repository(portal_db: PortalDatabase) -> PostgresTeamRepository:
 
 
 @pytest.fixture
-def credential_repository(portal_db: PortalDatabase) -> PostgresCredentialRepository:
+def credential_repository(
+    portal_db: PortalDatabase,
+) -> PostgresCredentialRepository:
     return PostgresCredentialRepository(portal_db.pool)
 
 
@@ -148,7 +148,10 @@ def service(
     job_repository: PostgresJobRepository,
 ) -> PortalService:
     return PortalService(
-        auth_repository, team_repository, credential_repository, job_repository
+        auth_repository,
+        team_repository,
+        credential_repository,
+        job_repository,
     )
 
 
@@ -165,7 +168,10 @@ def provisioning(
     protector: AesGcmSecretProtector,
 ) -> ProvisioningService:
     return ProvisioningService(
-        auth_repository, team_repository, credential_repository, protector
+        auth_repository,
+        team_repository,
+        credential_repository,
+        protector,
     )
 
 
@@ -174,8 +180,8 @@ def app(
     portal_db: PortalDatabase,
     protector: AesGcmSecretProtector,
     tmp_path_factory: pytest.TempPathFactory,
-) -> Iterator[Litestar]:
-    yield create_app(
+) -> Litestar:
+    return create_app(
         PortalSettings(
             database_dsn=portal_db.dsn,
             worker_bootstrap_token=WORKER_TOKEN,
@@ -187,8 +193,6 @@ def app(
 
 @pytest.fixture
 async def client(app: Litestar) -> AsyncIterator[AsyncTestClient]:
-    """Run the app and asyncpg pool on the same event loop."""
-
     async with AsyncTestClient(app=app, base_url=ORIGIN) as http_client:
         yield http_client
 

@@ -72,7 +72,10 @@ async def test_job_detail_shows_why_input_was_excluded(
     with sync_client(app) as client:
         assert login(client, "lider@osiptel.test").status_code == 303
         job_id = submit_job(
-            client, people.team_id, people.credential_id, "no-es-documento"
+            client,
+            people.team_id,
+            people.credential_id,
+            "no-es-documento",
         )
 
         detail = client.get(f"/teams/{people.team_id}/jobs/{job_id}")
@@ -92,7 +95,10 @@ async def test_a_finished_job_streams_progress_then_a_done_event(
     with sync_client(app) as client:
         assert login(client, "lider@osiptel.test").status_code == 303
         job_id = submit_job(
-            client, people.team_id, people.credential_id, "no-es-documento"
+            client,
+            people.team_id,
+            people.credential_id,
+            "no-es-documento",
         )
 
         stream = client.get(
@@ -103,8 +109,6 @@ async def test_a_finished_job_streams_progress_then_a_done_event(
     assert stream.status_code == 200
     assert "event: progress" in stream.text
     assert "Completado" in stream.text
-
-    # A "done" event stops the browser's EventSource from reconnecting.
     assert stream.text.endswith("event: done\r\ndata: \r\n\r\n")
 
 
@@ -118,7 +122,10 @@ async def test_reconnecting_after_the_terminal_state_gets_only_the_done_event(
     with sync_client(app) as client:
         assert login(client, "lider@osiptel.test").status_code == 303
         job_id = submit_job(
-            client, people.team_id, people.credential_id, "no-es-documento"
+            client,
+            people.team_id,
+            people.credential_id,
+            "no-es-documento",
         )
 
         reconnect = client.get(
@@ -140,7 +147,12 @@ async def test_a_cancelled_jobs_detail_shows_as_cancelled(
 
     with sync_client(app) as client:
         assert login(client, "lider@osiptel.test").status_code == 303
-        job_id = submit_job(client, people.team_id, people.credential_id, "10412345678")
+        job_id = submit_job(
+            client,
+            people.team_id,
+            people.credential_id,
+            "10412345678",
+        )
 
         assert await job_repository.cancel(job_id, people.team_id) is not None
 
@@ -160,14 +172,21 @@ async def test_job_detail_and_progress_are_forbidden_to_outsiders(
     with sync_client(app) as leader_client:
         assert login(leader_client, "lider@osiptel.test").status_code == 303
         job_id = submit_job(
-            leader_client, people.team_id, people.credential_id, "no-es-documento"
+            leader_client,
+            people.team_id,
+            people.credential_id,
+            "no-es-documento",
         )
 
     with sync_client(app) as outsider_client:
         assert login(outsider_client, "otro@osiptel.test").status_code == 303
 
-        detail = outsider_client.get(f"/teams/{people.team_id}/jobs/{job_id}")
-        stream = outsider_client.get(f"/teams/{people.team_id}/jobs/{job_id}/progress")
+        detail = outsider_client.get(
+            f"/teams/{people.team_id}/jobs/{job_id}",
+        )
+        stream = outsider_client.get(
+            f"/teams/{people.team_id}/jobs/{job_id}/progress",
+        )
 
     assert detail.status_code == 403
     assert stream.status_code == 403
@@ -175,7 +194,9 @@ async def test_job_detail_and_progress_are_forbidden_to_outsiders(
 
 def test_job_progress_requires_authentication(app: Litestar) -> None:
     with sync_client(app) as anonymous_client:
-        stream = anonymous_client.get(f"/teams/{uuid4()}/jobs/{uuid4()}/progress")
+        stream = anonymous_client.get(
+            f"/teams/{uuid4()}/jobs/{uuid4()}/progress",
+        )
 
     assert stream.status_code == 401
 
@@ -187,14 +208,16 @@ async def test_csv_upload_uses_the_file_name_and_first_column(
     app: Litestar,
 ) -> None:
     people = await build_experience(pool, team_repository)
-    team_id = people.team_id
-    credential_id = people.credential_id
 
     with sync_client(app) as client:
         assert login(client, "lider@osiptel.test").status_code == 303
-        csv_job = submit_csv(client, team_id, credential_id)
+        job_id = submit_csv(
+            client,
+            people.team_id,
+            people.credential_id,
+        )
 
-    stored_job = await job_repository.job(csv_job, team_id)
+    stored_job = await job_repository.job(job_id, people.team_id)
 
     assert stored_job is not None
     assert stored_job.filename == "barranca.csv"
