@@ -104,13 +104,12 @@ async def worker_publish(
     if team_id is None:
         raise HTTPException(status_code=404, detail="job not found")
 
-    object_id = uuid4()
     reference = ObjectReference(
-        id=object_id,
+        id=uuid4(),
         team_id=team_id,
         provider="portal-worker",
         container="results",
-        object_key=f"{data.item_id}/{object_id}",
+        object_key=f"{data.item_id}/{uuid4()}",
         sha256=hashlib.sha256(content).hexdigest(),
         size_bytes=len(content),
         content_type="application/json",

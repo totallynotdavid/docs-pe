@@ -28,7 +28,7 @@ async def admin_home(
     return Redirect("/admin/teams", status_code=303)
 
 
-async def build_users_context(
+async def _users_context(
     session: BrowserSession,
     provisioning: ProvisioningService,
     *,
@@ -47,7 +47,7 @@ async def admin_users_get(
     page_session: NamedDependency[BrowserSession],
     provisioning: NamedDependency[ProvisioningService],
 ) -> Response:
-    context = await build_users_context(page_session, provisioning)
+    context = await _users_context(page_session, provisioning)
     return render("SiteUsers", **context)
 
 
@@ -80,7 +80,7 @@ async def admin_users_post(
             password=data.password,
         )
     except (PortalError, ValueError) as error:
-        context = await build_users_context(
+        context = await _users_context(
             session,
             provisioning,
             error=str(error),
@@ -90,7 +90,7 @@ async def admin_users_post(
     return Redirect("/admin/users", status_code=303)
 
 
-async def build_teams_context(
+async def _teams_context(
     session: BrowserSession,
     provisioning: ProvisioningService,
     *,
@@ -111,7 +111,7 @@ async def admin_teams_get(
     page_session: NamedDependency[BrowserSession],
     provisioning: NamedDependency[ProvisioningService],
 ) -> Response:
-    context = await build_teams_context(page_session, provisioning)
+    context = await _teams_context(page_session, provisioning)
     return render("SiteTeams", **context)
 
 
@@ -146,7 +146,7 @@ async def admin_teams_post(
             leader_email=data.leader_email,
         )
     except (PortalError, ValueError) as error:
-        context = await build_teams_context(
+        context = await _teams_context(
             session,
             provisioning,
             error=str(error),
