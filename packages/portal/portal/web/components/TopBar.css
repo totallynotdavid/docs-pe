@@ -1,0 +1,32 @@
+.top-bar {
+  align-items: center;
+  background: var(--secondary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  height: 48px;
+  justify-content: space-between;
+  padding: 0 16px;
+}
+
+.top-bar__title {
+  color: var(--foreground);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+}
+
+.top-bar__actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .top-bar {
+    height: 42px;
+    padding: 0 16px;
+  }
+
+  .top-bar__actions .button {
+    min-width: 0;
+  }
+}

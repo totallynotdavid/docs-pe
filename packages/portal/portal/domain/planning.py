@@ -31,7 +31,7 @@ def plan_submission(
                 ExcludedInput(
                     line.ordinal,
                     line.value,
-                    "documento_invalido",
+                    "invalid_document",
                 )
             )
             continue
@@ -43,7 +43,7 @@ def plan_submission(
                 ExcludedInput(
                     line.ordinal,
                     document,
-                    "documento_duplicado",
+                    "duplicate_document",
                 )
             )
             continue
@@ -57,7 +57,7 @@ def plan_submission(
                 ExcludedInput(
                     line.ordinal,
                     document,
-                    "sin_fuente_compatible",
+                    "no_compatible_source",
                 )
             )
             continue

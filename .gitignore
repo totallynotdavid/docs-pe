@@ -15,5 +15,8 @@ dist/
 logs/
 results/
 
+# Bundled at process startup by portal.web.assets
+packages/portal/portal/web/static/components.*.css
+
 # results contain PII data
 /*.csv

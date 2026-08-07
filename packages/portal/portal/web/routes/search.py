@@ -2,43 +2,46 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Request, Response
-from fastapi.responses import HTMLResponse
+from litestar import Response, Router, get
+from litestar.di import NamedDependency
+from litestar.params import FromPath, FromQuery
+from litestar_htmx import HTMXRequest
 
-from portal.web.deps import PageSession, Service
+from portal.application.service import PortalService
+from portal.domain.models import BrowserSession
 from portal.web.render import render_hx
 
 
-router = APIRouter()
-
-
-@router.get("/equipos/{team_id}/buscar", response_class=HTMLResponse)
+@get("/search")
 async def search(
-    request: Request,
-    session: PageSession,
-    service: Service,
-    team_id: UUID,
-    q: str = "",
-    page: int = 1,
+    request: HTMXRequest,
+    page_session: NamedDependency[BrowserSession],
+    service: NamedDependency[PortalService],
+    team_id: FromPath[UUID],
+    q: FromQuery[str] = "",
+    page: FromQuery[int] = 1,
 ) -> Response:
-    page = max(page, 1)
+    current_page = max(page, 1)
 
     results, has_more = await service.search(
-        session.user.id,
+        page_session.user.id,
         team_id,
         q,
-        page=page,
+        page=current_page,
     )
 
     return render_hx(
         request,
         "Search",
         "SearchResultsFragment",
-        user=session.user,
-        csrf_token=session.csrf_token,
-        team=await service.team(session.user.id, team_id),
+        user=page_session.user,
+        csrf_token=page_session.csrf_token,
+        team=await service.team(page_session.user.id, team_id),
         query=q,
         results=results,
-        page=page,
+        page=current_page,
         has_more=has_more,
     )
+
+
+router = Router(path="/teams/{team_id:uuid}", route_handlers=[search])

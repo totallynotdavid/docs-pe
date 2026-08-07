@@ -1,0 +1,3 @@
+{#def position="" #}
+{% set classes = "actions actions--" ~ position if position else "actions" %}
+<div {{ attrs.render(class=classes) }}>{{ content }}</div>

@@ -4,13 +4,14 @@ import os
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
-from starlette.middleware.trustedhost import TrustedHostMiddleware
+from litestar import Litestar
+from litestar.config.allowed_hosts import AllowedHostsConfig
+from litestar.datastructures import State
+from litestar.static_files import create_static_files_router
+from litestar_htmx import HTMXRequest
 
 from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
@@ -21,24 +22,21 @@ from portal.repository.jobs import PostgresJobRepository
 from portal.repository.teams import PostgresTeamRepository
 from portal.settings import PortalSettings
 from portal.storage.files import FileObjectStorage
-from portal.web.errors import install_error_handlers
-from portal.web.headers import SecurityHeaders
-from portal.web.routes import (
-    admin,
-    assets,
-    auth,
-    home,
-    jobs,
-    search,
-    teams,
-    worker,
-)
+from portal.web.assets import STATIC_DIR
+from portal.web.deps import DEPENDENCIES
+from portal.web.errors import EXCEPTION_HANDLERS
+from portal.web.headers import HTTPSRedirect, SecurityHeaders
+from portal.web.routes import admin, auth, home, jobs, search, teams, worker
+
+
+if TYPE_CHECKING:
+    from litestar.types import Middleware
 
 
 def create_app(
     settings: PortalSettings | None = None,
     protector: AesGcmSecretProtector | None = None,
-) -> FastAPI:
+) -> Litestar:
     if settings is None:
         settings = PortalSettings.from_environment()
 
@@ -48,7 +46,7 @@ def create_app(
     settings.validate()
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: Litestar) -> AsyncIterator[None]:
         import asyncpg
 
         pool = await asyncpg.create_pool(settings.database_dsn)
@@ -80,49 +78,39 @@ def create_app(
         finally:
             await pool.close()
 
-    app = FastAPI(
-        title="Worker",
-        version="0.2.0",
-        lifespan=lifespan,
-    )
-    app.state.settings = settings
-
-    # Register component assets before the static mount can match them.
-    app.include_router(assets.router)
-    app.mount(
-        "/estatico",
-        StaticFiles(directory=Path(__file__).with_name("static")),
-        name="estatico",
-    )
-
-    app.add_middleware(SecurityHeaders)
+    middleware: list[Middleware] = []
 
     if settings.is_production:
         hostname = urlparse(settings.public_origin).hostname
         assert hostname, "validated by PortalSettings.validate()"
-
-        app.add_middleware(
-            TrustedHostMiddleware,
-            allowed_hosts=[hostname],
-        )
+        allowed_hosts = AllowedHostsConfig(allowed_hosts=[hostname])
 
         if not settings.tls_terminated_upstream:
-            app.add_middleware(HTTPSRedirectMiddleware)
+            middleware.append(HTTPSRedirect)
+    else:
+        allowed_hosts = None
 
-    install_error_handlers(app)
+    middleware.append(SecurityHeaders)
 
-    for router in (
-        auth.router,
-        home.router,
-        jobs.router,
-        search.router,
-        teams.router,
-        admin.router,
-        worker.router,
-    ):
-        app.include_router(router)
-
-    return app
+    return Litestar(
+        route_handlers=[
+            create_static_files_router(path="/static", directories=[STATIC_DIR]),
+            *auth.handlers,
+            *home.handlers,
+            jobs.router,
+            search.router,
+            teams.router,
+            admin.router,
+            worker.router,
+        ],
+        dependencies=DEPENDENCIES,
+        exception_handlers=EXCEPTION_HANDLERS,
+        request_class=HTMXRequest,
+        middleware=middleware,
+        allowed_hosts=allowed_hosts,
+        lifespan=[lifespan],
+        state=State({"settings": settings}),
+    )
 
 
 def main() -> None:

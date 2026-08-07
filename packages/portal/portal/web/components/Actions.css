@@ -1,0 +1,14 @@
+.actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actions--above {
+  margin-bottom: 18px;
+}
+
+.actions--below {
+  margin-top: 16px;
+}

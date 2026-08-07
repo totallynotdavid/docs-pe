@@ -2,40 +2,37 @@
 <Layout :title="team.name ~ ' · Worker'"
         :user="user"
         :csrf_token="csrf_token">
-  <UiTopBar :title="team.name">
-    <UiButton variant="secundario" :href="'/equipos/' ~ team.id ~ '/buscar'">
+  <TopBar :title="team.name">
+    <ActionButton variant="secondary" :href="'/teams/' ~ team.id ~ '/search'">
       Buscar
-    </UiButton>
+    </ActionButton>
     {% if team.role.value == 'team_leader' %}
-      <UiButton :href="'/equipos/' ~ team.id ~ '/procesos/nuevo'">
+      <ActionButton :href="'/teams/' ~ team.id ~ '/jobs/new'">
         Nueva consulta
-      </UiButton>
+      </ActionButton>
     {% endif %}
-  </UiTopBar>
-  <UiContent>
-    <h1 class="solo-lector">{{ team.name }}</h1>
+  </TopBar>
+  <MainContent>
+    <h1 class="sr-only">{{ team.name }}</h1>
     {% if team.role.value == 'team_leader' %}
-      <UiPanel aria-labelledby="titulo-tareas">
-        <UiPanelHeader title="Tareas recientes"
-                       description="El estado se actualiza mientras se procesan."
-                       title_id="titulo-tareas">
-          <UiButton variant="secundario" :href="'/equipos/' ~ team.id ~ '/ajustes'">
+      <Panel aria-labelledby="jobs-title">
+        <PanelHeader title="Tareas recientes"
+                     description="El estado se actualiza mientras se procesan."
+                     title_id="jobs-title">
+          <ActionButton variant="secondary" :href="'/teams/' ~ team.id ~ '/settings'">
             Configuración
-          </UiButton>
-        </UiPanelHeader>
-        <div id="lista-procesos"
-             hx-get="/equipos/{{ team.id }}?page=1"
-             hx-trigger="load"
-             hx-swap="innerHTML">
+          </ActionButton>
+        </PanelHeader>
+        <div id="jobs-list">
           <JobsFragment :team="team" :jobs="jobs" :page="page" :total="total" />
         </div>
-      </UiPanel>
+      </Panel>
     {% else %}
-      <UiPanel>
-        <UiEmptyState>
+      <Panel>
+        <EmptyState>
           Puedes buscar documentos en este equipo.
-        </UiEmptyState>
-      </UiPanel>
+        </EmptyState>
+      </Panel>
     {% endif %}
-  </UiContent>
+  </MainContent>
 </Layout>

@@ -17,7 +17,7 @@ from tests.portal.conftest import (
 if TYPE_CHECKING:
     import asyncpg
 
-    from fastapi import FastAPI
+    from litestar import Litestar
     from portal.repository.auth import PostgresAuthRepository
     from portal.repository.teams import PostgresTeamRepository
 
@@ -37,15 +37,15 @@ async def test_postgresql_login_limit_uses_a_timestamp_window(
 async def test_login_csrf_cookie_rotation_and_generic_failure(
     pool: asyncpg.Pool,
     team_repository: PostgresTeamRepository,
-    app: FastAPI,
+    app: Litestar,
 ) -> None:
     await build_experience(pool, team_repository)
 
     with sync_client(app) as client:
         page = client.get("/login")
 
-        assert 'class="barra-superior"' not in page.text
-        assert 'class="acceso__marca"' in page.text
+        assert "Cerrar sesión" not in page.text
+        assert "Iniciar sesión" in page.text
 
         bad_origin = client.post(
             "/login",
@@ -71,7 +71,7 @@ async def test_login_csrf_cookie_rotation_and_generic_failure(
         assert admin_login.status_code == 303
         assert "HttpOnly" in cookie
         assert "SameSite=lax" in cookie
-        assert client.get("/administracion").status_code == 200
+        assert client.get("/admin").status_code == 200
 
         csrf = session_csrf(client)
 
@@ -100,7 +100,7 @@ async def test_login_csrf_cookie_rotation_and_generic_failure(
 async def test_a_forged_csrf_token_on_a_protected_route_is_rejected(
     pool: asyncpg.Pool,
     team_repository: PostgresTeamRepository,
-    app: FastAPI,
+    app: Litestar,
 ) -> None:
     await build_experience(pool, team_repository)
 

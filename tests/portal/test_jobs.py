@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from tests.portal.conftest import (
     build_experience,
@@ -16,7 +17,7 @@ from tests.portal.conftest import (
 if TYPE_CHECKING:
     import asyncpg
 
-    from fastapi import FastAPI
+    from litestar import Litestar
     from portal.repository.jobs import PostgresJobRepository
     from portal.repository.teams import PostgresTeamRepository
 
@@ -24,13 +25,13 @@ if TYPE_CHECKING:
 async def test_new_job_makes_source_outcomes_visible_without_exposing_setup_details(
     pool: asyncpg.Pool,
     team_repository: PostgresTeamRepository,
-    app: FastAPI,
+    app: Litestar,
 ) -> None:
     team_id = (await build_experience(pool, team_repository)).team_id
 
     with sync_client(app) as client:
         assert login(client, "lider@osiptel.test").status_code == 303
-        page = client.get(f"/equipos/{team_id}/procesos/nuevo")
+        page = client.get(f"/teams/{team_id}/jobs/new")
 
     assert page.status_code == 200
     assert "DNI y nombre" in page.text
@@ -44,105 +45,146 @@ async def test_new_job_makes_source_outcomes_visible_without_exposing_setup_deta
     assert "versión 1" not in page.text
 
 
-async def test_roles_cross_team_isolation_submission_and_terminal_rendering(
+async def test_team_member_can_search_but_not_create_jobs(
     pool: asyncpg.Pool,
     team_repository: PostgresTeamRepository,
-    job_repository: PostgresJobRepository,
-    app: FastAPI,
+    app: Litestar,
+) -> None:
+    team_id = (await build_experience(pool, team_repository)).team_id
+
+    with sync_client(app) as client:
+        assert login(client, "miembro@osiptel.test").status_code == 303
+
+        search = client.get(f"/teams/{team_id}/search?q=104")
+        new_job = client.get(f"/teams/{team_id}/jobs/new")
+
+    assert search.status_code == 200
+    assert new_job.status_code == 403
+
+
+async def test_job_detail_shows_why_input_was_excluded(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    app: Litestar,
 ) -> None:
     people = await build_experience(pool, team_repository)
-    team_id = people.team_id
-    credential_id = people.credential_id
 
-    with sync_client(app) as member_client:
-        assert login(member_client, "miembro@osiptel.test").status_code == 303
-
-        search = member_client.get(f"/equipos/{team_id}/buscar?q=104")
-        new_job = member_client.get(f"/equipos/{team_id}/procesos/nuevo")
-
-        assert search.status_code == 200
-        assert new_job.status_code == 403
-
-    with sync_client(app) as leader_client:
-        assert login(leader_client, "lider@osiptel.test").status_code == 303
-
-        excluded_job = submit_job(
-            leader_client,
-            team_id,
-            credential_id,
-            "no-es-documento",
+    with sync_client(app) as client:
+        assert login(client, "lider@osiptel.test").status_code == 303
+        job_id = submit_job(
+            client, people.team_id, people.credential_id, "no-es-documento"
         )
 
-        detail = leader_client.get(
-            f"/equipos/{team_id}/procesos/{excluded_job}",
+        detail = client.get(f"/teams/{people.team_id}/jobs/{job_id}")
+
+    assert detail.status_code == 200
+    assert "sin registros válidos" in detail.text
+    assert "Tarea" in detail.text
+
+
+async def test_a_finished_job_streams_progress_then_a_done_event(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    app: Litestar,
+) -> None:
+    people = await build_experience(pool, team_repository)
+
+    with sync_client(app) as client:
+        assert login(client, "lider@osiptel.test").status_code == 303
+        job_id = submit_job(
+            client, people.team_id, people.credential_id, "no-es-documento"
         )
 
-        assert detail.status_code == 200
-        assert "sin registros válidos" in detail.text
-        assert "Tarea" in detail.text
-
-        stream = leader_client.get(
-            f"/equipos/{team_id}/procesos/{excluded_job}/progreso",
+        stream = client.get(
+            f"/teams/{people.team_id}/jobs/{job_id}/progress",
             headers={"Last-Event-ID": "0"},
         )
 
-        assert stream.status_code == 200
-        assert "event: progreso" in stream.text
-        assert "Completado" in stream.text
+    assert stream.status_code == 200
+    assert "event: progress" in stream.text
+    assert "Completado" in stream.text
 
-        # `sse-close="fin"` stops the browser from reconnecting.
-        assert stream.text.endswith("event: fin\ndata: \n\n")
+    # A "done" event stops the browser's EventSource from reconnecting.
+    assert stream.text.endswith("event: done\r\ndata: \r\n\r\n")
 
-        reconnect = leader_client.get(
-            f"/equipos/{team_id}/procesos/{excluded_job}/progreso",
+
+async def test_reconnecting_after_the_terminal_state_gets_only_the_done_event(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    app: Litestar,
+) -> None:
+    people = await build_experience(pool, team_repository)
+
+    with sync_client(app) as client:
+        assert login(client, "lider@osiptel.test").status_code == 303
+        job_id = submit_job(
+            client, people.team_id, people.credential_id, "no-es-documento"
+        )
+
+        reconnect = client.get(
+            f"/teams/{people.team_id}/jobs/{job_id}/progress",
             headers={"Last-Event-ID": "1"},
         )
 
-        assert reconnect.status_code == 200
-        assert reconnect.text == "event: fin\ndata: \n\n"
+    assert reconnect.status_code == 200
+    assert reconnect.text == "event: done\r\ndata: \r\n\r\n"
 
-        active_job = submit_job(
-            leader_client,
-            team_id,
-            credential_id,
-            "10412345678",
+
+async def test_a_cancelled_jobs_detail_shows_as_cancelled(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    job_repository: PostgresJobRepository,
+    app: Litestar,
+) -> None:
+    people = await build_experience(pool, team_repository)
+
+    with sync_client(app) as client:
+        assert login(client, "lider@osiptel.test").status_code == 303
+        job_id = submit_job(client, people.team_id, people.credential_id, "10412345678")
+
+        assert await job_repository.cancel(job_id, people.team_id) is not None
+
+        cancelled = client.get(f"/teams/{people.team_id}/jobs/{job_id}")
+
+    assert cancelled.status_code == 200
+    assert "Cancelado" in cancelled.text
+
+
+async def test_job_detail_and_progress_are_forbidden_to_outsiders(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    app: Litestar,
+) -> None:
+    people = await build_experience(pool, team_repository)
+
+    with sync_client(app) as leader_client:
+        assert login(leader_client, "lider@osiptel.test").status_code == 303
+        job_id = submit_job(
+            leader_client, people.team_id, people.credential_id, "no-es-documento"
         )
-
-        assert await job_repository.cancel(active_job, team_id) is not None
-
-        cancelled = leader_client.get(
-            f"/equipos/{team_id}/procesos/{active_job}",
-        )
-
-        assert cancelled.status_code == 200
-        assert "Cancelado" in cancelled.text
 
     with sync_client(app) as outsider_client:
         assert login(outsider_client, "otro@osiptel.test").status_code == 303
 
-        detail = outsider_client.get(
-            f"/equipos/{team_id}/procesos/{excluded_job}",
-        )
-        stream = outsider_client.get(
-            f"/equipos/{team_id}/procesos/{excluded_job}/progreso",
-        )
+        detail = outsider_client.get(f"/teams/{people.team_id}/jobs/{job_id}")
+        stream = outsider_client.get(f"/teams/{people.team_id}/jobs/{job_id}/progress")
 
-        assert detail.status_code == 403
-        assert stream.status_code == 403
+    assert detail.status_code == 403
+    assert stream.status_code == 403
 
+
+def test_job_progress_requires_authentication(app: Litestar) -> None:
     with sync_client(app) as anonymous_client:
-        stream = anonymous_client.get(
-            f"/equipos/{team_id}/procesos/{excluded_job}/progreso",
-        )
+        stream = anonymous_client.get(f"/teams/{uuid4()}/jobs/{uuid4()}/progress")
 
-        assert stream.status_code == 401
+    assert stream.status_code == 401
 
 
 async def test_csv_upload_uses_the_file_name_and_first_column(
     pool: asyncpg.Pool,
     team_repository: PostgresTeamRepository,
     job_repository: PostgresJobRepository,
-    app: FastAPI,
+    app: Litestar,
 ) -> None:
     people = await build_experience(pool, team_repository)
     team_id = people.team_id

@@ -73,6 +73,9 @@ class ProvisioningService:
         self._credentials = credentials
         self._secret_protector = secret_protector
 
+    async def require_site_admin(self, actor_id: UUID) -> None:
+        await self._require_site_admin(actor_id)
+
     async def installation_status(self, actor_id: UUID) -> InstallationStatus:
         await self._require_site_admin(actor_id)
 
@@ -83,9 +86,7 @@ class ProvisioningService:
             team_count=team_count,
             initial_team_id=initial_team_id,
             can_create_first_team=can_create_first_team,
-            next_step=(
-                "crear_primer_equipo" if can_create_first_team else "administrar_sitio"
-            ),
+            next_step=("create_first_team" if can_create_first_team else "manage_site"),
         )
 
     async def create_first_team(
@@ -249,9 +250,7 @@ class ProvisioningService:
 
         return TeamReadiness(
             has_active_credential=has_active_credential,
-            next_step=(
-                "enviar_trabajo" if has_active_credential else "configurar_proxy"
-            ),
+            next_step=("submit_job" if has_active_credential else "configure_proxy"),
         )
 
     async def configure_proxy(

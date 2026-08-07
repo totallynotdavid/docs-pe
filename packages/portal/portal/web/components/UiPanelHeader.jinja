@@ -1,8 +1,0 @@
-{#def title, description="", title_id="" #}
-<div class="panel-cabecera">
-  <div>
-    <h2{% if title_id %} id="{{ title_id }}"{% endif %}>{{ title }}</h2>
-    {% if description %}<p>{{ description }}</p>{% endif %}
-  </div>
-  {{ content }}
-</div>

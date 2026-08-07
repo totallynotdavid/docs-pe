@@ -19,8 +19,8 @@ from tests.portal.conftest import WORKER_TOKEN, object_reference, seed_team
 
 if TYPE_CHECKING:
     import asyncpg
-    import httpx
 
+    from litestar.testing import AsyncTestClient
     from portal.application.service import PortalService
     from portal.credentials.secrets import AesGcmSecretProtector
     from portal.repository.jobs import PostgresJobRepository
@@ -181,7 +181,7 @@ async def test_a_repeatedly_expired_item_retires_and_fails_its_job(
     )
 
     assert finished["state"] == "failed"
-    assert finished["terminal_reason"] == "sin_resultados"
+    assert finished["terminal_reason"] == "no_results"
 
 
 async def test_published_search_finds_a_dni_inside_a_ruc_and_paginates(
@@ -247,7 +247,7 @@ async def test_published_search_finds_a_dni_inside_a_ruc_and_paginates(
 async def test_the_worker_api_leases_an_item_and_publishes_its_result(
     pool: asyncpg.Pool,
     service: PortalService,
-    client: httpx.AsyncClient,
+    client: AsyncTestClient,
     protector: AesGcmSecretProtector,
 ) -> None:
     secret = await protector.protect(

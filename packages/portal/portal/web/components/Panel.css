@@ -1,0 +1,34 @@
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 2px color(display-p3 0 0 0 / 0.025);
+  overflow: hidden;
+}
+
+.panel + .panel {
+  margin-top: 16px;
+}
+
+.panel__header {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 15px 17px;
+}
+
+.panel__header h2 {
+  font-size: var(--font-size-body);
+}
+
+.panel__header p {
+  color: var(--foreground-secondary);
+  font-size: var(--font-size-caption);
+  margin-top: 3px;
+}
+
+.panel__body {
+  padding: 17px;
+}

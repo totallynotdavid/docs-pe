@@ -1,7 +1,7 @@
 function setupAccountMenu() {
-  const account = document.querySelector("[data-cuenta]");
-  const button = document.querySelector("[data-cuenta-activador]");
-  const menu = document.querySelector("[data-cuenta-menu]");
+  const account = document.querySelector("[data-account]");
+  const button = document.querySelector("[data-account-trigger]");
+  const menu = document.querySelector("[data-account-menu]");
 
   if (!account || !button || !menu) {
     return;
@@ -109,14 +109,14 @@ function setupCsvDropzone() {
   for (const type of ["dragenter", "dragover"]) {
     dropzone.addEventListener(type, (event) => {
       event.preventDefault();
-      dropzone.classList.add("archivo-csv--arrastrando");
+      dropzone.classList.add("csv-file--dragging");
     });
   }
 
   for (const type of ["dragleave", "drop"]) {
     dropzone.addEventListener(type, (event) => {
       event.preventDefault();
-      dropzone.classList.remove("archivo-csv--arrastrando");
+      dropzone.classList.remove("csv-file--dragging");
     });
   }
 
@@ -131,5 +131,24 @@ function setupCsvDropzone() {
   });
 }
 
+function setupProgressStream() {
+  const target = document.querySelector("[data-sse-url]");
+
+  if (!target) {
+    return;
+  }
+
+  const source = new EventSource(target.dataset.sseUrl);
+
+  source.addEventListener("progress", (event) => {
+    target.innerHTML = event.data;
+  });
+
+  source.addEventListener("done", () => {
+    source.close();
+  });
+}
+
 setupAccountMenu();
 setupCsvDropzone();
+setupProgressStream();

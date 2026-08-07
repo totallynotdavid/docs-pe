@@ -1,172 +1,141 @@
-# Proxy behavior
+# Proxy configuration
 
-Configuration syntax and defaults are documented in
-[the fetch manual](../packages/fetch/readme.md#configure).
+`fetch` and `browser` use proxy providers to distribute lookups across
+geographic exits. `capture` doesn't use proxies; it uses your own Chrome. This
+doc covers provider mechanics and tuning: stable reference, not measurements.
+For why a given site needs a given provider, see [sites/](sites/); for
+throughput and cost numbers from real jobs, see [results.md](results.md).
 
-## Provider selection by site
+## Providers
 
-| Site         | Provider       | Reason                                      |
-| ------------ | -------------- | ------------------------------------------- |
-| `osiptel`    | `geonode` only | DataImpulse fails 20% to 32% of lookups     |
-| `sunat`      | both           | DataImpulse usually handles the faster half |
-| `sunat_reps` | both           | Same behavior as `sunat`                    |
+**GeoNode**: residential proxies, reliable across sites, supports per-lane port
+allocation.
 
-Provider suitability depends on the site, not the account. The same DataImpulse
-account that failed against OSIPTEL handled the larger share of a SUNAT run.
-OSIPTEL geo-gates requests; SUNAT does not.
+```env
+GEONODE_USERNAME=<username>
+GEONODE_PASSWORD=<password>
+GEONODE_GATEWAY=fr              # fr | fr_whitelist | us | sg
+GEONODE_PROXY_TYPE=residential  # residential | datacenter | mix
+GEONODE_COUNTRY=PE              # uppercase, required for OSIPTEL
+GEONODE_LIFETIME_MINUTES=10     # 3..1440
+```
 
-## OSIPTEL
+Gateway selection depends on your location and the target site. `fr_whitelist`
+is a curated subset. Lifetime is session expiration; shorter lifetime rotates
+exits more aggressively.
 
-Across 122,000 documents:
+**DataImpulse**: rotating datacenter proxies, cheaper per request, but 20-32%
+failure rate on OSIPTEL (see [sites/osiptel.md](sites/osiptel.md)).
 
-- GeoNode failed 0.03%.
-- DataImpulse failed 20% to 32%.
-- Every `ban_signal` came from DataImpulse.
+```env
+DATAIMPULSE_USERNAME=<username>
+DATAIMPULSE_PASSWORD=<password>
+DATAIMPULSE_COUNTRY=pe          # lowercase ISO-3166, required for OSIPTEL
+DATAIMPULSE_SESSION_MINUTES=3   # >= 1
+```
 
-Two failure modes dominated:
+Provider fields follow `<PROVIDER>_<FIELD>` and are defined by each provider's
+`Field` schema in `fetch/proxy/base.py`. The same schema validates environment
+variables, stored credentials, and the portal form. Adding a provider requires
+one module and one entry in `fetch/proxy/registry.py`.
 
-- `upstream_not_ready`: a `ConnectError` with `status=0`, caused by dead exits
-  in the DataImpulse pool. This is not a `407` and does not indicate exhausted
-  traffic.
-- `ban_signal`: OSIPTEL returned `status=500` when DataImpulse supplied a
-  non-Peru exit despite `DATAIMPULSE_COUNTRY=pe`.
+## Lane allocation
 
-DataImpulse held 40% of the lanes but produced only 5% of the rows. Including it
-adds little throughput and requires a recovery pass for failed documents.
+Lanes are configured globally in `PROXY_PROVIDER`:
 
-On 2026-08-02, a run completed 235,002 documents with 6,825 failures:
+```env
+PROXY_PROVIDER=geonode:30,dataimpulse:18
+```
 
-- 6,800 from DataImpulse
-- 25 from GeoNode
+This creates 30 GeoNode lanes and 18 DataImpulse lanes (48 total). Lanes are
+created per provider, so provider failover happens at the lane level: if all
+GeoNode lanes fail, DataImpulse lanes keep working.
 
-Rerunning those 6,825 documents with GeoNode only, against the same site and
-during the same hour, completed all of them with zero failures in about 23
-minutes.
+Omitting `:lanes` uses the provider default. Unknown names or duplicates fail at
+startup.
 
-Running OSIPTEL through DataImpulse adds cleanup work rather than useful
-capacity.
+`browser` uses a single session, so it takes only the first provider listed and
+ignores lane counts.
 
-### Attribute failures only after a large sample
+## Sticky sessions
 
-An earlier 20-failure sample split 9 DataImpulse to 11 GeoNode and suggested the
-opposite conclusion. That sample was too small to distinguish a provider fault
-from shared noise.
+A sticky session is one authenticated proxy connection that stays open across
+multiple requests. Rotating it means closing the connection and opening a new
+one, sometimes to a different exit IP.
 
-At four-digit scale, the failure ratio was approximately 1000 to 1.
+**GeoNode:**
 
-`proxy_id` identifies the provider:
+- One port per lane slot, starting at 10000, allocated globally across all sites
+- A random `sessionId` in the username string rotates the exit
+- Sessions are explicitly released via API
+- Example proxy ID: `proxy-1-port-10023`
+- Allocates 901 sticky-port slots total. With more than 900 concurrent lanes
+  across all sites, ports collide and sessions interfere. Reduce concurrency or
+  split runs across boxes.
 
-- GeoNode: `proxy-1-port-NNNNN`
-- DataImpulse: `dataimpulse-slot-N`
+**DataImpulse:**
+
+- One rotating port (`gw.dataimpulse.com:823`)
+- Stickiness is stored in the `sessid` field of the username
+- Sessions expire by TTL (configurable); no explicit release needed
+- Example proxy ID: `dataimpulse-slot-5`
+
+`proxy_id` tells you which provider produced a row without joining anything:
 
 ```sql
 select
-  case
-    when proxy_id like 'dataimpulse%' then 'dataimpulse'
-    else 'geonode'
-  end
+  case when proxy_id like 'dataimpulse%' then 'dataimpulse' else 'geonode' end,
+  status,
+  count(*)
+from outcomes
+group by 1, 2;
 ```
 
-## OSIPTEL requires Peru exits
+## Peru exits are mandatory for OSIPTEL
 
-Set both values explicitly in every `.env`:
+Set both explicitly in every `.env`:
 
 ```env
 GEONODE_COUNTRY=PE
 DATAIMPULSE_COUNTRY=pe
 ```
 
-A non-Peru exit receives a `status=500` block page during the home-page request,
-which the application classifies as `BanSignalError`.
+OSIPTEL's WAF blocks non-Peru exits. An empty `GEONODE_COUNTRY` is especially
+dangerous: GeoNode silently falls back to its global residential pool, and
+OSIPTEL blocks 85-95% of those exits. See [sites/osiptel.md](sites/osiptel.md)
+for the failure-mode breakdown and measured success rates.
 
-An empty country value is especially dangerous. GeoNode then uses its global
-residential pool, and OSIPTEL blocks approximately 85% to 95% of those exits.
-Only randomly selected Peru exits succeed.
+## Provider selection by site
 
-Identical code produced roughly 10% success with the global pool and 98.6% with
-Peru exits.
+| Site       | Provider     | Why                                      |
+| ---------- | ------------ | ---------------------------------------- |
+| OSIPTEL    | GeoNode only | DataImpulse fails 20-32% (geo-gated WAF) |
+| SUNAT      | Both         | Not geo-gated; use both to split load    |
+| SUNAT reps | Both         | Same behavior as SUNAT                   |
 
-Example Peru exits:
+Provider suitability is a property of the site, not the account: the same
+DataImpulse account that fails against OSIPTEL handles half a SUNAT run without
+issue. Details and measured failure rates: [sites/osiptel.md](sites/osiptel.md),
+[sites/sunat.md](sites/sunat.md).
 
-- `38.25.x`
-- `64.76.x`
-- `179.6.x`
-- `181.67.x`
-- `200.215.x`
-- `201.218.x`
+## Preflight check
 
-`fetch.proxy.registry.preflight` opens a real provider session and returns the
-exit IP. Use it to verify an `.env` before starting a run.
+Before starting a run, verify your proxy configuration is working:
 
-## Lane counts
+```python
+from fetch.proxy.registry import preflight
 
-Lanes are created per provider, so this configuration creates 50 lanes:
-
-```text
-geonode:30,dataimpulse:20
+result = preflight("geonode")
+print(f"Exit IP: {result}")
 ```
 
-| Site      | Proven setting                                 | Throughput                           |
-| --------- | ---------------------------------------------- | ------------------------------------ |
-| `osiptel` | `geonode:30` per box, two boxes                | 27,220 documents/hour, zero failures |
-| `sunat`   | `geonode:20,dataimpulse:20` per box, two boxes | 74 documents/s                       |
-| `sunat`   | `geonode:25` per box, two boxes                | 30.6 documents/s                     |
+This opens a real provider session and returns the exit IP. Use it to confirm
+the country setting is correct before running a large job.
 
-GeoNode showed no per-lane degradation between 15 and 60 lanes:
+## See also
 
-- 15 lanes: 9.5 seconds per lookup
-- 60 lanes: 7.9 seconds per lookup
-
-Its sticky-port allocation supports 901 slots, so available ports were not the
-limiting factor. Increase concurrency while monitoring `error_code` in the state
-database.
-
-DataImpulse also remained stable at 20 lanes even though all lanes used
-`gw.dataimpulse.com:823`. A 600-document OSIPTEL probe completed 600 of 600 with
-`attempt_count=0`.
-
-## Reading an active run
-
-A `407` across every lane usually means the provider account is out of traffic
-or suspended. DataImpulse reports exhausted traffic as `TRAFFIC_EXHAUSTED`.
-
-All boxes share the same GeoNode and DataImpulse accounts, so confirm the result
-from a second box before changing concurrency.
-
-### Circuit breakers can resemble provider outages
-
-A deterministic document failure can temporarily park a healthy provider.
-
-`pipeline/fetch.py` records every failure against the circuit breaker. Ten
-consecutive deterministic failures therefore trip the provider breaker.
-
-After a relaunch, known failures are retried first. This can create a burst
-large enough to park every lane for several minutes.
-
-During one relaunch, all 20 DataImpulse lanes on one box stopped for about five
-minutes while another box without accumulated failures continued at full speed.
-The provider recovered after the first successful document.
-
-When one provider's row count stops while another continues, check the circuit
-breaker and retry order before assuming the provider account is unavailable.
-
-### Do not diagnose from log volume
-
-Logs count attempts, not documents.
-
-A relaunch may immediately retry the same failed documents at attempts 2, 3, and
-4 across many lanes:
-
-```text
-30 documents × 4 attempts × 25 lanes
-```
-
-This produces a large volume of errors from only a small fraction of the input.
-
-Use the state database:
-
-```sql
-select status, count(*)
-from outcomes
-group by status;
-```
+- [architecture.md](architecture.md): lane/circuit-breaker mechanics in the
+  pipeline
+- [troubleshooting.md](troubleshooting.md): 407s, circuit breaker false alarms,
+  port exhaustion
+- [results.md](results.md): throughput and cost per lookup by configuration

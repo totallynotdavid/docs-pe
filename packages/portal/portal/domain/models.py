@@ -49,11 +49,10 @@ TERMINAL_JOB_STATES = frozenset(
 )
 PUBLISHED_ITEM_STATES = frozenset({ItemState.PUBLISHED})
 
-# Only terminal events appear in the notification feed.
 TERMINAL_JOB_EVENTS = (
-    "proceso.completed",
-    "proceso.failed",
-    "proceso.cancelled",
+    "job.completed",
+    "job.failed",
+    "job.cancelled",
 )
 
 MAX_ACTIVE_JOBS = 5
@@ -96,11 +95,7 @@ class CredentialVersion:
 
 @dataclass(frozen=True)
 class JobCredential:
-    """The proxy credential a job's items must be fetched through.
-
-    Stays encrypted until the boundary that hands work to a worker, so the
-    repository never holds plaintext proxy passwords.
-    """
+    """Encrypted proxy credential passed to workers."""
 
     provider: str
     config_ciphertext: bytes

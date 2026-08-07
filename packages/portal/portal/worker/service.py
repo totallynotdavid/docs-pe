@@ -20,12 +20,16 @@ from fetch.proxy.registry import provider_from_values
 from fetch.sites.registry import SITES
 
 
+DEFAULT_CONCURRENCY = 4
+
+
 @dataclass(frozen=True)
 class WorkerOptions:
     portal_url: str
     token: str
     worker_id: str
     sources: tuple[str, ...]
+    concurrency: int = DEFAULT_CONCURRENCY
 
 
 class OutboundWorker:
@@ -41,28 +45,33 @@ class OutboundWorker:
         async with httpx.AsyncClient(
             base_url=self.options.portal_url, headers=headers, timeout=90
         ) as client:
-            while True:
-                response = await client.post(
-                    "/api/worker/claim", json={"sources": self.options.sources}
-                )
-                response.raise_for_status()
-                lease = response.json()
-                if lease is None:
-                    await asyncio.sleep(2)
-                    continue
-                result = await self._execute(cast("dict[str, Any]", lease))
-                content = base64.b64encode(
-                    json.dumps(result, separators=(",", ":")).encode()
-                ).decode()
-                response = await client.post(
-                    "/api/worker/publish",
-                    json={
-                        "item_id": lease["item_id"],
-                        "fence": lease["fence"],
-                        "content": content,
-                    },
-                )
-                response.raise_for_status()
+            await asyncio.gather(
+                *(self._loop(client) for _ in range(self.options.concurrency))
+            )
+
+    async def _loop(self, client: httpx.AsyncClient) -> None:
+        while True:
+            response = await client.post(
+                "/api/worker/claim", json={"sources": self.options.sources}
+            )
+            response.raise_for_status()
+            lease = response.json()
+            if lease is None:
+                await asyncio.sleep(2)
+                continue
+            result = await self._execute(cast("dict[str, Any]", lease))
+            content = base64.b64encode(
+                json.dumps(result, separators=(",", ":")).encode()
+            ).decode()
+            response = await client.post(
+                "/api/worker/publish",
+                json={
+                    "item_id": lease["item_id"],
+                    "fence": lease["fence"],
+                    "content": content,
+                },
+            )
+            response.raise_for_status()
 
     async def _execute(self, lease: dict[str, Any]) -> dict[str, Any]:
         source = str(lease["source"])
@@ -116,16 +125,22 @@ def main() -> None:
         "--worker-id", default=os.environ.get("PORTAL_WORKER_ID", "poseidon-1")
     )
     parser.add_argument("--sources", default="sunat,osiptel,sunat_reps")
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=int(os.environ.get("PORTAL_WORKER_CONCURRENCY", DEFAULT_CONCURRENCY)),
+    )
     args = parser.parse_args()
     token = os.environ.get("PORTAL_WORKER_BOOTSTRAP_TOKEN", "")
     if not args.portal_url or not token:
         raise SystemExit(
-            "PORTAL_WORKER_URL y PORTAL_WORKER_BOOTSTRAP_TOKEN son obligatorios"
+            "PORTAL_WORKER_URL and PORTAL_WORKER_BOOTSTRAP_TOKEN are required"
         )
     options = WorkerOptions(
         args.portal_url.rstrip("/"),
         token,
         args.worker_id,
         tuple(value.strip() for value in args.sources.split(",") if value.strip()),
+        args.concurrency,
     )
     asyncio.run(OutboundWorker(options).run())

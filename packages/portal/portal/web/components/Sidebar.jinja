@@ -1,0 +1,50 @@
+{#def user, csrf_token="", setup=False #}
+<aside class="sidebar">
+  <a class="sidebar__brand" href="/">
+    <span class="sidebar__brand-mark" aria-hidden="true">W</span>
+    Worker
+  </a>
+  {% if not setup %}
+    <nav class="sidebar__nav" aria-label="Navegación principal">
+      <p class="sidebar__nav-label">Espacio de trabajo</p>
+      <a class="sidebar__nav-link" href="/">
+        <Icon name="teams" />
+        Equipos
+      </a>
+      <a class="sidebar__nav-link" href="/notifications">
+        <Icon name="activity" />
+        Actividad
+      </a>
+      {% if user.is_site_admin %}
+        <a class="sidebar__nav-link sidebar__nav-link--admin"
+           href="/admin/teams">
+          <Icon name="admin" />
+          Administración
+        </a>
+      {% endif %}
+    </nav>
+  {% endif %}
+  <div class="sidebar__account" data-account>
+    <button class="sidebar__account-trigger"
+            type="button"
+            aria-expanded="false"
+            aria-controls="account-menu"
+            data-account-trigger>
+      <span class="sidebar__avatar">{{ user.email[0] }}</span>
+      <span>Mi cuenta</span>
+      <Icon name="chevron-down" :size="14" />
+    </button>
+    <div class="sidebar__account-menu"
+         id="account-menu"
+         hidden
+         data-account-menu>
+      <span class="sidebar__account-email">{{ user.email }}</span>
+      <InlineAction action="/logout" :csrf_token="csrf_token">
+        <button type="submit">
+          <Icon name="logout" :size="14" />
+          Cerrar sesión
+        </button>
+      </InlineAction>
+    </div>
+  </div>
+</aside>

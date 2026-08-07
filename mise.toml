@@ -27,8 +27,8 @@ run = ["npm ci --no-audit --no-fund", "npm run vendor"]
 [tasks."portal:docker:build"]
 run = "docker build --file packages/portal/Dockerfile --tag osiptel-portal ."
 
-[tasks."portal:db:start"]
-description = "Start the local portal database"
+[tasks."db:init"]
+description = "Create the local postgres cluster if missing"
 run = """
 data_dir="$PWD/.data/postgres"
 
@@ -37,45 +37,62 @@ if [ ! -f "$data_dir/PG_VERSION" ]; then
   mise x postgres -- initdb -D "$data_dir" -U postgres \\
     --auth-host=trust --auth-local=trust --no-instructions
 fi
-
-if ! mise x postgres -- pg_isready -h 127.0.0.1 -p 5432 -U postgres -q; then
-  mise x postgres -- pg_ctl -D "$data_dir" -l "$data_dir/server.log" \\
-    -o "-h 127.0.0.1 -p 5432" -w start
-fi
-
-# This cluster is disposable, so disable durability for faster tests.
-# Reload on every start because the cluster may already be running.
-mise x postgres -- psql -q -h 127.0.0.1 -p 5432 -U postgres -d postgres \\
-  -c "ALTER SYSTEM SET fsync = 'off'" \\
-  -c "ALTER SYSTEM SET synchronous_commit = 'off'" \\
-  -c "ALTER SYSTEM SET full_page_writes = 'off'" \\
-  -c "SELECT pg_reload_conf()" > /dev/null
 """
 
-[tasks."portal:migrate"]
-depends = ["portal:db:start"]
-run = "uv run --env-file .env portal-migrate"
+[tasks.dev]
+description = "Run postgres, bootstrap, and the app"
+depends = ["db:init"]
+run = """
+data_dir="$PWD/.data/postgres"
+
+# The local cluster is disposable, so durability is disabled for faster writes.
+mise x postgres -- postgres -D "$data_dir" -h 127.0.0.1 -p 5432 \\
+  -c fsync=off -c synchronous_commit=off -c full_page_writes=off &
+pg_pid=$!
+
+trap 'mise x postgres -- pg_ctl -D "$data_dir" stop -m fast -w 2>/dev/null || kill "$pg_pid" 2>/dev/null' EXIT
+
+until mise x postgres -- pg_isready -h 127.0.0.1 -p 5432 -U postgres -q; do
+  sleep 0.1
+done
+
+uv run --env-file .env portal-bootstrap
+uv run --env-file .env osiptel-portal
+"""
+
+[tasks.reset]
+description = "Delete the local postgres cluster"
+run = """
+mise x postgres -- pg_ctl -D "$PWD/.data/postgres" stop -m fast -w 2>/dev/null || true
+rm -rf "$PWD/.data/postgres"
+"""
+
+[tasks."db:start"]
+description = "Start the local postgres cluster"
+depends = ["db:init"]
+run = """
+if ! mise x postgres -- pg_isready -h 127.0.0.1 -p 5432 -U postgres -q; then
+  mise x postgres -- pg_ctl -D "$PWD/.data/postgres" \\
+    -l "$PWD/.data/postgres/server.log" \\
+    -o "-h 127.0.0.1 -p 5432 -c fsync=off -c synchronous_commit=off -c full_page_writes=off" \\
+    -w start
+fi
+"""
 
 [tasks."portal:schema"]
-description = "Snapshot the current portal schema to packages/portal/schema.sql"
-depends = ["portal:migrate"]
+description = "Snapshot the portal schema"
+depends = ["db:start"]
 run = """
+uv run --env-file .env portal-migrate
+
 mise x postgres -- pg_dump -h 127.0.0.1 -p 5432 -U postgres -d postgres \\
   --schema-only --no-owner --no-privileges \\
   --exclude-table=portal_schema_migrations \\
   | grep -v -e '^\\\\restrict ' -e '^\\\\unrestrict ' \\
-            -e '^-- Dumped from database version' -e '^-- Dumped by pg_dump version' \\
+            -e '^-- Dumped from database version' \\
+            -e '^-- Dumped by pg_dump version' \\
   > packages/portal/schema.sql
 """
-
-[tasks."portal:bootstrap"]
-description = "Provision the local portal administrator and first team"
-depends = ["portal:migrate"]
-run = "uv run --env-file .env portal-bootstrap"
-
-[tasks."portal:dev"]
-depends = ["portal:bootstrap"]
-run = "uv run --env-file .env osiptel-portal"
 
 [tasks.check]
 run = [
@@ -84,7 +101,7 @@ run = [
 ]
 
 [tasks.test]
-depends = ["portal:db:start"]
+depends = ["db:start"]
 run = "uv run pytest"
 
 [tasks.build]

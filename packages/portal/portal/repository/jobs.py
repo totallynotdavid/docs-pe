@@ -180,7 +180,7 @@ class PostgresJobRepository:
                     $8,
                     CASE
                         WHEN $8 = 'completed'
-                        THEN 'todos_los_registros_excluidos'
+                        THEN 'all_records_excluded'
                     END
                 )
                 RETURNING queue_sequence
@@ -258,7 +258,7 @@ class PostgresJobRepository:
                 await self._event(
                     connection,
                     job_id,
-                    f"proceso.{state.value}",
+                    f"job.{state.value}",
                     command.actor_id,
                 )
 
@@ -316,7 +316,7 @@ class PostgresJobRepository:
                 await self._event(
                     connection,
                     job_id,
-                    "proceso.cancelacion_solicitada",
+                    "job.cancellation_requested",
                     None,
                 )
 
@@ -723,7 +723,7 @@ class PostgresJobRepository:
             await self._event(
                 connection,
                 row["id"],
-                "proceso.running",
+                "job.running",
                 None,
             )
 
@@ -765,7 +765,7 @@ class PostgresJobRepository:
                               AND state = 'published'
                        )
                        THEN job.terminal_reason
-                       ELSE 'sin_resultados'
+                       ELSE 'no_results'
                    END,
                    finished_at = now()
              WHERE job.id = $1
@@ -827,7 +827,7 @@ class PostgresJobRepository:
         event_id = await self._event(
             connection,
             job_id,
-            f"proceso.{state.value}",
+            f"job.{state.value}",
             None,
         )
 

@@ -1,0 +1,134 @@
+.query-flow {
+  max-width: 680px;
+}
+
+.query-flow__header {
+  margin-bottom: 30px;
+}
+
+.query-flow__header h1 {
+  font-size: 24px;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.query-flow__header p {
+  color: var(--foreground-secondary);
+  margin-top: 7px;
+}
+
+/* Doubled up so this beats `.form` regardless of which stylesheet the
+   asset collector happens to emit first. */
+.form.query-form {
+  gap: 0;
+  max-width: none;
+}
+
+.query-step {
+  padding: 0 0 30px;
+}
+
+.query-step + .query-step {
+  border-top: 1px solid var(--border);
+  padding-top: 30px;
+}
+
+.query-step__header {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.query-step__number {
+  align-items: center;
+  background: var(--tertiary);
+  border-radius: 50%;
+  color: var(--foreground-secondary);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  height: 20px;
+  justify-content: center;
+  margin-top: 1px;
+  width: 20px;
+}
+
+.query-step__header h2 {
+  font-size: var(--font-size-body);
+  line-height: 20px;
+}
+
+.query-step__header p {
+  color: var(--foreground-secondary);
+  font-size: var(--font-size-caption);
+  margin-top: 3px;
+}
+
+.query-form .csv-file {
+  background: var(--surface);
+  border-width: 1px;
+  min-height: 132px;
+}
+
+.query-form .csv-file:hover,
+.query-form .csv-file--dragging {
+  background: var(--background-transparent-lighter);
+  border-color: var(--foreground-secondary);
+}
+
+.query-form .source-list {
+  margin-bottom: 0;
+}
+
+.query-form .source-option:hover {
+  background: var(--background-transparent-lighter);
+  border-color: var(--border-strong);
+}
+
+.query-form .source-option:has(input:checked) {
+  background: var(--background);
+  border-color: var(--foreground);
+}
+
+.query-form .source-option__preview {
+  display: none;
+  margin-top: 8px;
+}
+
+.query-form .source-option:has(input:checked) .source-option__preview {
+  display: grid;
+}
+
+.query-action {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding-top: 20px;
+}
+
+.query-action__connection {
+  color: var(--foreground-secondary);
+  font-size: var(--font-size-caption);
+}
+
+.query-action__connection strong {
+  color: var(--foreground);
+  font-weight: var(--font-weight-medium);
+}
+
+.query-action__select {
+  align-items: center !important;
+  display: flex !important;
+  font-size: var(--font-size-caption) !important;
+  gap: 8px !important;
+}
+
+.query-action__select select {
+  min-height: 31px;
+  width: auto;
+}

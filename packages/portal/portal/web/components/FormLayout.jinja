@@ -1,0 +1,6 @@
+{#def action, csrf_token, css_class="" #}
+<Submission :action="action"
+            :csrf_token="csrf_token"
+            :class="('form ' ~ css_class)|trim"
+            {{ attrs.render() }}>{{ content }}
+</Submission>

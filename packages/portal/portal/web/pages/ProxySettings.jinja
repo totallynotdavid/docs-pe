@@ -2,34 +2,34 @@
 <Layout :title="'Conexión proxy · ' ~ team.name ~ ' · Worker'"
         :user="user"
         :csrf_token="csrf_token">
-  <UiTopBar title="Conexión proxy" />
-  <UiContent>
-    <h1 class="solo-lector">Conexión proxy de {{ team.name }}</h1>
-    <UiPanel>
-      <UiPanelHeader :title="'Conexión activa' if readiness.has_active_credential else 'Configurar conexión'"
-                     :description="'Hay una conexión validada y lista para usar.' if readiness.has_active_credential else 'Añade los datos de tu proveedor para continuar.'" />
-      <UiPanelBody>
-        <UiActions position="encima">
+  <TopBar title="Conexión proxy" />
+  <MainContent>
+    <h1 class="sr-only">Conexión proxy de {{ team.name }}</h1>
+    <Panel>
+      <PanelHeader :title="'Conexión activa' if readiness.has_active_credential else 'Configurar conexión'"
+                   :description="'Hay una conexión validada y lista para usar.' if readiness.has_active_credential else 'Añade los datos de tu proveedor para continuar.'" />
+      <PanelBody>
+        <Actions position="above">
           {% for name in providers %}
-            <UiButton :variant="'' if provider == name else 'secundario'"
-                      :href="'/equipos/' ~ team.id ~ '/ajustes/proxy?proveedor=' ~ name">
+            <ActionButton :variant="'' if provider == name else 'secondary'"
+                          :href="'/teams/' ~ team.id ~ '/settings/proxy?provider=' ~ name">
               {{ provider_label(name) }}
-            </UiButton>
+            </ActionButton>
           {% endfor %}
-        </UiActions>
-        {% if error %}<UiMessage>{{ error }}</UiMessage>{% endif %}
-        <UiForm :action="'/equipos/' ~ team.id ~ '/ajustes/proxy'"
-                :csrf_token="csrf_token"
-                autocomplete="off">
+        </Actions>
+        {% if error %}<Message>{{ error }}</Message>{% endif %}
+        <FormLayout :action="'/teams/' ~ team.id ~ '/settings/proxy'"
+                    :csrf_token="csrf_token"
+                    autocomplete="off">
           <input type="hidden" name="provider" value="{{ provider }}">
-          <UiField label="Nombre de referencia">
+          <Field label="Nombre de referencia">
             <input name="label"
                    maxlength="120"
                    placeholder="Ej. Producción Lima"
                    required>
-          </UiField>
+          </Field>
           {% for field in fields %}
-            <UiField :label="field_label(field.name)">
+            <Field :label="field_label(field.name)">
               {% if field.choices %}
                 <select name="{{ field.name }}" {% if field.required %}required{% endif %}>
                   {% for value in field.choices %}
@@ -43,29 +43,29 @@
                        value="{% if not field.secret %}{{ field.default }}{% endif %}"
                        {% if field.required %}required{% endif %}>
               {% endif %}
-            </UiField>
+            </Field>
           {% endfor %}
           <button type="submit">Validar y guardar</button>
-        </UiForm>
-      </UiPanelBody>
-    </UiPanel>
-    <UiPanel>
-      <UiPanelHeader title="Historial de conexiones"
-                     description="Versiones guardadas para este equipo." />
-      <UiList>
+        </FormLayout>
+      </PanelBody>
+    </Panel>
+    <Panel>
+      <PanelHeader title="Historial de conexiones"
+                   description="Versiones guardadas para este equipo." />
+      <List>
         {% for credential in credentials %}
-          <UiListItem>
+          <ListItem>
             <span>{{ credential.label }} · versión {{ credential.version }}</span>
-            <UiMeta>
+            <MetaText>
               {{ credential.state.value|credential_state }}
-            </UiMeta>
-          </UiListItem>
+            </MetaText>
+          </ListItem>
         {% else %}
-          <UiListItem class="estado-vacio">
+          <ListItem class="empty-state">
             Aún no hay conexiones guardadas.
-          </UiListItem>
+          </ListItem>
         {% endfor %}
-      </UiList>
-    </UiPanel>
-  </UiContent>
+      </List>
+    </Panel>
+  </MainContent>
 </Layout>

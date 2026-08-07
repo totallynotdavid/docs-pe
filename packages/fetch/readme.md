@@ -1,232 +1,110 @@
-# fetch
+# Fetch
 
-Bulk lookup of public data for Peruvian identity documents. Reads documents from
-CSV, distributes lookups across concurrent sticky proxy sessions, and writes one
-result CSV per site backed by a resumable state database.
+Bulk lookup of public data for Peruvian identity documents over HTTP. Reads a
+CSV, distributes lookups across concurrent proxy sessions, and writes result
+CSVs backed by a resumable state database.
 
 ```sh
-uv run --env-file .env fetch --input docs.csv --output out.csv --sites sunat,osiptel
+uv run --env-file .env fetch --input docs.csv --output out.csv --sites osiptel
 ```
 
-Sites that work over plain HTTP belong here. Sites that still require a browser
-live in [`browser`](../browser/readme.md).
+## When to use this
 
-## Sites
+Sites that answer over plain HTTP. Sites requiring JavaScript, reCAPTCHA, or a
+real Chrome profile stay in [browser](../browser/readme.md). Once a site works
+reliably over HTTP, fetch is the workhorse: faster, simpler, and less
+infrastructure than browser automation. See
+[docs/adding-a-site.md](../../docs/adding-a-site.md) for how a site gets here.
 
-| Site         | Accepts                 | Returns                                                                                                   |
-| ------------ | ----------------------- | --------------------------------------------------------------------------------------------------------- |
-| `osiptel`    | any document            | one row per registered phone line: `modalidad`, redacted `numero`, `operador`                             |
-| `sunat`      | RUC-10 (natural person) | `tipo_doc`, `num_doc`, `nombre`, `tipo_contribuyente`                                                     |
-| `sunat_reps` | RUC-20 (entity)         | one row per legal representative: `razon_social`, `doc_type`, `num_doc`, `nombre`, `cargo`, `fecha_desde` |
+## Supported sites
 
-Sites compose in one run. The unit of work is a `(doc, site)` pair, so each
-lookup is independently resumable.
+| Site         | Accepts                  | Returns                                                          |
+| ------------ | ------------------------ | ---------------------------------------------------------------- |
+| `osiptel`    | any document             | phone lines: `modalidad`, redacted `numero`, `operador`          |
+| `sunat`      | RUC-10 (natural persons) | identity: `tipo_doc`, `num_doc`, `nombre`, `tipo_contribuyente`  |
+| `sunat_reps` | RUC-20 (entities)        | legal reps: one row per person, `nombre`, `cargo`, `fecha_desde` |
 
-Each site declares which document kinds it accepts. Documents accepted by none
-of the selected sites appear in no output and are counted as ignored.
+The unit of work is a `(doc, site)` pair, independently resumable. Select
+multiple sites in one run; they're queued independently. Wire protocol, failure
+modes, and reconciliation rules for each site:
+[docs/sites/osiptel.md](../../docs/sites/osiptel.md),
+[docs/sites/sunat.md](../../docs/sites/sunat.md).
 
-### osiptel
+## Command-line interface
 
-`checatuslineas.osiptel.gob.pe`. A paginated POST using DataTables-style
-parameters, with `IdTipoDoc` set to 1 for DNI and 2 for RUC. Each page returns
-at most 5,000 rows.
+```sh
+uv run --env-file .env fetch [options]
+```
 
-The WAF returns `status=500` and a block page for foreign exits. Suspicious
-exits may receive HTTP 200 with a CAPTCHA wall, so readiness checks the response
-body for a success marker instead of trusting the status code.
+| Flag               | Default          | Notes                                                                   |
+| ------------------ | ---------------- | ----------------------------------------------------------------------- |
+| `--input`          | required         | Single-column CSV: 7-8 digit DNI or 11-digit RUC per row                |
+| `--output`         | required         | Base filename; outputs written as `out.<site>.csv`, `out.state.sqlite3` |
+| `--sites`          | required         | Comma-separated: `osiptel`, `sunat`, `sunat_reps`                       |
+| `--dedupe`         | on               | Drop duplicate documents in input                                       |
+| `--session-budget` | site default     | Lookups per sticky session (OSIPTEL=1, SUNAT=50)                        |
+| `--ban-cooldown-s` | provider default | Delay after provider ban                                                |
+| `--wait-min-s`     | 0                | Minimum delay after successful lookup                                   |
+| `--wait-max-s`     | 0                | Maximum delay; sampled uniformly                                        |
+| `--import`         | off              | Rebuild state from previous exports before planning                     |
+| `--debug`          | off              | Log at DEBUG level for fetch (httpx stays at WARNING)                   |
 
-[Peru exits are mandatory](../../docs/proxies.md#osiptel-requires-peru-exits).
+Lane count is set in `PROXY_PROVIDER`, not a flag (see
+[docs/proxies.md](../../docs/proxies.md)). OSIPTEL requires `--session-budget=1`
+because each lookup needs a fresh session warmup.
 
-A document with no phone lines is a valid empty result. Roughly 4% to 30% of a
-DNI job may be empty depending on province; see
-[the results ledger](../../docs/results.md).
+## Configuration
 
-### sunat
+Set proxy credentials in `.env`; every site uses at least one provider.
 
-`e-consultaruc.sunat.gob.pe`. A single POST to `jcrS00Alias` with
-`accion=consPorRuc`, the RUC, and a random 52-character token. SUNAT's reCAPTCHA
-wrapper is client-side only: the server checks that a token is present and
-plausibly shaped, not that it is genuine.
-
-Two response shapes require special handling:
-
-- A **sucesión indivisa** has no "Tipo de Documento" block. These rows use an
-  empty `tipo_doc` and `num_doc`, and take `nombre` from the RUC row. They are
-  about 0.1% of a RUC-10 job and do not produce a DNI for OSIPTEL follow-up. A
-  missing document block for any other contributor type is treated as parser
-  drift.
-- An unknown RUC returns a normal result page containing "El número de RUC N
-  consultado no es válido". This is terminal `not_found`; retrying cannot change
-  the result.
-
-`tipo_doc` is not always `DNI`. One 235,233-row job contained 235,003 DNI, 10
-CE, and 1 C. FFPP. Build OSIPTEL follow-ups with `tipo_doc == "DNI"`, not by
-checking `num_doc` length.
-
-### sunat_reps
-
-Returns the legal representatives of a RUC-20 entity. A separate JSON identity
-request determines whether the representatives request should run.
-
-Some entities, including associations and educational centres, have no listed
-representatives. This is a valid empty result.
-
-## Configure
-
-Copy `.env.example` to `.env`. Every site uses a proxy, so startup fails when no
-provider is configured.
-
-```ini
+```env
 PROXY_PROVIDER=geonode:30,dataimpulse:18
-
-GEONODE_USERNAME=<value>
-GEONODE_PASSWORD=<value>
-GEONODE_GATEWAY=fr              # fr | fr_whitelist | us | sg
-GEONODE_PROXY_TYPE=residential  # residential | datacenter | mix
-GEONODE_COUNTRY=PE              # uppercase, must be PE for OSIPTEL
-GEONODE_LIFETIME_MINUTES=10     # 3..1440
-
-DATAIMPULSE_USERNAME=<value>
-DATAIMPULSE_PASSWORD=<value>
-DATAIMPULSE_COUNTRY=pe          # lowercase ISO-3166
-DATAIMPULSE_SESSION_MINUTES=3   # >= 1
 ```
 
-`PROXY_PROVIDER` is an ordered, comma-separated list of `name[:lanes]`. Unknown
-names and duplicates fail at startup. Lanes are created per provider, so the
-example above creates 48 lanes. Omitting `:lanes` uses the provider default.
+`PROXY_PROVIDER` is comma-separated `name[:lanes]`. Unknown names or duplicates
+fail at startup; omitting `:lanes` uses the provider default. Provider
+credentials (`GEONODE_*`, `DATAIMPULSE_*`), lane tuning, and per-site provider
+selection: [docs/proxies.md](../../docs/proxies.md).
 
-Provider fields follow `<PROVIDER>_<FIELD>` and are defined by each provider's
-`Field` schema in `fetch/proxy/base.py`. The same schema validates environment
-variables, stored credentials, and the portal form. Adding a provider requires
-one module and one entry in `fetch/proxy/registry.py`.
+## Input
 
-Provider suitability differs by site. See [proxies.md](../../docs/proxies.md).
+A single-column CSV containing 7-8 digit DNIs (7-digit values are padded to 8),
+11-digit RUCs, or a mix of both. Kind is detected per row. Empty or malformed
+rows are dropped and counted as ignored. Documents are strings, not integers;
+roughly 30% of DNIs begin with zero.
 
-## Run
+## Outputs and state
 
-`--input` is a single-column CSV containing:
-
-- 7- or 8-digit DNIs; 7-digit values are padded to 8 digits
-- 11-digit RUCs; RUC-10 for persons and RUC-20 for entities
-
-Kinds may be mixed and are detected per row. Empty or invalid rows are dropped
-and counted under `ignored`.
-
-Documents are strings, never integers. Roughly 30% of DNIs begin with zero.
-
-`--sites` is required. Other options use site or provider defaults:
-
-| flag               | default          | notes                                                        |
-| ------------------ | ---------------- | ------------------------------------------------------------ |
-| `--sites`          | required         | comma-separated: `sunat`, `sunat_reps`, `osiptel`            |
-| `--dedupe`         | on               | collapse duplicate documents in the input                    |
-| `--session-budget` | site default     | lookups per sticky session; OSIPTEL 1, SUNAT 50              |
-| `--ban-cooldown-s` | provider default | cooldown after a ban                                         |
-| `--wait-min-s`     | 0                | minimum optional delay after a successful lookup             |
-| `--wait-max-s`     | 0                | maximum delay; sampled uniformly from `[min, max]`           |
-| `--import`         | off              | rebuild state from previous per-site exports before planning |
-| `--debug`          | off              | `fetch.*` at DEBUG; `httpx` and `httpcore` remain at WARNING |
-
-Lane count is configured in `PROXY_PROVIDER`, not through a CLI flag.
-
-OSIPTEL requires `--session-budget=1` because each lookup needs a fresh
-home-page warmup.
-
-## Outputs
-
-Files are written next to `--output`, once per selected site. Exports are atomic
-and run from a `finally` block, including after `Ctrl-C` or `SIGTERM`.
+Files are written atomically once when the run ends (success, error, or Ctrl-C).
 
 | File                          | Contents                                                                               |
 | ----------------------------- | -------------------------------------------------------------------------------------- |
-| `out.<site>.csv`              | successful rows; first column is `doc`, followed by site columns                       |
-| `out.<site>.<projection>.csv` | derived views over the same stored rows                                                |
-| `out.<site>.errors.csv`       | terminal failures: `doc,error_code,error_detail,attempt,session_id,proxy_id,timestamp` |
-| `out.<site>.not_found.csv`    | documents for which the site confirmed no result                                       |
-| `out.state.sqlite3`           | resume database and source of truth                                                    |
+| `out.<site>.csv`              | Successful rows                                                                        |
+| `out.<site>.<projection>.csv` | Derived views (computed from stored rows, never trigger new requests)                  |
+| `out.<site>.errors.csv`       | Terminal failures: `doc,error_code,error_detail,attempt,session_id,proxy_id,timestamp` |
+| `out.<site>.not_found.csv`    | Documents the site confirmed don't exist                                               |
+| `out.state.sqlite3`           | State database; the source of truth                                                    |
 
-OSIPTEL also exports `out.osiptel.counts.csv` with
-`doc,carrier,lines,total_lines`. Projections are computed from stored rows and
-never trigger another request. They must agree with the main CSV.
+OSIPTEL also exports `out.osiptel.counts.csv` with per-carrier line counts.
 
-Output CSVs are created when the run ends. During a run, read progress from the
-state database:
+Exports use CRLF line endings: remove `\r` before diffing or comparing
+(`tr -d '\r'`).
 
-```sh
-uv run python -c "
-import sqlite3
-from pathlib import Path
-from fetch.store.outcomes import state_path_for_output
-c = sqlite3.connect(str(state_path_for_output(Path('out.csv'))))
-print(c.execute('select status, count(*) from outcomes group by status').fetchall())"
-```
+**During a run**, read progress from the state database, not the CSV (which
+doesn't exist yet): see
+[docs/troubleshooting.md](../../docs/troubleshooting.md#check-the-state-database-not-logs).
 
-Exports use CRLF. The trailing `\r` remains attached to the last field, so
-remove it before comparing, joining, or diffing:
+## Resume behavior
 
-```sh
-tr -d '\r'
-```
+Re-running with the same `--output` skips every `(doc, site)` pair that
+succeeded or reached the retry cap. To rebuild state from previous exports
+without a state database, use `--import` once. To start fresh, delete the state
+database (`rm results.state.sqlite3`).
 
-Because OSIPTEL allows empty results, the reconciliation rule is:
+Full retry/resume semantics, circuit breaker behavior, and lane/sticky-session
+mechanics: [docs/architecture.md](../../docs/architecture.md).
 
-```text
-documents with >= 1 line + documents with 0 lines + terminal failures = input rows
-```
+## Troubleshooting
 
-Completed examples are recorded in [results.md](../../docs/results.md).
-
-## Resuming
-
-Re-running with the same `--output` skips every `(doc, site)` pair that already
-succeeded or reached the retry cap. Delete the state database to start over, or
-use `--import` once to rebuild it from prior exports.
-
-A pair receives `MAX_ATTEMPTS` healthy-contact attempts. It retires only after
-success or after reaching that cap. Attempts made while a provider circuit
-breaker is open do not count, so an outage cannot retire valid work.
-
-`fetch/domain/policy.py` owns retry classification and fault-to-action mapping.
-
-## How it works
-
-The planner builds pending `(doc, site)` pairs and starts one worker pool per
-site inside an async `TaskGroup`. Each provider contributes its configured lanes
-to each site queue.
-
-A lane:
-
-1. opens a sticky proxy session
-2. runs the site's readiness warmup
-3. performs lookups
-4. rotates after a ban or when `session_budget` is exhausted
-
-A site defines:
-
-- its name and output columns
-- an `accepts(doc)` predicate
-- tuning and optional projections
-- `ready(client, site)` for session warmup
-- `lookup(client, doc)` for the actual request
-
-The pipeline, store, and proxy layers are site-agnostic. Adding a site requires
-one `sites/<name>/` module and one entry in `sites/registry.py`.
-
-A proxy provider defines a name, `Field` schema, tuning, `normalize`, and
-`build`.
-
-Sticky sessions differ by provider:
-
-- GeoNode assigns one port per lane slot, starting at `10000`. Ports are
-  allocated across all sites. A random `sessionId` in the username rotates the
-  exit, and sessions are explicitly released.
-- DataImpulse uses one rotating port and stores stickiness in the username's
-  `sessid`. Sessions expire by TTL and have no release call.
-
-Each `(site, provider)` pair has its own circuit breaker, so one failing
-provider does not stop healthy providers for that site.
-
-Each lane records its exit IP once per session. `proxy_id` identifies the
-provider session and `session_id` identifies the individual open. Both are
-stored with failures for attribution.
+[docs/troubleshooting.md](../../docs/troubleshooting.md): circuit breaker false
+alarms, 407s, port exhaustion, reading an active run.

@@ -32,7 +32,7 @@ class PortalSettings:
     database_dsn: str
     worker_bootstrap_token: str
     environment: str = "development"
-    public_origin: str = "http://testserver"
+    public_origin: str = "http://testserver.local"
     cookie_secure: bool = False
     tls_terminated_upstream: bool = False
     object_root: Path = Path(".data/objects")

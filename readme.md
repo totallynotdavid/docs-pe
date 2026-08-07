@@ -1,62 +1,89 @@
-# docs-pe
+# Getting started
 
-Takes a CSV of Peruvian DNIs or RUCs and looks each one up on the public sites
-that answer for it. Returns registered phone lines, taxpayer identity records,
-legal representatives, and carrier debt.
+## What is docs-pe?
 
-## Get started
+Takes a CSV of Peruvian DNIs or RUCs and looks each one up on public government
+sites. Returns registered phone lines, taxpayer identity records, legal
+representatives, and carrier debt.
+
+## Quick start
 
 ```sh
-mise install                                  # toolchain: uv, python, ruff, postgres
-mise run install                              # uv sync --all-packages --all-groups
-cp .env.example .env                          # then fill in the proxy credentials
+mise install                              # install toolchain
+mise run install                          # uv sync
+cp .env.example .env                      # then fill in proxy credentials
 uv run --env-file .env fetch --input docs.csv --output out.csv --sites osiptel
 ```
 
-`fetch` and proxied `browser` runs need proxy credentials; `capture` does not.
-`.env.example` is the single environment contract; nothing loads it
-automatically, so pass `--env-file` as shown above or use a `mise` task that
-already does. The [fetch manual](packages/fetch/readme.md) is the place to start
-reading.
+The `fetch`, `browser`, and `portal` packages need proxy credentials in `.env`.
+`capture` does not. See [proxy configuration](docs/proxies.md) for vendor setup.
 
-Other tasks, all from the repo root:
+## Choose what to read
+
+**I'm running a job for the first time**
+
+- Read [fetch](packages/fetch/readme.md) (the standard tool)
+
+**I'm debugging a job failure**
+
+- Read [troubleshooting](docs/troubleshooting.md)
+- Then [docs/sites/](docs/sites/) for the specific site if the runbook doesn't
+  cover it
+
+**I'm adding a new site**
+
+- Read [docs/adding-a-site.md](docs/adding-a-site.md) for the full workflow
+  (capture → browser → fetch)
+
+**I'm running the portal (web UI)**
+
+- Read [portal](packages/portal/readme.md)
+
+**I'm reviewing code or contributing**
+
+- Start with [docs/architecture.md](docs/architecture.md) to understand the
+  system
+- Then the package you're reviewing
+- Then [CLAUDE.md](CLAUDE.md) for repo conventions
+
+**I want to understand the whole system**
+
+- Read [docs/architecture.md](docs/architecture.md) first
+- Then choose a package based on what interests you
+
+## Other commands
 
 ```sh
 mise run format       # ruff format + ruff check --fix
-mise run check        # mypy across the workspace
-mise run test         # pytest across all packages, portal included
-mise run build        # PyInstaller single binary for fetch
-mise run portal:dev   # start PostgreSQL, migrate, bootstrap, run the portal
+mise run check        # mypy across workspace
+mise run test         # pytest all packages
+mise run build        # PyInstaller binary for fetch
+mise run dev          # postgres + portal web (Ctrl+C stops everything)
+mise run reset        # wipe local postgres; next `mise run dev` starts clean
 ```
 
-## Packages
+## Structure
 
-A [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/). Each
-package serves one access mechanism.
+This is a
+[uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/) with
+four packages:
 
-| Package                                 | Reads sites that             |                                                   |
-| --------------------------------------- | ---------------------------- | ------------------------------------------------- |
-| [`fetch`](packages/fetch/readme.md)     | answer a plain HTTP request  | the workhorse, and the one you almost always want |
-| [`browser`](packages/browser/readme.md) | need a real Chrome           | driven over CDP on a headless display             |
-| [`capture`](packages/capture/readme.md) | need a browser a person owns | the discovery tool, standard library only         |
-| [`portal`](packages/portal/readme.md)   | are stable enough to sell    | authenticated, team-scoped, PostgreSQL-only       |
+| Package                               | Purpose                                                               |
+| ------------------------------------- | --------------------------------------------------------------------- |
+| [fetch](packages/fetch/readme.md)     | HTTP requests through proxies (the workhorse)                         |
+| [browser](packages/browser/readme.md) | Chrome over DevTools protocol (for sites needing JS, reCAPTCHA, etc.) |
+| [capture](packages/capture/readme.md) | Reverse-engineer a site using your own Chrome browser                 |
+| [portal](packages/portal/readme.md)   | Web UI for managing fetch jobs, auth, teams, results                  |
 
-A new site usually starts in `capture`, which discovers its wire protocol from
-your own Chrome, moves to `browser` once it can be driven, and lands in `fetch`
-when it survives unattended runs. `Site.stable` is the last step: the portal
-offers exactly the sites whose flag is set.
+A new site typically starts in `capture` (discover the request), moves to
+`browser` (automate it), then lands in `fetch` (run it unattended).
 
-Each package keeps its own copy of a site's parser, columns, and document type.
-Do not add cross-package imports.
+Each package maintains its own copy of a site's parser and columns. Do not add
+cross-package imports; see [docs/architecture.md](docs/architecture.md) for why.
 
-## Notes
+## Job output
 
-Written while working out how the sites behave.
-
-- [docs/results.md](docs/results.md), every reconciled job and what a healthy
-  one looks like.
-- [docs/proxies.md](docs/proxies.md), how the proxy vendors behave per site.
-- [docs/entel.md](docs/entel.md), the Entel wire protocol and everything ruled
-  out.
-
-Job output lands in `results/`, which is gitignored.
+Results land in `results/` (which is gitignored). Imports are in `.env` and
+config. State is stored in SQLite (`*.state.sqlite3`), which is the source of
+truth. Read [docs/architecture.md](docs/architecture.md) for details on the job
+lifecycle, resume behavior, and how state works.

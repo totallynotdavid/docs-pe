@@ -1,25 +1,21 @@
 {#def title, user=None, csrf_token="", setup=False #}
-{#css Layout.css, UiButton.css, UiList.css, UiMetrics.css #}
-{# HTMX fragments may introduce these components after the initial render,
-so their shared styles must be loaded by the document. #}
 <!DOCTYPE html>
 <html lang="es">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ title }}</title>
-    <link rel="stylesheet" href="/estatico/tokens.css">
-    {{ catalog.render_assets() }}
+    <link rel="stylesheet" href="/static/tokens.css">
+    <link rel="stylesheet" href="{{ component_stylesheet_url }}">
     <meta name="htmx-config" content='{"includeIndicatorStyles": false}'>
-    <script defer src="/estatico/htmx.min.js"></script>
-    <script defer src="/estatico/htmx-ext-sse.min.js"></script>
-    <script defer src="/estatico/portal.js"></script>
+    <script defer src="/static/htmx.min.js"></script>
+    <script defer src="/static/portal.js"></script>
   </head>
-  <body{% if not user %} class="sesion-publica"{% endif %}>
-    <a class="skip-link" href="#contenido">Saltar al contenido</a>
+  <body{% if not user %} class="signed-out"{% endif %}>
+    <a class="skip-link" href="#content">Saltar al contenido</a>
     {% if user %}
       <div class="app-shell">
-        <UiSidebar :user="user" :csrf_token="csrf_token" :setup="setup" />
+        <Sidebar :user="user" :csrf_token="csrf_token" :setup="setup" />
         <div class="workspace">{{ content }}</div>
       </div>
     {% else %}

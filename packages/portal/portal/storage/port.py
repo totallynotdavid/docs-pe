@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 
@@ -17,8 +17,14 @@ class ObjectReference:
     content_type: str
 
 
+@runtime_checkable
 class ObjectStorage(Protocol):
-    """Stores bytes by object reference, never by local filesystem path."""
+    """Stores bytes by object reference, never by local filesystem path.
+
+    Litestar's signature model isinstance-checks every dependency against its
+    declared parameter type, including Protocol-typed ones, so this needs to
+    stay runtime-checkable for `storage: ObjectStorage` handler parameters.
+    """
 
     async def put_immutable(
         self,

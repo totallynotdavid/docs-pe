@@ -2,31 +2,31 @@
 <Layout :title="'Nueva consulta · ' ~ team.name ~ ' · Worker'"
         :user="user"
         :csrf_token="csrf_token">
-  <UiTopBar title="Nueva consulta" />
-  <UiContent>
-    <UiQueryFlow title="Nueva consulta"
-                 description="Sube una lista y elige la información que necesitas.">
-      {% if error %}<UiMessage>{{ error }}</UiMessage>{% endif %}
+  <TopBar title="Nueva consulta" />
+  <MainContent>
+    <QueryFlow title="Nueva consulta"
+               description="Sube una lista y elige la información que necesitas.">
+      {% if error %}<Message>{{ error }}</Message>{% endif %}
       {% if credentials %}
-        <UiForm :action="'/equipos/' ~ team.id ~ '/procesos'"
-                :csrf_token="csrf_token"
-                css_class="formulario-consulta"
-                enctype="multipart/form-data">
-          <UiQueryStep number="1"
-                       title="Sube tu archivo"
-                       description="CSV con un documento en la primera columna de cada fila."
-                       title_id="archivo-titulo">
-            <UiCsvFile />
-          </UiQueryStep>
-          <UiQueryStep number="2"
-                       title="¿Qué quieres obtener?"
-                       description="Puedes elegir más de un resultado."
-                       title_id="fuentes-titulo">
-            <UiSources>
-              {% for source in source_options %}<UiSource :source="source" />{% endfor %}
-            </UiSources>
-          </UiQueryStep>
-          <UiQueryAction>
+        <FormLayout :action="'/teams/' ~ team.id ~ '/jobs'"
+                    :csrf_token="csrf_token"
+                    css_class="query-form"
+                    enctype="multipart/form-data">
+          <QueryStep number="1"
+                     title="Sube tu archivo"
+                     description="CSV con un documento en la primera columna de cada fila."
+                     title_id="upload-step-title">
+            <CsvFile />
+          </QueryStep>
+          <QueryStep number="2"
+                     title="¿Qué quieres obtener?"
+                     description="Puedes elegir más de un resultado."
+                     title_id="sources-step-title">
+            <Sources>
+              {% for source in source_options %}<SourceOption :source="source" />{% endfor %}
+            </Sources>
+          </QueryStep>
+          <QueryAction>
             <div>
               {% if credentials|length == 1 %}
                 <input type="hidden"
@@ -34,10 +34,10 @@
                        value="{{ credentials[0].id }}">
                 {# Breaking this run would collapse to a space before the period. #}
                 {# djlint:off #}
-                <p class="consulta-accion__conexion">Usarás la conexión <strong>{{ credentials[0].label }}</strong>.</p>
+                <p class="query-action__connection">Usarás la conexión <strong>{{ credentials[0].label }}</strong>.</p>
                 {# djlint:on #}
               {% else %}
-                <label class="consulta-accion__selector">
+                <label class="query-action__select">
                   Conexión
                   <select name="credential_version_id" required>
                     {% for credential in credentials %}<option value="{{ credential.id }}">{{ credential.label }}</option>{% endfor %}
@@ -46,21 +46,21 @@
               {% endif %}
             </div>
             <button type="submit">Iniciar consulta</button>
-          </UiQueryAction>
-        </UiForm>
+          </QueryAction>
+        </FormLayout>
       {% else %}
-        <UiPanel>
-          <UiPanelBody>
+        <Panel>
+          <PanelBody>
             <h2>Configura una conexión para comenzar</h2>
-            <p class="subtitulo">Este equipo necesita una conexión proxy activa para ejecutar consultas.</p>
-            <UiActions position="debajo">
-              <UiButton :href="'/equipos/' ~ team.id ~ '/ajustes/proxy'">
+            <p class="subtitle">Este equipo necesita una conexión proxy activa para ejecutar consultas.</p>
+            <Actions position="below">
+              <ActionButton :href="'/teams/' ~ team.id ~ '/settings/proxy'">
                 Configurar conexión
-              </UiButton>
-            </UiActions>
-          </UiPanelBody>
-        </UiPanel>
+              </ActionButton>
+            </Actions>
+          </PanelBody>
+        </Panel>
       {% endif %}
-    </UiQueryFlow>
-  </UiContent>
+    </QueryFlow>
+  </MainContent>
 </Layout>

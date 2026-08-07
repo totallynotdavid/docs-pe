@@ -1,34 +1,38 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Form, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from litestar import Response, Router, get, post
+from litestar.di import NamedDependency
+from litestar.enums import RequestEncodingType
+from litestar.params import Body, FromPath, FromQuery
+from litestar.response import Redirect
+from litestar_htmx import HTMXRequest
 
 from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
 from portal.domain.errors import PortalError
 from portal.domain.models import BrowserSession, TeamRole
 from portal.messages import message_for, provider_names
-from portal.web.deps import PageSession, Provisioning, Service, VerifiedSession
+from portal.settings import PortalSettings
+from portal.web.deps import require_verified_session
 from portal.web.render import render, render_hx
 
 
-router = APIRouter(prefix="/equipos/{team_id}")
-
-
-@router.get("", response_class=HTMLResponse)
+@get("")
 async def team_page(
-    request: Request,
-    session: PageSession,
-    service: Service,
-    team_id: UUID,
-    page: int = 1,
+    request: HTMXRequest,
+    page_session: NamedDependency[BrowserSession],
+    service: NamedDependency[PortalService],
+    team_id: FromPath[UUID],
+    page: FromQuery[int] = 1,
 ) -> Response:
     current_page = max(page, 1)
-    team = await service.team(session.user.id, team_id)
+    team = await service.team(page_session.user.id, team_id)
     jobs, total = await service.jobs(
-        session.user.id,
+        page_session.user.id,
         team_id,
         page=current_page,
     )
@@ -37,8 +41,8 @@ async def team_page(
         request,
         "Team",
         "JobsFragment",
-        user=session.user,
-        csrf_token=session.csrf_token,
+        user=page_session.user,
+        csrf_token=page_session.csrf_token,
         team=team,
         jobs=jobs,
         total=total,
@@ -46,26 +50,26 @@ async def team_page(
     )
 
 
-@router.get("/ajustes", response_class=HTMLResponse)
+@get("/settings")
 async def team_settings_overview(
-    session: PageSession,
-    service: Service,
-    provisioning: Provisioning,
-    team_id: UUID,
+    page_session: NamedDependency[BrowserSession],
+    service: NamedDependency[PortalService],
+    provisioning: NamedDependency[ProvisioningService],
+    team_id: FromPath[UUID],
 ) -> Response:
-    team = await service.team(session.user.id, team_id)
-    readiness = await provisioning.team_readiness(session.user.id, team_id)
+    team = await service.team(page_session.user.id, team_id)
+    readiness = await provisioning.team_readiness(page_session.user.id, team_id)
 
     return render(
         "TeamSettings",
-        user=session.user,
-        csrf_token=session.csrf_token,
+        user=page_session.user,
+        csrf_token=page_session.csrf_token,
         team=team,
         readiness=readiness,
     )
 
 
-async def build_members_context(
+async def _members_context(
     session: BrowserSession,
     service: PortalService,
     provisioning: ProvisioningService,
@@ -87,15 +91,15 @@ async def build_members_context(
     }
 
 
-@router.get("/ajustes/miembros", response_class=HTMLResponse)
+@get("/settings/members")
 async def team_members_get(
-    session: PageSession,
-    service: Service,
-    provisioning: Provisioning,
-    team_id: UUID,
+    page_session: NamedDependency[BrowserSession],
+    service: NamedDependency[PortalService],
+    provisioning: NamedDependency[ProvisioningService],
+    team_id: FromPath[UUID],
 ) -> Response:
-    context = await build_members_context(
-        session,
+    context = await _members_context(
+        page_session,
         service,
         provisioning,
         team_id,
@@ -105,24 +109,35 @@ async def team_members_get(
     return render("TeamMembers", **context)
 
 
-@router.post("/ajustes/miembros", response_class=HTMLResponse)
+@dataclass
+class MemberForm:
+    email: str
+    role: TeamRole
+    csrf_token: str
+
+
+@post("/settings/members", status_code=200)
 async def team_members_post(
-    session: VerifiedSession,
-    service: Service,
-    provisioning: Provisioning,
-    team_id: UUID,
-    email: str = Form(),
-    role: TeamRole = Form(),
+    request: HTMXRequest,
+    service: NamedDependency[PortalService],
+    settings: NamedDependency[PortalSettings],
+    provisioning: NamedDependency[ProvisioningService],
+    team_id: FromPath[UUID],
+    data: Annotated[MemberForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
 ) -> Response:
+    session = await require_verified_session(
+        request, service, settings, data.csrf_token
+    )
+
     try:
         await provisioning.invite_or_add_member(
             session.user.id,
             team_id=team_id,
-            email=email,
-            role=role,
+            email=data.email,
+            role=data.role,
         )
     except PortalError as error:
-        context = await build_members_context(
+        context = await _members_context(
             session,
             service,
             provisioning,
@@ -132,33 +147,39 @@ async def team_members_post(
 
         return render("TeamMembers", **context)
 
-    return RedirectResponse(
-        f"/equipos/{team_id}/ajustes/miembros",
-        status_code=303,
+    return Redirect(f"/teams/{team_id}/settings/members", status_code=303)
+
+
+@dataclass
+class RemoveMemberForm:
+    email: str
+    csrf_token: str
+
+
+@post("/settings/members/remove", status_code=200)
+async def team_members_remove(
+    request: HTMXRequest,
+    service: NamedDependency[PortalService],
+    settings: NamedDependency[PortalSettings],
+    provisioning: NamedDependency[ProvisioningService],
+    team_id: FromPath[UUID],
+    data: Annotated[RemoveMemberForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
+) -> Response:
+    session = await require_verified_session(
+        request, service, settings, data.csrf_token
     )
 
-
-@router.post("/ajustes/miembros/quitar")
-async def team_members_remove(
-    session: VerifiedSession,
-    provisioning: Provisioning,
-    team_id: UUID,
-    email: str = Form(),
-) -> Response:
     # The repository prevents removal of the final team leader.
     await provisioning.remove_member(
         session.user.id,
         team_id=team_id,
-        email=email,
+        email=data.email,
     )
 
-    return RedirectResponse(
-        f"/equipos/{team_id}/ajustes/miembros",
-        status_code=303,
-    )
+    return Redirect(f"/teams/{team_id}/settings/members", status_code=303)
 
 
-async def build_proxy_context(
+async def _proxy_context(
     session: BrowserSession,
     service: PortalService,
     provisioning: ProvisioningService,
@@ -184,37 +205,46 @@ async def build_proxy_context(
     }
 
 
-@router.get("/ajustes/proxy", response_class=HTMLResponse)
+@get("/settings/proxy")
 async def proxy_settings_get(
-    session: PageSession,
-    service: Service,
-    provisioning: Provisioning,
-    team_id: UUID,
-    proveedor: str = "geonode",
+    page_session: NamedDependency[BrowserSession],
+    service: NamedDependency[PortalService],
+    provisioning: NamedDependency[ProvisioningService],
+    team_id: FromPath[UUID],
+    provider: FromQuery[str] = "geonode",
 ) -> Response:
-    context = await build_proxy_context(
-        session,
+    context = await _proxy_context(
+        page_session,
         service,
         provisioning,
         team_id,
-        provider=proveedor,
+        provider=provider,
         error="",
     )
 
     return render("ProxySettings", **context)
 
 
-@router.post("/ajustes/proxy", response_class=HTMLResponse)
+@post("/settings/proxy", status_code=200)
 async def proxy_settings_post(
-    request: Request,
-    session: VerifiedSession,
-    service: Service,
-    provisioning: Provisioning,
-    team_id: UUID,
-    label: str = Form(),
-    provider: str = Form(),
+    request: HTMXRequest,
+    service: NamedDependency[PortalService],
+    settings: NamedDependency[PortalSettings],
+    provisioning: NamedDependency[ProvisioningService],
+    team_id: FromPath[UUID],
 ) -> Response:
+    # The field set is provider-dependent and only known at request time, so
+    # this route reads the raw form instead of a fixed body struct.
     form = await request.form()
+    session = await require_verified_session(
+        request,
+        service,
+        settings,
+        str(form.get("csrf_token", "")),
+    )
+
+    provider = str(form.get("provider", ""))
+    label = str(form.get("label", ""))
     values = {
         field.name: str(form.get(field.name, ""))
         for field in ProvisioningService.provider_fields(provider)
@@ -229,7 +259,7 @@ async def proxy_settings_post(
             values=values,
         )
     except PortalError as error:
-        context = await build_proxy_context(
+        context = await _proxy_context(
             session,
             service,
             provisioning,
@@ -240,7 +270,18 @@ async def proxy_settings_post(
 
         return render("ProxySettings", **context)
 
-    return RedirectResponse(
-        f"/equipos/{team_id}/ajustes/proxy",
-        status_code=303,
-    )
+    return Redirect(f"/teams/{team_id}/settings/proxy", status_code=303)
+
+
+router = Router(
+    path="/teams/{team_id:uuid}",
+    route_handlers=[
+        team_page,
+        team_settings_overview,
+        team_members_get,
+        team_members_post,
+        team_members_remove,
+        proxy_settings_get,
+        proxy_settings_post,
+    ],
+)
