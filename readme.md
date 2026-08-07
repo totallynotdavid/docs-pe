@@ -1,62 +1,58 @@
 # docs-pe
 
-Takes a CSV of Peruvian DNIs or RUCs and looks each one up on the public sites
-that answer for it. Returns registered phone lines, taxpayer identity records,
-legal representatives, and carrier debt.
+[![ci](https://github.com/totallynotdavid/phone-numbers-by-carrier/actions/workflows/ci.yml/badge.svg)](https://github.com/totallynotdavid/phone-numbers-by-carrier/actions/workflows/ci.yml)
 
-## Get started
+Takes a CSV of Peruvian DNIs or RUCs and looks each one up on public government
+sites. Returns registered phone lines, taxpayer identity records, legal
+representatives, and carrier debt.
+
+## Getting started
 
 ```sh
-mise install                                  # toolchain: uv, python, ruff, postgres
-mise run install                              # uv sync --all-packages --all-groups
-cp .env.example .env                          # then fill in the proxy credentials
+mise install                              # install toolchain
+mise run install                          # uv sync
+cp .env.example .env                      # then fill in proxy credentials
 uv run --env-file .env fetch --input docs.csv --output out.csv --sites osiptel
 ```
 
-`fetch` and proxied `browser` runs need proxy credentials; `capture` does not.
-`.env.example` is the single environment contract; nothing loads it
-automatically, so pass `--env-file` as shown above or use a `mise` task that
-already does. The [fetch manual](packages/fetch/readme.md) is the place to start
-reading.
+The `fetch`, `browser`, and `portal` packages need proxy credentials in `.env`;
+`capture` does not. See [docs/proxies.md](docs/proxies.md) for vendor setup.
 
 Other tasks, all from the repo root:
 
 ```sh
-mise run format       # ruff format + ruff check --fix
-mise run check        # mypy across the workspace
-mise run test         # pytest across all packages, portal included
-mise run build        # PyInstaller single binary for fetch
-mise run portal:dev   # start PostgreSQL, migrate, bootstrap, run the portal
+mise run format                           # ruff format + ruff check --fix
+mise run check                            # mypy across workspace
+mise run test                             # pytest all packages
+mise run build                            # PyInstaller binary for fetch
+mise run dev                              # postgres + portal web (Ctrl+C stops everything)
+mise run reset                            # wipe local postgres; next `mise run dev` starts clean
 ```
 
-## Packages
+This is a
+[uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/) with
+four packages. [fetch](packages/fetch/readme.md) makes HTTP requests through
+proxies and is the workhorse; [browser](packages/browser/readme.md) drives
+Chrome over the DevTools protocol for sites that need JS, reCAPTCHA, or similar;
+[capture](packages/capture/readme.md) reverse-engineers a site using your own
+Chrome browser; [portal](packages/portal/readme.md) is the web UI for managing
+fetch jobs, auth, teams, and results. A new site typically starts in `capture`
+(discover the request), moves to `browser` (automate it), then lands in `fetch`
+(run it unattended). Each package keeps its own copy of a site's parser and
+columns rather than sharing code; see
+[docs/architecture.md](docs/architecture.md) for why.
 
-A [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/). Each
-package serves one access mechanism.
+Results land in `results/` (gitignored). State is stored in SQLite
+(`*.state.sqlite3`), which is the source of truth; see
+[docs/architecture.md](docs/architecture.md) for the job lifecycle, resume
+behavior, and how state works.
 
-| Package                                 | Reads sites that             |                                                   |
-| --------------------------------------- | ---------------------------- | ------------------------------------------------- |
-| [`fetch`](packages/fetch/readme.md)     | answer a plain HTTP request  | the workhorse, and the one you almost always want |
-| [`browser`](packages/browser/readme.md) | need a real Chrome           | driven over CDP on a headless display             |
-| [`capture`](packages/capture/readme.md) | need a browser a person owns | the discovery tool, standard library only         |
-| [`portal`](packages/portal/readme.md)   | are stable enough to sell    | authenticated, team-scoped, PostgreSQL-only       |
+## Read next
 
-A new site usually starts in `capture`, which discovers its wire protocol from
-your own Chrome, moves to `browser` once it can be driven, and lands in `fetch`
-when it survives unattended runs. `Site.stable` is the last step: the portal
-offers exactly the sites whose flag is set.
-
-Each package keeps its own copy of a site's parser, columns, and document type.
-Do not add cross-package imports.
-
-## Notes
-
-Written while working out how the sites behave.
-
-- [docs/results.md](docs/results.md), every reconciled job and what a healthy
-  one looks like.
-- [docs/proxies.md](docs/proxies.md), how the proxy vendors behave per site.
-- [docs/entel.md](docs/entel.md), the Entel wire protocol and everything ruled
-  out.
-
-Job output lands in `results/`, which is gitignored.
+- [fetch](packages/fetch/readme.md), if you're running a job for the first time
+- [docs/troubleshooting.md](docs/troubleshooting.md), if you're debugging a job
+  failure, then [docs/sites/](docs/sites/) for the specific site
+- [docs/adding-a-site.md](docs/adding-a-site.md), if you're adding a new site
+- [portal](packages/portal/readme.md), if you're running the web UI
+- [docs/architecture.md](docs/architecture.md), if you're reviewing code or want
+  to understand the whole system before picking a package

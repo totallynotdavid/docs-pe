@@ -1,73 +1,21 @@
-# portal
+# Portal
 
-Web interface and worker for running `fetch` jobs.
-
-Teams upload documents, choose their proxy credentials, and receive results for
-each document.
-
-```sh
-mise run portal:dev
-```
-
-## Structure
-
-```text
-web          FastAPI, JinjaX, HTMX, SSE, sessions, and CSRF
-application  Team access, job submission, and cancellation
-domain       Source planning and state rules
-repository   PostgreSQL, one module per concern: auth.py, teams.py,
-             credentials.py, jobs.py; no shared facade
-worker       Claims work and publishes results
-storage      Immutable object references
-```
-
-PostgreSQL stores users, teams, jobs, queue state, and events. A missing
-database DSN prevents startup.
-
-`security.py` contains the password, session, and CSRF primitives used by the
-web and provisioning code.
-
-## Queue
-
-Every queue transition locks the singleton `portal_queue_control` row. This
-enforces the global limit of five active jobs across all web and worker
-processes.
-
-Cancellation increments the lease fence before active items are retired. Writes
-from an older lease are then rejected.
-
-Items that repeatedly expire without completing are retired. A job that finishes
-without publishing any result is marked as failed.
-
-Expired leases are recovered while the next item is claimed.
-
-Workers access the queue through authenticated claim and publish operations. A
-claim includes the proxy configuration required for that item.
-
-## Provisioning
-
-The web interface has no public registration. Create the first administrator and
-team with:
+Web interface for managing fetch jobs. Teams upload documents, configure proxy
+credentials, track job progress, and download results, backed by PostgreSQL and
+a worker process. Portal is for teams that want a web UI instead of running
+fetch commands: user authentication and team management, persistent job history
+and results, proxy credential management (safely stored, not copied to `.env`),
+real-time job status via Server-Sent Events, and result download.
 
 ```sh
-uv run --env-file .env python -m portal.provision \
-  --admin-email admin@example.org \
-  --admin-password-env PORTAL_PROVISION_ADMIN_PASSWORD \
-  --team-name "Equipo Lima" \
-  --team-slug equipo-lima
+mise run dev
 ```
 
-Add `--proxy-provider geonode` or `--proxy-provider dataimpulse` to create proxy
-credentials from `PORTAL_PROVISION_<PROVIDER>_<FIELD>` environment variables.
+## Getting started (local)
 
-The command applies migrations and creates or updates the administrator, team,
-membership, and proxy credentials. It never prints secret values.
+Set these in `.env`:
 
-## Local development
-
-Set these values in the root `.env`:
-
-```bash
+```env
 PORTAL_DATABASE_DSN=postgresql://postgres@127.0.0.1:5432/postgres
 PORTAL_PUBLIC_ORIGIN=http://localhost:8000
 PORTAL_BOOTSTRAP_ADMIN_EMAIL=admin@example.org
@@ -77,85 +25,123 @@ PORTAL_BOOTSTRAP_TEAM_SLUG=equipo-lima
 PORTAL_SECRET_PROTECTION_KEY=
 ```
 
-Then run:
+Start the portal:
 
 ```sh
-mise run portal:dev
+mise run dev
 ```
 
-The command starts PostgreSQL in `.data/postgres` when port 5432 is unused,
-applies migrations, provisions the local administrator and team, and starts the
-server.
+This starts PostgreSQL in the foreground, applies migrations, provisions the
+admin and first team, and runs the app. Ctrl+C stops everything. To reset local
+state, run `mise run reset` then `mise run dev` again.
 
-`PORTAL_SECRET_PROTECTION_KEY` is required to encrypt proxy credentials.
-Generate one with:
+Tests (`uv run pytest tests/portal`) each create, migrate, and drop their own
+PostgreSQL database, and run in parallel since they share no database state.
 
-```bash
-uv run python -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
-```
+## Provisioning (production)
 
-Apply migrations without starting the server:
+The portal has no public registration. Create the first admin and team:
 
 ```sh
-mise run portal:migrate
+uv run --env-file .env python -m portal.provision \
+  --admin-email admin@example.org \
+  --admin-password-env PORTAL_PROVISION_ADMIN_PASSWORD \
+  --team-name "Equipo Lima" \
+  --team-slug equipo-lima
 ```
 
-Run only the local provisioning step:
+Optionally, create proxy credentials from environment variables:
 
 ```sh
-mise run portal:bootstrap
+uv run --env-file .env python -m portal.provision \
+  ... \
+  --proxy-provider geonode
 ```
 
-## Presentation
+This reads `PORTAL_PROVISION_GEONODE_USERNAME`,
+`PORTAL_PROVISION_GEONODE_PASSWORD`, etc., and creates credentials for the team.
 
-Pages use JinjaX, HTMX, and SSE.
+The command applies migrations and creates or updates the admin, team,
+membership, and proxy credentials. It never prints secret values.
 
-Components live in `web/components/<Name>.jinja`. A component stylesheet uses
-the same name and loads only when that component renders.
+## Architecture
 
-Route pages live in `web/pages/<Name>.jinja`. Components use a `Ui` prefix;
-pages do not.
+```
+web              Litestar app: routes, auth, CSRF, SSE
+  ├─ routes/
+  ├─ deps.py    session/team extraction
+  └─ components/ JinjaX templates
 
-Shared design tokens live in `web/static/tokens.css`. Component-specific styles
-stay beside their component.
+application      Team access, job submission, cancellation
+  └─ service.py: business logic (teams, credentials, jobs)
 
-HTMX and its SSE extension are vendored in `web/static`:
+domain           Planning and state rules
+  ├─ models.py  : Job, Team, Credential types
+  └─ planning.py: plan_submission (routes documents to sites)
 
-```sh
-mise run portal:assets
+repository       PostgreSQL modules
+  ├─ auth.py
+  ├─ teams.py
+  ├─ credentials.py
+  └─ jobs.py     : job queue and event log
+
+worker           Claims work and publishes results
+  └─ main.py    : polls queue, runs fetch, publishes
+
+storage          Immutable object references (file uploads)
+  └─ port.py    : abstract interface
+
+security.py      Password, session, CSRF primitives
 ```
 
-CI checks that the committed files match the versions in
-`packages/portal/package.json`.
+## How jobs run
 
-Responses use this content security policy:
+1. Submit: the user uploads a CSV, selects sites and proxy credentials, and
+   clicks submit. The portal stores the file, plans the job (routes documents to
+   sites), and queues it.
+2. Claim: the worker polls the queue and claims a queued job with a 30-minute
+   lease.
+3. Run: the worker spawns a fetch subprocess with the document CSV and
+   configuration; fetch runs to completion (or Ctrl+C).
+4. Publish: the worker moves result files from the fetch output to cloud storage
+   (configurable), records metadata in the database, and marks the job as
+   published.
+5. Recover: if a worker crashes or the lease expires, another worker claims the
+   job (an incremented lease fence prevents lost writes).
 
-```text
-Content-Security-Policy: default-src 'self'
-```
+Every queue transition locks the singleton `portal_queue_control` row, which
+enforces a global limit of five active jobs across all web and worker processes.
+Cancellation increments the lease fence before retiring active items, so writes
+from older leases are rejected and you can cancel a job without racing against a
+slow worker. Expired leases are recovered while claiming work; jobs that
+repeatedly expire, or that finish without publishing a result, are marked
+failed. Workers use authenticated claim and publish operations, and each claim
+includes the proxy configuration for that job. See
+[operations.md](operations.md) for the SQL to inspect or manually cancel a job.
 
-Inline scripts and `style=` attributes are not allowed.
+## Structure
 
-Full pages and HTMX fragments share the same URL. Routes return
-`Vary: HX-Request` so caches keep both response types separate.
+| Module         | Purpose                                              |
+| -------------- | ---------------------------------------------------- |
+| `web/`         | Litestar routes, session handling, templates         |
+| `application/` | Service layer (teams, credentials, jobs, submission) |
+| `domain/`      | Types (Job, Team, Credential) and business rules     |
+| `repository/`  | PostgreSQL access (auth, teams, credentials, jobs)   |
+| `worker/`      | Background job processor                             |
+| `storage/`     | File upload abstraction                              |
+| `security.py`  | Password hashing, session tokens, CSRF tokens        |
 
-## Language and errors
+`security.py` contains password, session, and CSRF primitives shared by the web
+and provisioning code. It's also the place to review auth assumptions.
 
-Spanish user-facing text lives in `messages.py`.
+## Configuration
 
-`web/errors.py` maps `NotFound` to 404 and other `PortalError` values to 403.
+| Variable                       | Meaning                                                           |
+| ------------------------------ | ----------------------------------------------------------------- |
+| `PORTAL_DATABASE_DSN`          | PostgreSQL connection string                                      |
+| `PORTAL_PUBLIC_ORIGIN`         | Scheme and host for CSRF validation (e.g., `https://example.com`) |
+| `PORTAL_BOOTSTRAP_*`           | Admin and team created on first run (local dev only)              |
+| `PORTAL_SECRET_PROTECTION_KEY` | Encryption key for sensitive values (leave empty in dev)          |
 
-Routes may catch a `PortalError` when they need to render the same form with an
-error message. Otherwise the shared error handler renders the problem page.
-
-## Tests
-
-```sh
-uv run pytest tests/portal
-```
-
-Each test creates and migrates its own PostgreSQL database, then drops it after
-the test.
-
-Tests may run in parallel because they do not share database state. If
-PostgreSQL is unavailable, the suite fails.
+See `portal/application/provisioning.py` for provisioning variables (e.g.,
+`PORTAL_PROVISION_GEONODE_USERNAME`).

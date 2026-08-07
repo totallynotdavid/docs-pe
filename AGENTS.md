@@ -1,4 +1,4 @@
-TOOLING
+Tooling
 
 The toolchain is pinned in mise.toml and only uv resolves it. Never invoke
 python, pytest, ruff, or mypy directly.
@@ -9,7 +9,8 @@ mise run format      ruff format + ruff check --fix
 mise run check       mypy across the workspace
 mise run test        pytest across every package, portal included
 mise run build       PyInstaller single binary for fetch
-mise run portal:dev  start postgres, migrate, bootstrap, run the portal
+mise run dev         start postgres, bootstrap, and run the portal (Ctrl+C stops everything)
+mise run reset       wipe the local postgres cluster; next `mise run dev` starts clean
 ```
 
 Focused work, when a full run is too slow:
@@ -22,32 +23,46 @@ uv run mypy packages/portal
 uv run ruff check packages/portal
 ```
 
-READ THIS BEFORE TOUCHING THAT
+Read these before changing code
 
-Each readme is authoritative for its own package and is written to be read in
-full before you change anything in it. Reading the readme is cheaper than
-reading the code.
+Start with `docs/architecture.md` to understand system structure, job lifecycle,
+and shared concepts. Then read the package readme you're working on.
 
-- packages/fetch/readme.md: sites, proxy config, outputs, resume and retry
-  semantics
-- packages/browser/readme.md: CDP automation, the local proxy, reject retry
-  policy
-- packages/capture/readme.md: discovery relay
-- packages/portal/readme.md: layers, the queue, provisioning, presentation
-- packages/portal/security.md
-- readme.md: the workspace map
+Each package readme covers its own domain:
 
-Knowledge that outlives a job belongs in docs/. Check it before re-deriving
-anything about proxies, throughput, or Entel. Retry old ideas only if there's
-reason to believe conditions have changed.
+- `packages/fetch/readme.md`: HTTP sites, CLI, outputs, resume
+- `packages/browser/readme.md`: Chrome automation, reCAPTCHA/Cloudflare,
+  rejection retry
+- `packages/capture/readme.md`: reverse-engineer sites using your own Chrome
+- `packages/portal/readme.md`: job queue, web UI, provisioning
+- `packages/portal/operations.md`: SQL runbook for manual portal intervention
 
-- docs/results.md: every reconciled job, expected shapes, what a job costs
-- docs/proxies.md: vendor behaviour per site, lane counts, how to read a run
-- docs/entel.md: Entel wire protocol and everything ruled out
+`docs/` covers cross-cutting concerns. Package readmes link into it; don't
+restate its content in a package readme:
 
-Job output goes under results/, which is gitignored.
+- `docs/proxies.md`: provider tuning and behavior
+- `docs/troubleshooting.md`: runbook, log interpretation
+- `docs/sites/`: per-site wire protocol, gates, failure modes (entel, osiptel,
+  sunat, portabilidad)
+- `docs/adding-a-site.md`: capture → browser → fetch workflow
+- `docs/results.md`: historical job data and reconciliation
 
-WHERE THINGS LIVE
+See `docs/architecture.md` for:
+
+- Package boundaries and why cross-imports are forbidden
+- Circuit breaker behavior and its role in preventing cascading failures
+- State database as source of truth (why CSVs are disposable, why logs can be
+  misleading)
+- Retry semantics and attempt counting
+
+A fact about the system belongs in exactly one of these files. If you're about
+to write something that's already said elsewhere, link to it instead of
+restating it: that's how the previous version of this docs set ended up with the
+same GeoNode port-exhaustion note in three files.
+
+Job output goes under `results/`, which is gitignored.
+
+Where things live
 
 add a fetch site packages/fetch/fetch/sites/<name>/ + sites/registry.py SITES
 add a proxy vendor packages/fetch/fetch/proxy/<name>.py + proxy/registry.py
@@ -65,32 +80,34 @@ member.
 pytest is configured once in the root pyproject.toml with asyncio_mode = "auto",
 so an async test is a plain async def test_* with no decorator.
 
-RULES THAT BREAK THINGS SILENTLY WHEN IGNORED
+Rules that break things silently when ignored
 
-Do not add cross-package imports. browser, capture, and fetch each keep their
-own copy of a site's parser, columns, and document vocabulary. portal imports
-fetch only.
+Do not add cross-package imports. See `docs/architecture.md`. Browser, capture,
+and fetch each keep their own copy of a site's parser, columns, and document
+vocabulary. Portal imports fetch only.
 
-Do not classify faults inside a site. domain/policy.py owns the mapping from
-fault to retry action, and a site that grows its own retry rule silently escapes
-the breaker accounting.
+Do not classify faults inside a site. See `docs/architecture.md`.
+`domain/policy.py` owns the mapping from fault to retry action. A site that
+grows its own retry rule silently escapes circuit breaker accounting.
 
-Do not read progress from a CSV or a log tail. The state database is the source
-of truth. Output CSVs do not exist until a run ends, so a mid-run directory with
-no output is normal, not a broken run. A relaunch retries known-bad documents
-first, so the log opens with a wall of failures from a tiny fraction of the
-input and reads like a collapse. Query outcomes instead.
+Do not read progress from a CSV or log tail. See `docs/architecture.md` and
+`docs/troubleshooting.md`. The state database is the source of truth. Output
+CSVs don't exist until a run ends; a mid-run empty directory is normal. A
+relaunch retries known-bad documents first, so logs open with a burst that looks
+like collapse. Query outcomes instead.
 
-GEONODE_COUNTRY=PE and DATAIMPULSE_COUNTRY=pe must be set explicitly in every
-.env. OSIPTEL's WAF blocks foreign exits. Provider variables are derived as
-<PROVIDER>_<FIELD> from the field schema, so renaming a field renames the
+`GEONODE_COUNTRY=PE` and `DATAIMPULSE_COUNTRY=pe` must be set explicitly. See
+`docs/proxies.md#peru-exits-are-mandatory-for-osiptel`. OSIPTEL's WAF blocks
+non-Peru exits. An empty country causes GeoNode to fall back to global pool,
+blocking 85-95% of requests. Provider variables are derived as
+`<PROVIDER>_<FIELD>` from the field schema, so renaming a field renames the
 variable.
 
 Ruff runs with a wide extend-select and fix = true. portal has a deliberate
 per-file ignore list in the root pyproject.toml; extend that list rather than
 sprinkling noqa.
 
-WRITING COMMENTS
+Writing comments
 
 State the invariant, constraint, or external quirk. Delete anything that
 restates the code or labels structure. One idea per comment, placed beside the
