@@ -1,0 +1,152 @@
+.sidebar {
+  background: var(--background);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 14px 10px;
+}
+
+.sidebar__brand {
+  align-items: center;
+  display: flex;
+  font-size: 15px;
+  font-weight: var(--font-weight-semibold);
+  gap: 9px;
+  margin: 0 6px 23px;
+  text-decoration: none;
+}
+
+.sidebar__brand-mark {
+  align-items: center;
+  background: var(--foreground);
+  border-radius: 6px;
+  color: var(--primary-foreground);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  height: 23px;
+  justify-content: center;
+  width: 23px;
+}
+
+.sidebar__nav {
+  display: grid;
+  gap: 2px;
+}
+
+.sidebar__nav-label {
+  color: var(--foreground-tertiary);
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.08em;
+  margin: 0 8px 7px;
+  text-transform: uppercase;
+}
+
+.sidebar__nav-link {
+  align-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--foreground-secondary);
+  display: flex;
+  font-weight: var(--font-weight-medium);
+  gap: 9px;
+  min-height: 31px;
+  padding: 0 8px;
+  text-decoration: none;
+}
+
+.sidebar__nav-link:hover {
+  background: var(--background-transparent-light);
+  color: var(--foreground);
+}
+
+.sidebar__nav-link--admin {
+  margin-top: 14px;
+}
+
+.sidebar__account {
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+  padding: 12px 6px 0;
+}
+
+.sidebar__account-trigger {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  color: var(--foreground-secondary);
+  display: flex;
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-medium);
+  gap: 8px;
+  height: 28px;
+  justify-content: flex-start;
+  padding: 0;
+  width: 100%;
+}
+
+.sidebar__account-trigger:hover,
+.sidebar__account-trigger[aria-expanded="true"] {
+  background: transparent;
+  color: var(--foreground);
+}
+
+.sidebar__account-trigger .icon {
+  margin-left: auto;
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+
+.sidebar__account-trigger[aria-expanded="true"] .icon {
+  transform: rotate(180deg);
+}
+
+.sidebar__avatar {
+  align-items: center;
+  background: var(--color-blue-5);
+  border-radius: 50%;
+  color: var(--color-blue-11);
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 700;
+  height: 24px;
+  justify-content: center;
+  text-transform: uppercase;
+  width: 24px;
+}
+
+.sidebar__account-menu {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-elevation-1);
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 9px 10px;
+}
+
+.sidebar__account-email {
+  color: var(--foreground-tertiary);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .sidebar {
+    border-bottom: 1px solid var(--border);
+    border-right: 0;
+    display: block;
+    padding: 10px 14px;
+  }
+
+  .sidebar__brand {
+    margin: 0;
+  }
+
+  .sidebar__nav,
+  .sidebar__account {
+    display: none;
+  }
+}

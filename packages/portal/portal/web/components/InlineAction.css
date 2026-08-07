@@ -1,0 +1,16 @@
+.inline-action button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--foreground-secondary);
+  display: inline-flex;
+  font-size: var(--font-size-caption);
+  gap: 6px;
+  padding: 2px 0;
+  text-align: left;
+}
+
+.inline-action button:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+}

@@ -1,28 +1,28 @@
 {#def user, csrf_token, teams #}
 <Layout title="Equipos · Worker" :user="user" :csrf_token="csrf_token">
-  <UiTopBar title="Equipos" />
-  <UiContent>
-    <h1 class="solo-lector">Equipos</h1>
-    <UiPanel aria-labelledby="titulo-equipos">
-      <UiPanelHeader title="Tus equipos"
-                     description="Espacios a los que tienes acceso."
-                     title_id="titulo-equipos" />
+  <TopBar title="Equipos" />
+  <MainContent>
+    <h1 class="sr-only">Equipos</h1>
+    <Panel aria-labelledby="teams-title">
+      <PanelHeader title="Tus equipos"
+                   description="Espacios a los que tienes acceso."
+                   title_id="teams-title" />
       {% if teams %}
-        <UiList>
+        <List>
           {% for team in teams %}
-            <UiListItem>
-              <a href="/equipos/{{ team.id }}">{{ team.name }}</a>
-              <UiMeta>
+            <ListItem>
+              <a href="/teams/{{ team.id }}">{{ team.name }}</a>
+              <MetaText>
                 {{ team.role|role_name }}
-              </UiMeta>
-            </UiListItem>
+              </MetaText>
+            </ListItem>
           {% endfor %}
-        </UiList>
+        </List>
       {% else %}
-        <UiEmptyState>
+        <EmptyState>
           Aún no perteneces a un equipo.
-        </UiEmptyState>
+        </EmptyState>
       {% endif %}
-    </UiPanel>
-  </UiContent>
+    </Panel>
+  </MainContent>
 </Layout>

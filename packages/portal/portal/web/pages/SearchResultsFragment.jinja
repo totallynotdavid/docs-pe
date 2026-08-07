@@ -1,27 +1,33 @@
 {#def team, query, results, page, has_more #}
 {% if query %}
   {% if results %}
-    <UiList>
+    <List>
       {% for result in results %}
-        <UiListItem>
-          <a href="/equipos/{{ team.id }}/procesos/{{ result.job_id }}">{{ result.document }}</a>
+        <ListItem>
+          <a href="/teams/{{ team.id }}/jobs/{{ result.job_id }}">{{ result.document }}</a>
           <span>{{ result.filename }}</span>
-        </UiListItem>
+        </ListItem>
       {% endfor %}
-    </UiList>
+    </List>
   {% else %}
-    <UiEmptyState>
+    <EmptyState>
       No hay resultados.
-    </UiEmptyState>
+    </EmptyState>
   {% endif %}
 {% else %}
-  <UiEmptyState>
+  <EmptyState>
     Ingresa un documento para buscar.
-  </UiEmptyState>
+  </EmptyState>
 {% endif %}
 {% if page > 1 or has_more %}
-  <UiPagination label="Paginación de búsqueda">
-    {% if page > 1 %}<a href="?q={{ query }}&page={{ page - 1 }}">Anterior</a>{% endif %}
-    {% if has_more %}<a href="?q={{ query }}&page={{ page + 1 }}">Siguiente</a>{% endif %}
-  </UiPagination>
+  <Pagination label="Paginación de búsqueda">
+    {% if page > 1 %}
+      <a hx-get="/teams/{{ team.id }}/search?q={{ query }}&page={{ page - 1 }}"
+         hx-target="#search-results">Anterior</a>
+    {% endif %}
+    {% if has_more %}
+      <a hx-get="/teams/{{ team.id }}/search?q={{ query }}&page={{ page + 1 }}"
+         hx-target="#search-results">Siguiente</a>
+    {% endif %}
+  </Pagination>
 {% endif %}

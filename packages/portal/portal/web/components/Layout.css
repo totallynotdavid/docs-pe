@@ -53,14 +53,14 @@ p {
   margin: 0;
 }
 
-.subtitulo {
+.subtitle {
   color: var(--foreground-secondary);
   margin: 6px 0 0;
   max-width: 640px;
 }
 
 /* Visible to a screen reader, never to the eye. */
-.solo-lector {
+.sr-only {
   clip: rect(0 0 0 0);
   clip-path: inset(50%);
   height: 1px;
@@ -103,7 +103,7 @@ p {
 }
 
 /* The signed-out pages drop the shell and centre a single card instead. */
-body.sesion-publica {
+body.signed-out {
   align-items: center;
   background: var(--secondary);
   display: flex;
@@ -111,7 +111,7 @@ body.sesion-publica {
   padding: 16px;
 }
 
-body.sesion-publica .contenido {
+body.signed-out .content {
   max-width: 400px;
   padding: 0;
 }

@@ -1,0 +1,22 @@
+{#def source #}
+<label class="source-option">
+  <input class="source-option__control"
+         type="checkbox"
+         name="sources"
+         value="{{ source.id }}"
+         {% if source.default %}checked{% endif %}>
+  <span class="source-option__content">
+    <span class="source-option__header">
+      <span class="source-option__name">{{ source.name }}</span>
+      <span class="source-option__eligibility">{{ source.eligibility }}</span>
+    </span>
+    <span class="source-option__result">Recibirás: {{ source.output }}</span>
+    <span class="source-option__preview">
+      <span class="source-option__preview-title">Así se verá el resultado</span>
+      <span class="source-option__preview-table">
+        <span>{% for header in source.sample_headers %}<b>{{ header }}</b>{% endfor %}</span>
+        <span>{% for value in source.sample_row %}<i>{{ value }}</i>{% endfor %}</span>
+      </span>
+    </span>
+  </span>
+</label>

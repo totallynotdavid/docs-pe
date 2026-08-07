@@ -1,14 +1,14 @@
 {#def notifications #}
 {% if notifications %}
-  <UiList>
+  <List>
     {% for notification in notifications %}
-      <UiListItem>
+      <ListItem>
         <span>{{ notification.event_type|notification }}</span>
-      </UiListItem>
+      </ListItem>
     {% endfor %}
-  </UiList>
+  </List>
 {% else %}
-  <UiEmptyState>
+  <EmptyState>
     No hay notificaciones.
-  </UiEmptyState>
+  </EmptyState>
 {% endif %}

@@ -2,27 +2,27 @@
 <Layout :title="job.filename ~ ' · Worker'"
         :user="user"
         :csrf_token="csrf_token">
-  <UiTopBar :title="job.filename">
+  <TopBar :title="job.filename">
     {% if team.role.value == 'team_leader' and not is_terminal(job) %}
-      <UiSubmission :action="'/equipos/' ~ team.id ~ '/procesos/' ~ job.id ~ '/cancelar'"
-                    :csrf_token="csrf_token">
-        <UiButton variant="peligro" type="submit">
+      <Submission :action="'/teams/' ~ team.id ~ '/jobs/' ~ job.id ~ '/cancel'"
+                  :csrf_token="csrf_token">
+        <ActionButton variant="danger" type="submit">
           Cancelar consulta
-        </UiButton>
-      </UiSubmission>
+        </ActionButton>
+      </Submission>
     {% endif %}
-  </UiTopBar>
-  <UiContent>
-    <h1 class="solo-lector">Tarea {{ job.filename }}</h1>
-    <UiPanel>
-      <UiPanelBody>
-        <div id="progreso-proceso"
+  </TopBar>
+  <MainContent>
+    <h1 class="sr-only">Tarea {{ job.filename }}</h1>
+    <Panel>
+      <PanelBody>
+        <div id="job-progress"
              aria-live="polite"
              aria-atomic="true"
-             {% if not is_terminal(job) %} hx-ext="sse" sse-connect="/equipos/{{ team.id }}/procesos/{{ job.id }}/progreso" sse-swap="progreso" sse-close="fin" {% endif %}>
+             {% if not is_terminal(job) %} data-sse-url="/teams/{{ team.id }}/jobs/{{ job.id }}/progress" {% endif %}>
           <JobProgressFragment :job="job" />
         </div>
-      </UiPanelBody>
-    </UiPanel>
-  </UiContent>
+      </PanelBody>
+    </Panel>
+  </MainContent>
 </Layout>

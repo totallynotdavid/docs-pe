@@ -1,0 +1,11 @@
+{#def number, title, description, title_id #}
+<section {{ attrs.render(class="query-step", aria_labelledby=title_id) }}>
+  <div class="query-step__header">
+    <span class="query-step__number">{{ number }}</span>
+    <div>
+      <h2 id="{{ title_id }}">{{ title }}</h2>
+      <p>{{ description }}</p>
+    </div>
+  </div>
+  {{ content }}
+</section>

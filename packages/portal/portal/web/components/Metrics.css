@@ -1,0 +1,32 @@
+.metrics {
+  display: grid;
+  gap: 1px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 18px 0;
+  overflow: hidden;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.metrics div {
+  background: var(--background);
+  padding: 13px;
+}
+
+.metrics dt {
+  color: var(--foreground-tertiary);
+  font-size: 11px;
+}
+
+.metrics dd {
+  font-size: var(--font-size-heading-sm);
+  font-weight: var(--font-weight-semibold);
+  margin: 4px 0 0;
+}
+
+@media (max-width: 720px) {
+  .metrics {
+    grid-template-columns: 1fr;
+  }
+}
