@@ -72,14 +72,15 @@ async def _form_context(
     error: str,
 ) -> dict[str, object]:
     credentials = await service.credentials(session.user.id, team_id)
+    active_credentials = tuple(
+        credential for credential in credentials if credential.is_active
+    )
 
     return {
         "user": session.user,
         "csrf_token": session.csrf_token,
         "team": await service.team(session.user.id, team_id),
-        "credentials": tuple(
-            credential for credential in credentials if credential.is_active
-        ),
+        "credentials": active_credentials,
         "source_options": SOURCE_OPTIONS,
         "error": error,
     }
@@ -112,10 +113,16 @@ async def new_job_post(
     settings: NamedDependency[PortalSettings],
     storage: NamedDependency[ObjectStorage],
     team_id: FromPath[UUID],
-    data: Annotated[JobSubmissionForm, Body(media_type=RequestEncodingType.MULTI_PART)],
+    data: Annotated[
+        JobSubmissionForm,
+        Body(media_type=RequestEncodingType.MULTI_PART),
+    ],
 ) -> Response:
     session = await require_verified_session(
-        request, service, settings, data.csrf_token
+        request,
+        service,
+        settings,
+        data.csrf_token,
     )
 
     try:
@@ -133,7 +140,12 @@ async def new_job_post(
             storage=storage,
         )
     except (PortalError, ValueError, RuntimeError) as error:
-        context = await _form_context(session, service, team_id, error=str(error))
+        context = await _form_context(
+            session,
+            service,
+            team_id,
+            error=str(error),
+        )
 
         return render("JobForm", **context)
 
@@ -168,10 +180,16 @@ async def cancel_job(
     settings: NamedDependency[PortalSettings],
     team_id: FromPath[UUID],
     job_id: FromPath[UUID],
-    data: Annotated[CancelJobForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
+    data: Annotated[
+        CancelJobForm,
+        Body(media_type=RequestEncodingType.URL_ENCODED),
+    ],
 ) -> Response:
     session = await require_verified_session(
-        request, service, settings, data.csrf_token
+        request,
+        service,
+        settings,
+        data.csrf_token,
     )
 
     await service.cancel(session.user.id, team_id, job_id)
@@ -198,7 +216,7 @@ async def job_progress(
             actor_id=api_session.user.id,
             team_id=team_id,
             job_id=job_id,
-            sequence=_last_event_id(request),
+            last_sequence=_last_event_id(request),
         )
     )
 
@@ -210,23 +228,23 @@ async def _progress_events(
     actor_id: UUID,
     team_id: UUID,
     job_id: UUID,
-    sequence: int,
+    last_sequence: int,
 ) -> AsyncIterator[ServerSentEventMessage]:
-    # A disconnected client cancels this generator: Litestar's streaming
-    # response races the send loop against an ASGI disconnect message and
-    # cancels the send task on disconnect, which cancels whatever this
-    # generator is awaiting (asyncio.sleep, most of the time).
     while True:
-        # Stop if the session expires or is replaced.
-        current_session = await service.browser_session(token)
+        session = await service.browser_session(token)
 
-        if current_session is None or current_session.user.id != actor_id:
+        if session is None or session.user.id != actor_id:
             return
 
-        events = await service.job_events_after(actor_id, team_id, job_id, sequence)
+        events = await service.job_events_after(
+            actor_id,
+            team_id,
+            job_id,
+            last_sequence,
+        )
 
         for event in events:
-            sequence = event.sequence
+            last_sequence = event.sequence
             job = await service.job(actor_id, team_id, job_id)
 
             yield ServerSentEventMessage(

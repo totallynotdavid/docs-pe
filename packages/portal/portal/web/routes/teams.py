@@ -75,7 +75,7 @@ async def _members_context(
     provisioning: ProvisioningService,
     team_id: UUID,
     *,
-    error: str,
+    error: str = "",
 ) -> dict[str, object]:
     team = await service.team(session.user.id, team_id)
     members = await provisioning.members(session.user.id, team_id)
@@ -103,7 +103,6 @@ async def team_members_get(
         service,
         provisioning,
         team_id,
-        error="",
     )
 
     return render("TeamMembers", **context)
@@ -126,7 +125,10 @@ async def team_members_post(
     data: Annotated[MemberForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
 ) -> Response:
     session = await require_verified_session(
-        request, service, settings, data.csrf_token
+        request,
+        service,
+        settings,
+        data.csrf_token,
     )
 
     try:
@@ -166,10 +168,12 @@ async def team_members_remove(
     data: Annotated[RemoveMemberForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
 ) -> Response:
     session = await require_verified_session(
-        request, service, settings, data.csrf_token
+        request,
+        service,
+        settings,
+        data.csrf_token,
     )
 
-    # The repository prevents removal of the final team leader.
     await provisioning.remove_member(
         session.user.id,
         team_id=team_id,
@@ -186,7 +190,7 @@ async def _proxy_context(
     team_id: UUID,
     *,
     provider: str,
-    error: str,
+    error: str = "",
 ) -> dict[str, object]:
     team = await service.team(session.user.id, team_id)
     credentials = await service.credentials(session.user.id, team_id)
@@ -219,7 +223,6 @@ async def proxy_settings_get(
         provisioning,
         team_id,
         provider=provider,
-        error="",
     )
 
     return render("ProxySettings", **context)
@@ -233,9 +236,9 @@ async def proxy_settings_post(
     provisioning: NamedDependency[ProvisioningService],
     team_id: FromPath[UUID],
 ) -> Response:
-    # The field set is provider-dependent and only known at request time, so
-    # this route reads the raw form instead of a fixed body struct.
+    # Proxy fields depend on the selected provider, so this route reads the raw form.
     form = await request.form()
+
     session = await require_verified_session(
         request,
         service,

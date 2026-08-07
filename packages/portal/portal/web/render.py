@@ -33,7 +33,7 @@ def render_hx(
 ) -> Response[str]:
     response = render(fragment if request.htmx else page, **context)
 
-    # Prevent caches from serving an htmx fragment as a full page.
+    # Prevent caches from serving an HTMX fragment as a full page.
     response.headers["Vary"] = "HX-Request"
 
     return response
@@ -55,8 +55,6 @@ def component_catalog() -> Catalog:
     environment.globals["provider_label"] = provider_label
     environment.globals["component_stylesheet_url"] = build_component_stylesheet()
 
-    # Components and pages share one namespace. Passing the environment directly
-    # preserves its autoescaping and registered filters.
     catalog = Catalog(jinja_env=environment)
     catalog.add_folder(COMPONENTS_DIR)
     catalog.add_folder(PAGES_DIR)

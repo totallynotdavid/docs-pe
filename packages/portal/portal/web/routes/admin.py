@@ -25,11 +25,10 @@ async def admin_home(
     provisioning: NamedDependency[ProvisioningService],
 ) -> Response:
     await provisioning.require_site_admin(page_session.user.id)
-
     return Redirect("/admin/teams", status_code=303)
 
 
-async def _users_context(
+async def build_users_context(
     session: BrowserSession,
     provisioning: ProvisioningService,
     *,
@@ -48,8 +47,7 @@ async def admin_users_get(
     page_session: NamedDependency[BrowserSession],
     provisioning: NamedDependency[ProvisioningService],
 ) -> Response:
-    context = await _users_context(page_session, provisioning)
-
+    context = await build_users_context(page_session, provisioning)
     return render("SiteUsers", **context)
 
 
@@ -69,7 +67,10 @@ async def admin_users_post(
     data: Annotated[NewUserForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
 ) -> Response:
     session = await require_verified_session(
-        request, service, settings, data.csrf_token
+        request,
+        service,
+        settings,
+        data.csrf_token,
     )
 
     try:
@@ -79,14 +80,17 @@ async def admin_users_post(
             password=data.password,
         )
     except (PortalError, ValueError) as error:
-        context = await _users_context(session, provisioning, error=str(error))
-
+        context = await build_users_context(
+            session,
+            provisioning,
+            error=str(error),
+        )
         return render("SiteUsers", **context)
 
     return Redirect("/admin/users", status_code=303)
 
 
-async def _teams_context(
+async def build_teams_context(
     session: BrowserSession,
     provisioning: ProvisioningService,
     *,
@@ -107,8 +111,7 @@ async def admin_teams_get(
     page_session: NamedDependency[BrowserSession],
     provisioning: NamedDependency[ProvisioningService],
 ) -> Response:
-    context = await _teams_context(page_session, provisioning)
-
+    context = await build_teams_context(page_session, provisioning)
     return render("SiteTeams", **context)
 
 
@@ -129,7 +132,10 @@ async def admin_teams_post(
     data: Annotated[NewTeamForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
 ) -> Response:
     session = await require_verified_session(
-        request, service, settings, data.csrf_token
+        request,
+        service,
+        settings,
+        data.csrf_token,
     )
 
     try:
@@ -140,8 +146,11 @@ async def admin_teams_post(
             leader_email=data.leader_email,
         )
     except (PortalError, ValueError) as error:
-        context = await _teams_context(session, provisioning, error=str(error))
-
+        context = await build_teams_context(
+            session,
+            provisioning,
+            error=str(error),
+        )
         return render("SiteTeams", **context)
 
     return Redirect(f"/teams/{team.id}/settings", status_code=303)

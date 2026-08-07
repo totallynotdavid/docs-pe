@@ -29,6 +29,7 @@ async def search(
         q,
         page=current_page,
     )
+    team = await service.team(page_session.user.id, team_id)
 
     return render_hx(
         request,
@@ -36,7 +37,7 @@ async def search(
         "SearchResultsFragment",
         user=page_session.user,
         csrf_token=page_session.csrf_token,
-        team=await service.team(page_session.user.id, team_id),
+        team=team,
         query=q,
         results=results,
         page=current_page,
@@ -44,4 +45,7 @@ async def search(
     )
 
 
-router = Router(path="/teams/{team_id:uuid}", route_handlers=[search])
+router = Router(
+    path="/teams/{team_id:uuid}",
+    route_handlers=[search],
+)

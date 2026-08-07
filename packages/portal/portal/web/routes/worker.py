@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import secrets
 
@@ -95,7 +96,7 @@ async def worker_publish(
 ) -> dict[str, bool]:
     try:
         content = base64.b64decode(data.content, validate=True)
-    except ValueError as error:
+    except binascii.Error as error:
         raise HTTPException(status_code=400, detail="invalid worker result") from error
 
     team_id = await worker_jobs.item_team(data.item_id)
@@ -103,12 +104,13 @@ async def worker_publish(
     if team_id is None:
         raise HTTPException(status_code=404, detail="job not found")
 
+    object_id = uuid4()
     reference = ObjectReference(
-        id=uuid4(),
+        id=object_id,
         team_id=team_id,
         provider="portal-worker",
         container="results",
-        object_key=f"{data.item_id}/{uuid4()}",
+        object_key=f"{data.item_id}/{object_id}",
         sha256=hashlib.sha256(content).hexdigest(),
         size_bytes=len(content),
         content_type="application/json",

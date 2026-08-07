@@ -38,7 +38,8 @@ def provide_storage(state: State) -> ObjectStorage:
 
 
 def _deny_unless_same_origin(
-    connection: ASGIConnection, settings: PortalSettings
+    connection: ASGIConnection,
+    settings: PortalSettings,
 ) -> None:
     if not same_origin(
         origin=connection.headers.get("origin"),
@@ -48,8 +49,10 @@ def _deny_unless_same_origin(
         raise PermissionDeniedException(detail="origen no autorizado")
 
 
-def require_same_origin(connection: ASGIConnection, _: BaseRouteHandler) -> None:
-    """Guard for state-changing GET-free routes that carry no CSRF token to check."""
+def require_same_origin(
+    connection: ASGIConnection,
+    _: BaseRouteHandler,
+) -> None:
     _deny_unless_same_origin(connection, connection.app.state.settings)
 
 
@@ -85,13 +88,6 @@ async def require_verified_session(
     settings: PortalSettings,
     csrf_token: str,
 ) -> BrowserSession:
-    """Same-origin plus CSRF check, called explicitly by state-changing form posts.
-
-    Litestar parses each request body into a single typed ``data`` struct, so
-    the csrf token travels as a field on that struct rather than as its own
-    injected dependency; every form struct in routes/ carries a csrf_token
-    field for this reason.
-    """
     _deny_unless_same_origin(request, settings)
 
     return await service.verify_browser_csrf(

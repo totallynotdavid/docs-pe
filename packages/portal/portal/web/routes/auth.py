@@ -34,6 +34,7 @@ async def login_get(
         return Redirect("/", status_code=303)
 
     csrf_token = await service.issue_login_csrf()
+
     return render("Login", user=None, csrf_token=csrf_token, error=error)
 
 
@@ -47,17 +48,17 @@ async def login_post(
     if not await service.consume_login_csrf(data.csrf_token):
         raise PermissionDeniedException(detail="verificación CSRF no válida")
 
-    login = await service.login(
-        data.email,
-        data.password,
-        request.client.host if request.client else "desconocido",
-    )
+    client_host = request.client.host if request.client else "desconocido"
+
+    login = await service.login(data.email, data.password, client_host)
+
     if login is None:
         return Redirect("/login?error=1", status_code=303)
 
     _, token = login
+    current_token = request.cookies.get(settings.session_cookie)
 
-    await service.destroy_session(request.cookies.get(settings.session_cookie))
+    await service.destroy_session(current_token)
 
     response = Redirect("/", status_code=303)
     response.set_cookie(
@@ -68,6 +69,7 @@ async def login_post(
         httponly=True,
         samesite="lax",
     )
+
     return response
 
 
@@ -85,10 +87,12 @@ async def logout_post(
 ) -> Response:
     await require_verified_session(request, service, settings, data.csrf_token)
 
-    await service.destroy_session(request.cookies.get(settings.session_cookie))
+    current_token = request.cookies.get(settings.session_cookie)
+    await service.destroy_session(current_token)
 
     response = Redirect("/login", status_code=303)
     response.delete_cookie(settings.session_cookie, path="/")
+
     return response
 
 

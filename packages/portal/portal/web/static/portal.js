@@ -13,10 +13,10 @@ function setupAccountMenu() {
   }
 
   button.addEventListener("click", () => {
-    const open = menu.hidden;
+    const isOpen = menu.hidden;
 
-    menu.hidden = !open;
-    button.setAttribute("aria-expanded", String(open));
+    menu.hidden = !isOpen;
+    button.setAttribute("aria-expanded", String(isOpen));
   });
 
   document.addEventListener("click", (event) => {
@@ -70,19 +70,31 @@ function setupCsvDropzone() {
         detection.hidden = false;
         detection.textContent =
           "Detectamos RUC de personas naturales. “DNI y nombre” ya está seleccionado.";
-      } else if (/^20\d{9}$/.test(firstDocument)) {
+        return;
+      }
+
+      if (/^20\d{9}$/.test(firstDocument)) {
         detection.hidden = false;
         detection.textContent =
           "Detectamos RUC de empresa. Puedes elegir “Representantes legales”.";
-      } else if (/^\d{8}$/.test(firstDocument)) {
+        return;
+      }
+
+      if (/^\d{8}$/.test(firstDocument)) {
         detection.hidden = false;
         detection.textContent = "Detectamos DNI. Puedes elegir “Líneas móviles”.";
-      } else {
-        detection.hidden = true;
+        return;
       }
+
+      detection.hidden = true;
     };
 
     reader.readAsText(file.slice(0, 4096));
+  }
+
+  function updateSelectedFile(file) {
+    describe(file);
+    detectDocuments(file);
   }
 
   function selectFile(file) {
@@ -91,19 +103,15 @@ function setupCsvDropzone() {
     files.items.add(file);
     input.files = files.files;
 
-    describe(file);
-    detectDocuments(file);
+    updateSelectedFile(file);
   }
 
   input.addEventListener("change", () => {
     const file = input.files[0];
 
-    if (!file) {
-      return;
+    if (file) {
+      updateSelectedFile(file);
     }
-
-    describe(file);
-    detectDocuments(file);
   });
 
   for (const type of ["dragenter", "dragover"]) {
@@ -123,11 +131,9 @@ function setupCsvDropzone() {
   dropzone.addEventListener("drop", (event) => {
     const file = event.dataTransfer?.files[0];
 
-    if (!file) {
-      return;
+    if (file) {
+      selectFile(file);
     }
-
-    selectFile(file);
   });
 }
 

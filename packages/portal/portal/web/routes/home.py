@@ -19,6 +19,13 @@ from portal.web.deps import require_verified_session
 from portal.web.render import render, render_hx
 
 
+@dataclass
+class FirstTeamForm:
+    name: str
+    slug: str
+    csrf_token: str
+
+
 @get("/")
 async def dashboard(
     page_session: NamedDependency[BrowserSession],
@@ -58,23 +65,22 @@ async def first_team_get(
     )
 
 
-@dataclass
-class FirstTeamForm:
-    name: str
-    slug: str
-    csrf_token: str
-
-
 @post("/setup", status_code=200)
 async def first_team_post(
     request: HTMXRequest,
     service: NamedDependency[PortalService],
     settings: NamedDependency[PortalSettings],
     provisioning: NamedDependency[ProvisioningService],
-    data: Annotated[FirstTeamForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
+    data: Annotated[
+        FirstTeamForm,
+        Body(media_type=RequestEncodingType.URL_ENCODED),
+    ],
 ) -> Response:
     session = await require_verified_session(
-        request, service, settings, data.csrf_token
+        request,
+        service,
+        settings,
+        data.csrf_token,
     )
 
     try:

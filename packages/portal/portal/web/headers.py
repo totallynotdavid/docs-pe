@@ -27,7 +27,7 @@ CONTENT_SECURITY_POLICY = (
 
 
 class SecurityHeaders:
-    """Raw ASGI middleware so streaming responses and disconnect detection work."""
+    """Add security headers to HTTP responses."""
 
     def __init__(self, app: ASGIApp) -> None:
         self._app = app
@@ -37,22 +37,19 @@ class SecurityHeaders:
             await self._app(scope, receive, send)
             return
 
-        async def send_with_policy(message: Message) -> None:
+        async def send_with_security_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
                 MutableScopeHeaders.from_message(message)["content-security-policy"] = (
                     CONTENT_SECURITY_POLICY
                 )
+
             await send(message)
 
-        await self._app(scope, receive, send_with_policy)
+        await self._app(scope, receive, send_with_security_headers)
 
 
 class HTTPSRedirect:
-    """Raw ASGI middleware redirecting plain HTTP to HTTPS.
-
-    Only wired in when TLS is not already terminated upstream (see app.py),
-    so this only runs where the ASGI server itself faces plaintext traffic.
-    """
+    """Redirect plain HTTP requests to HTTPS."""
 
     def __init__(self, app: ASGIApp) -> None:
         self._app = app
@@ -65,6 +62,7 @@ class HTTPSRedirect:
         headers = MutableScopeHeaders(scope)
         host = headers.get("host", "")
         query_string = scope["query_string"].decode("latin-1")
+
         target = f"https://{host}{scope['path']}"
         if query_string:
             target = f"{target}?{query_string}"
@@ -79,5 +77,6 @@ class HTTPSRedirect:
             "body": b"",
             "more_body": False,
         }
+
         await send(start)
         await send(body)

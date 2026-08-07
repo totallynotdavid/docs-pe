@@ -51,23 +51,23 @@ def create_app(
 
         pool = await asyncpg.create_pool(settings.database_dsn)
 
-        auth_repository = PostgresAuthRepository(pool)
-        team_repository = PostgresTeamRepository(pool)
-        credential_repository = PostgresCredentialRepository(pool)
-        job_repository = PostgresJobRepository(pool)
+        auth_repo = PostgresAuthRepository(pool)
+        team_repo = PostgresTeamRepository(pool)
+        credential_repo = PostgresCredentialRepository(pool)
+        job_repo = PostgresJobRepository(pool)
 
         app.state.pool = pool
-        app.state.worker_queue = job_repository
+        app.state.worker_queue = job_repo
         app.state.service = PortalService(
-            auth_repository,
-            team_repository,
-            credential_repository,
-            job_repository,
+            auth_repo,
+            team_repo,
+            credential_repo,
+            job_repo,
         )
         app.state.provisioning = ProvisioningService(
-            auth_repository,
-            team_repository,
-            credential_repository,
+            auth_repo,
+            team_repo,
+            credential_repo,
             protector,
         )
         app.state.secret_protector = protector
@@ -78,19 +78,18 @@ def create_app(
         finally:
             await pool.close()
 
-    middleware: list[Middleware] = []
+    middleware: list[Middleware] = [SecurityHeaders]
 
     if settings.is_production:
         hostname = urlparse(settings.public_origin).hostname
         assert hostname, "validated by PortalSettings.validate()"
+
         allowed_hosts = AllowedHostsConfig(allowed_hosts=[hostname])
 
         if not settings.tls_terminated_upstream:
-            middleware.append(HTTPSRedirect)
+            middleware.insert(0, HTTPSRedirect)
     else:
         allowed_hosts = None
-
-    middleware.append(SecurityHeaders)
 
     return Litestar(
         route_handlers=[
