@@ -12,7 +12,7 @@ uv run --env-file .env fetch --input docs.csv --output out.csv --sites osiptel
 
 mise run format                           # ruff format + ruff check --fix
 mise run check                            # mypy across workspace
-mise run test                              # pytest all packages
+mise run test                             # pytest all packages
 mise run build                            # PyInstaller binary for fetch
 mise run dev                              # postgres + portal web (Ctrl+C stops everything)
 mise run reset                            # wipe local postgres; next `mise run dev` starts clean
