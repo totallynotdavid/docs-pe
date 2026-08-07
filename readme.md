@@ -1,15 +1,26 @@
-## Getting started
+# docs-pe
+
+[![ci](https://github.com/totallynotdavid/phone-numbers-by-carrier/actions/workflows/ci.yml/badge.svg)](https://github.com/totallynotdavid/phone-numbers-by-carrier/actions/workflows/ci.yml)
 
 Takes a CSV of Peruvian DNIs or RUCs and looks each one up on public government
 sites. Returns registered phone lines, taxpayer identity records, legal
 representatives, and carrier debt.
+
+## Getting started
 
 ```sh
 mise install                              # install toolchain
 mise run install                          # uv sync
 cp .env.example .env                      # then fill in proxy credentials
 uv run --env-file .env fetch --input docs.csv --output out.csv --sites osiptel
+```
 
+The `fetch`, `browser`, and `portal` packages need proxy credentials in `.env`;
+`capture` does not. See [docs/proxies.md](docs/proxies.md) for vendor setup.
+
+Other tasks, all from the repo root:
+
+```sh
 mise run format                           # ruff format + ruff check --fix
 mise run check                            # mypy across workspace
 mise run test                             # pytest all packages
@@ -17,9 +28,6 @@ mise run build                            # PyInstaller binary for fetch
 mise run dev                              # postgres + portal web (Ctrl+C stops everything)
 mise run reset                            # wipe local postgres; next `mise run dev` starts clean
 ```
-
-The `fetch`, `browser`, and `portal` packages need proxy credentials in `.env`;
-`capture` does not. See [docs/proxies.md](docs/proxies.md) for vendor setup.
 
 This is a
 [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/) with
