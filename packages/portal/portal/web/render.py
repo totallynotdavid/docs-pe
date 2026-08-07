@@ -48,6 +48,7 @@ def component_catalog() -> Catalog:
     environment.filters["role_name"] = _role_label
     environment.filters["notification"] = _notification_label
     environment.filters["credential_state"] = _credential_state_label
+    environment.filters["exclusion_reason"] = _exclusion_reason_label
 
     environment.globals["is_terminal"] = _is_terminal
     environment.globals["job_summary"] = _job_summary
@@ -95,7 +96,7 @@ def _role_label(role: TeamRole | None) -> str:
 
 
 def _job_summary(job: Job) -> str:
-    if job.terminal_reason == "todos_los_registros_excluidos":
+    if job.terminal_reason == "all_records_excluded":
         return "La tarea terminó sin registros válidos."
 
     return f"Tarea {job.filename}: {_state_label(job.state)}."
@@ -103,9 +104,9 @@ def _job_summary(job: Job) -> str:
 
 def _notification_label(event_type: str) -> str:
     return {
-        "proceso.completed": "Tarea completada",
-        "proceso.failed": "Tarea con error",
-        "proceso.cancelled": "Tarea cancelada",
+        "job.completed": "Tarea completada",
+        "job.failed": "Tarea con error",
+        "job.cancelled": "Tarea cancelada",
     }.get(event_type, "Actualización de tarea")
 
 
@@ -117,6 +118,14 @@ def _credential_state_label(state: CredentialState) -> str:
         CredentialState.FAILED: "No validada",
         CredentialState.RETIRED: "Retirada",
     }[state]
+
+
+def _exclusion_reason_label(reason: str) -> str:
+    return {
+        "invalid_document": "documento no válido",
+        "duplicate_document": "documento duplicado",
+        "no_compatible_source": "ninguna fuente elegida lo acepta",
+    }.get(reason, reason)
 
 
 _CATALOG = component_catalog()

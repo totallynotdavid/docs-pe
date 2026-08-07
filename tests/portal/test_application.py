@@ -127,14 +127,14 @@ async def test_all_excluded_input_is_terminal_and_creates_outbox_intents(
     # The job detail reads exclusions from persisted state.
     stored = await service.job(team.actor_id, team.team_id, job.id)
 
-    assert [excluded.reason for excluded in stored.exclusions] == ["documento_invalido"]
+    assert [excluded.reason for excluded in stored.exclusions] == ["invalid_document"]
 
     events = await pool.fetch(
         "SELECT event_type FROM portal_job_events WHERE job_id = $1",
         job.id,
     )
 
-    assert [row["event_type"] for row in events] == ["proceso.completed"]
+    assert [row["event_type"] for row in events] == ["job.completed"]
 
     channels = await pool.fetch(
         """

@@ -181,7 +181,7 @@ async def test_a_repeatedly_expired_item_retires_and_fails_its_job(
     )
 
     assert finished["state"] == "failed"
-    assert finished["terminal_reason"] == "sin_resultados"
+    assert finished["terminal_reason"] == "no_results"
 
 
 async def test_published_search_finds_a_dni_inside_a_ruc_and_paginates(

@@ -49,11 +49,10 @@ TERMINAL_JOB_STATES = frozenset(
 )
 PUBLISHED_ITEM_STATES = frozenset({ItemState.PUBLISHED})
 
-# Only terminal events appear in the notification feed.
 TERMINAL_JOB_EVENTS = (
-    "proceso.completed",
-    "proceso.failed",
-    "proceso.cancelled",
+    "job.completed",
+    "job.failed",
+    "job.cancelled",
 )
 
 MAX_ACTIVE_JOBS = 5
