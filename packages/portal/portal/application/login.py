@@ -176,7 +176,12 @@ class LoginService:
 
         user, password_hash = found
 
+        # Argon2id always runs, deactivated or not, so a disabled account
+        # can't be told apart from a wrong password by response time.
         if not verify_password(password, password_hash):
+            return None
+
+        if not user.is_active:
             return None
 
         return user

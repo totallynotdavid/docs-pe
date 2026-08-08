@@ -15,8 +15,8 @@ from portal.application.access import (
     AuthorizedService,
     public,
     site_admin,
+    site_admin_or_leader,
     site_admin_step_up,
-    team_leader,
 )
 from portal.credentials.secrets import EnvelopeProtector, encode_config
 from portal.domain.errors import (
@@ -241,10 +241,164 @@ class ProvisioningService(AuthorizedService):
         return await self._teams.users()
 
     @site_admin
+    async def user_detail(self, actor_id: UUID, user_id: UUID) -> PortalUser:
+        user = await self._auth.user_by_id(user_id)
+
+        if user is None:
+            raise NotFound(Reason.USER_NOT_FOUND)
+
+        return user
+
+    @site_admin
+    async def teams_for_user(
+        self,
+        actor_id: UUID,
+        user_id: UUID,
+    ) -> tuple[Team, ...]:
+        return await self._teams.teams_for_user_detail(user_id)
+
+    @site_admin
+    async def is_sole_active_admin(self, actor_id: UUID, user_id: UUID) -> bool:
+        """UI hint only: whether removing this person's admin standing would
+        need to be blocked. Not itself a guard; see _guard_account_removal
+        and portal_installation_must_have_admin for the real enforcement.
+        """
+        user = await self._auth.user_by_id(user_id)
+
+        if user is None or not user.is_site_admin or not user.is_active:
+            return False
+
+        return await self._auth.count_active_site_admins() <= 1
+
+    @site_admin_step_up()
+    async def deactivate_user(
+        self,
+        actor_id: UUID,
+        *,
+        user_id: UUID,
+        mfa_verified_at: datetime | None,
+        trace: RequestTrace,
+    ) -> PortalUser:
+        await self._guard_account_removal(actor_id, user_id)
+
+        user = await self._auth.deactivate(user_id, actor_id)
+
+        await self._record(AuditAction.USER_DEACTIVATED, actor_id, trace, user=user_id)
+
+        return user
+
+    @site_admin_step_up()
+    async def reactivate_user(
+        self,
+        actor_id: UUID,
+        *,
+        user_id: UUID,
+        mfa_verified_at: datetime | None,
+        trace: RequestTrace,
+    ) -> PortalUser:
+        user = await self._auth.reactivate(user_id)
+
+        await self._record(AuditAction.USER_REACTIVATED, actor_id, trace, user=user_id)
+
+        return user
+
+    @site_admin_step_up()
+    async def delete_user(
+        self,
+        actor_id: UUID,
+        *,
+        user_id: UUID,
+        mfa_verified_at: datetime | None,
+        trace: RequestTrace,
+    ) -> None:
+        await self._guard_account_removal(actor_id, user_id)
+
+        if not await self._auth.delete_if_unused(user_id):
+            raise ProvisioningError(Reason.USER_HAS_HISTORY)
+
+        await self._record(AuditAction.USER_DELETED, actor_id, trace, user=user_id)
+
+    @site_admin_step_up()
+    async def promote_to_site_admin(
+        self,
+        actor_id: UUID,
+        *,
+        user_id: UUID,
+        mfa_verified_at: datetime | None,
+        trace: RequestTrace,
+    ) -> MfaEnrollment | None:
+        """Promotes and enrolls a second factor in one step.
+
+        portal_site_admin_requires_mfa means is_site_admin can only become
+        true alongside mfa_enabled, so this reuses _enroll_mfa (the same path
+        bootstrap uses) rather than a bare UPDATE. Returns the enrollment
+        (shown once, like bootstrap's) only when a new one was created.
+        """
+        user = await self._auth.user_by_id(user_id)
+
+        if user is None:
+            raise NotFound(Reason.USER_NOT_FOUND)
+
+        if user.is_site_admin:
+            return None
+
+        enrollment = await self._enroll_mfa(user, promote_to_site_admin=True)
+
+        await self._record(AuditAction.USER_PROMOTED, actor_id, trace, user=user_id)
+
+        return enrollment
+
+    @site_admin_step_up()
+    async def demote_site_admin(
+        self,
+        actor_id: UUID,
+        *,
+        user_id: UUID,
+        mfa_verified_at: datetime | None,
+        trace: RequestTrace,
+    ) -> PortalUser:
+        if user_id == actor_id:
+            raise ProvisioningError(Reason.USER_CANNOT_DEACTIVATE_SELF)
+
+        # No app-level "last admin" pre-check here: the actor must itself be
+        # an active site admin (site_admin_step_up) and can't target itself
+        # (just above), so a different, active admin target always leaves at
+        # least the actor standing. portal_installation_must_have_admin is
+        # the real backstop, for the concurrent-request case this can't
+        # reason about.
+        user = await self._auth.demote(user_id)
+
+        await self._record(AuditAction.USER_DEMOTED, actor_id, trace, user=user_id)
+
+        return user
+
+    @site_admin_step_up()
+    async def reset_password(
+        self,
+        actor_id: UUID,
+        *,
+        user_id: UUID,
+        password: str,
+        mfa_verified_at: datetime | None,
+        trace: RequestTrace,
+    ) -> None:
+        if len(password) < _MIN_PASSWORD:
+            raise ProvisioningError(Reason.PASSWORD_TOO_SHORT, minimum=_MIN_PASSWORD)
+
+        await self._auth.set_password(user_id, hash_password(password))
+
+        await self._record(
+            AuditAction.USER_PASSWORD_RESET,
+            actor_id,
+            trace,
+            user=user_id,
+        )
+
+    @site_admin
     async def teams(self, actor_id: UUID) -> tuple[Team, ...]:
         return await self._teams.all_teams()
 
-    @team_leader()
+    @site_admin_or_leader()
     async def invite_or_add_member(
         self,
         actor_id: UUID,
@@ -270,7 +424,7 @@ class ProvisioningService(AuthorizedService):
             role=role.value,
         )
 
-    @team_leader()
+    @site_admin_or_leader()
     async def remove_member(
         self,
         actor_id: UUID,
@@ -291,7 +445,7 @@ class ProvisioningService(AuthorizedService):
             user=member.id,
         )
 
-    @team_leader()
+    @site_admin_or_leader()
     async def members(
         self,
         actor_id: UUID,
@@ -299,7 +453,7 @@ class ProvisioningService(AuthorizedService):
     ) -> tuple[tuple[PortalUser, TeamRole], ...]:
         return await self._teams.members_for_team(team_id)
 
-    @team_leader()
+    @site_admin_or_leader()
     async def member_candidates(
         self,
         actor_id: UUID,
@@ -307,7 +461,7 @@ class ProvisioningService(AuthorizedService):
     ) -> tuple[PortalUser, ...]:
         return await self._teams.users()
 
-    @team_leader()
+    @site_admin_or_leader()
     async def team_readiness(
         self,
         actor_id: UUID,
@@ -324,7 +478,7 @@ class ProvisioningService(AuthorizedService):
             next_step=("submit_job" if has_active_credential else "configure_proxy"),
         )
 
-    @team_leader()
+    @site_admin_or_leader()
     async def configure_proxy(
         self,
         actor_id: UUID,
@@ -452,7 +606,7 @@ class ProvisioningService(AuthorizedService):
     async def _require_site_admin(self, actor_id: UUID) -> PortalUser:
         user = await self._auth.user_by_id(actor_id)
 
-        if user is None or not user.is_site_admin:
+        if user is None or not user.is_site_admin or not user.is_active:
             raise PermissionDenied(Reason.SITE_ADMIN_REQUIRED)
 
         return user
@@ -462,6 +616,48 @@ class ProvisioningService(AuthorizedService):
 
         if role is not TeamRole.TEAM_LEADER:
             raise PermissionDenied(Reason.LEADER_REQUIRED)
+
+    async def _require_leader_or_site_admin(
+        self, actor_id: UUID, team_id: UUID
+    ) -> None:
+        actor = await self._auth.user_by_id(actor_id)
+
+        if actor is not None and actor.is_site_admin and actor.is_active:
+            return
+
+        await self._require_leader(actor_id, team_id)
+
+    async def _guard_account_removal(
+        self,
+        actor_id: UUID,
+        user_id: UUID,
+    ) -> PortalUser:
+        """Shared precondition for deactivate_user and delete_user: never act
+        on your own account, never strip a team of its last leader.
+
+        No app-level "last site admin" check: the actor must itself be an
+        active site admin (site_admin_step_up) and can't target itself (just
+        above), so a different, active admin target always leaves at least
+        the actor standing. portal_installation_must_have_admin is the real
+        backstop, for the concurrent-request case this can't reason about.
+        """
+        if user_id == actor_id:
+            raise ProvisioningError(Reason.USER_CANNOT_DEACTIVATE_SELF)
+
+        target = await self._auth.user_by_id(user_id)
+
+        if target is None:
+            raise NotFound(Reason.USER_NOT_FOUND)
+
+        sole_leader_of = await self._teams.teams_where_sole_leader(user_id)
+
+        if sole_leader_of:
+            raise ProvisioningError(
+                Reason.USER_LAST_LEADER,
+                teams=", ".join(team.name for team in sole_leader_of),
+            )
+
+        return target
 
     async def _user_by_email(self, email: str) -> PortalUser:
         found = await self._auth.user_by_email(self._email(email))

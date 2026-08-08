@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 from uuid import UUID
 
 from litestar import Response, Router, get, post
@@ -17,8 +17,12 @@ from portal.domain.errors import PortalError
 from portal.domain.models import BrowserSession, RequestTrace, TeamRole
 from portal.messages import message_for, provider_names
 from portal.settings import PortalSettings
-from portal.web.deps import require_verified_session
+from portal.web.deps import is_search_only, require_verified_session
 from portal.web.render import render, render_hx
+
+
+if TYPE_CHECKING:
+    from portal.domain.models import CredentialVersion
 
 
 @get("")
@@ -36,6 +40,10 @@ async def team_page(
         team_id,
         page=current_page,
     )
+    minimal = is_search_only(
+        page_session.user,
+        await service.teams(page_session.user.id),
+    )
 
     return render_hx(
         request,
@@ -47,6 +55,7 @@ async def team_page(
         jobs=jobs,
         total=total,
         page=current_page,
+        minimal=minimal,
     )
 
 
@@ -66,6 +75,21 @@ async def team_settings_overview(
         csrf_token=page_session.csrf_token,
         team=team,
         readiness=readiness,
+    )
+
+
+@get("/settings/search-activity")
+async def team_search_activity_get(
+    page_session: NamedDependency[BrowserSession],
+    service: NamedDependency[PortalService],
+    team_id: FromPath[UUID],
+) -> Response:
+    return render(
+        "TeamSearchActivity",
+        user=page_session.user,
+        csrf_token=page_session.csrf_token,
+        team=await service.team(page_session.user.id, team_id),
+        entries=await service.recent_searches(page_session.user.id, team_id),
     )
 
 
@@ -185,6 +209,20 @@ async def team_members_remove(
     return Redirect(f"/teams/{team_id}/settings/members", status_code=303)
 
 
+def _latest_per_connection(
+    credentials: tuple[CredentialVersion, ...],
+) -> list[CredentialVersion]:
+    """One row per connection, its newest version. credentials_for_team is
+    already ordered label, version DESC, so the first row seen per
+    credential_id is that connection's current one."""
+    latest: dict[UUID, CredentialVersion] = {}
+
+    for credential in credentials:
+        latest.setdefault(credential.credential_id, credential)
+
+    return list(latest.values())
+
+
 async def _proxy_context(
     session: BrowserSession,
     service: PortalService,
@@ -192,21 +230,27 @@ async def _proxy_context(
     team_id: UUID,
     *,
     provider: str,
+    show_form: bool,
     error: str = "",
 ) -> dict[str, object]:
     team = await service.team(session.user.id, team_id)
     credentials = await service.credentials(session.user.id, team_id)
     readiness = await provisioning.team_readiness(session.user.id, team_id)
+    connections = _latest_per_connection(credentials)
 
     return {
         "user": session.user,
         "csrf_token": session.csrf_token,
         "team": team,
-        "credentials": credentials,
+        "connections": connections,
         "readiness": readiness,
         "provider": provider,
         "providers": provider_names(),
         "fields": ProvisioningService.provider_fields(provider),
+        # Progressive disclosure: a team with connections already sees the
+        # list first: the form is a deliberate "+ Add" action, not something
+        # to fill in on every visit. A team with none goes straight to it.
+        "show_form": show_form or not connections,
         "error": error,
     }
 
@@ -218,6 +262,7 @@ async def proxy_settings_get(
     provisioning: NamedDependency[ProvisioningService],
     team_id: FromPath[UUID],
     provider: FromQuery[str] = "geonode",
+    add: FromQuery[bool] = False,
 ) -> Response:
     context = await _proxy_context(
         page_session,
@@ -225,6 +270,7 @@ async def proxy_settings_get(
         provisioning,
         team_id,
         provider=provider,
+        show_form=add,
     )
 
     return render("ProxySettings", **context)
@@ -271,6 +317,55 @@ async def proxy_settings_post(
             provisioning,
             team_id,
             provider=provider,
+            show_form=True,
+            error=message_for(error),
+        )
+
+        return render("ProxySettings", **context)
+
+    return Redirect(f"/teams/{team_id}/settings/proxy", status_code=303)
+
+
+@dataclass
+class RenameCredentialForm:
+    label: str
+    csrf_token: str
+
+
+@post("/settings/proxy/{credential_id:uuid}/rename", status_code=200)
+async def proxy_credential_rename(
+    request: HTMXRequest,
+    service: NamedDependency[PortalService],
+    settings: NamedDependency[PortalSettings],
+    provisioning: NamedDependency[ProvisioningService],
+    team_id: FromPath[UUID],
+    credential_id: FromPath[UUID],
+    data: Annotated[
+        RenameCredentialForm,
+        Body(media_type=RequestEncodingType.URL_ENCODED),
+    ],
+) -> Response:
+    session = await require_verified_session(
+        request,
+        settings,
+        data.csrf_token,
+    )
+
+    try:
+        await service.rename_credential(
+            session.user.id,
+            team_id,
+            credential_id,
+            data.label,
+        )
+    except PortalError as error:
+        context = await _proxy_context(
+            session,
+            service,
+            provisioning,
+            team_id,
+            provider="geonode",
+            show_form=False,
             error=message_for(error),
         )
 
@@ -284,10 +379,12 @@ router = Router(
     route_handlers=[
         team_page,
         team_settings_overview,
+        team_search_activity_get,
         team_members_get,
         team_members_post,
         team_members_remove,
         proxy_settings_get,
         proxy_settings_post,
+        proxy_credential_rename,
     ],
 )

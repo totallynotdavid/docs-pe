@@ -80,10 +80,14 @@ section-order = [
   "typing-only-third-party-import",
   "typing-only-standard-library-import",
   "raise-vanilla-args",
+  # Route handlers are always called by Litestar's dependency injection, by
+  # keyword, never positionally, so a bool query param with a default isn't
+  # the ambiguous call site this rule is meant to catch.
+  "boolean-default-value-positional-argument",
 ]
 
 [[tool.mypy.overrides]]
-module = ["asyncpg", "fetch.*"]
+module = ["asyncpg", "fetch.*", "psutil"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

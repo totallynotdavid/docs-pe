@@ -24,7 +24,9 @@ from portal.repository.audit import PostgresAuditLog
 from portal.repository.auth import PostgresAuthRepository
 from portal.repository.credentials import PostgresCredentialRepository
 from portal.repository.jobs import PostgresJobRepository
+from portal.repository.search_log import PostgresSearchLogRepository
 from portal.repository.teams import PostgresTeamRepository
+from portal.repository.workers import PostgresWorkerRegistry
 from portal.settings import PortalSettings
 from portal.storage.files import FileObjectStorage
 from portal.turnstile import open_human_check
@@ -81,6 +83,8 @@ def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
             PostgresTeamRepository(pool),
             PostgresCredentialRepository(pool),
             PostgresJobRepository(pool),
+            PostgresSearchLogRepository(pool),
+            PostgresWorkerRegistry(pool),
         )
         app.state.provisioning = ProvisioningService(
             auth_repo,

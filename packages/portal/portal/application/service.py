@@ -8,16 +8,25 @@ from uuid import uuid4
 from portal.application.access import (
     AuthorizedService,
     public,
+    site_admin,
+    site_admin_or_leader,
+    site_admin_or_reader,
     team_leader,
     team_reader,
 )
-from portal.domain.errors import NotFound, PermissionDenied, Reason
+from portal.domain.errors import (
+    CredentialConfigurationError,
+    NotFound,
+    PermissionDenied,
+    Reason,
+)
 from portal.domain.models import (
     TERMINAL_JOB_EVENTS,
     CredentialState,
     InputLine,
     SearchResult,
     SubmitJob,
+    SystemHealth,
     Team,
     TeamRole,
 )
@@ -32,10 +41,14 @@ if TYPE_CHECKING:
         CredentialVersion,
         Job,
         JobEvent,
+        SearchLogEntry,
+        TeamSearchActivity,
     )
     from portal.repository.credentials import PostgresCredentialRepository
     from portal.repository.jobs import PostgresJobRepository
+    from portal.repository.search_log import PostgresSearchLogRepository
     from portal.repository.teams import PostgresTeamRepository
+    from portal.repository.workers import PostgresWorkerRegistry
     from portal.storage.port import ObjectStorage
 
 
@@ -47,10 +60,14 @@ class PortalService(AuthorizedService):
         teams: PostgresTeamRepository,
         credentials: PostgresCredentialRepository,
         jobs: PostgresJobRepository,
+        search_log: PostgresSearchLogRepository,
+        workers: PostgresWorkerRegistry,
     ) -> None:
         self._teams = teams
         self._credentials = credentials
         self._jobs = jobs
+        self._search_log = search_log
+        self._workers = workers
 
     @team_leader(
         actor_id=lambda a: a["command"].actor_id,
@@ -90,13 +107,13 @@ class PortalService(AuthorizedService):
     async def teams(self, actor_id: UUID) -> tuple[Team, ...]:
         return await self._teams.teams_for_user(actor_id)
 
-    @team_reader()
+    @site_admin_or_reader()
     async def team(
         self,
         actor_id: UUID,
         team_id: UUID,
     ) -> Team:
-        role = await self._require_reader(actor_id, team_id)
+        role = await self._teams.role_for(actor_id, team_id)
         team = await self._teams.team(team_id)
 
         if team is None:
@@ -104,7 +121,7 @@ class PortalService(AuthorizedService):
 
         return Team(team.id, team.slug, team.name, role)
 
-    @team_reader()
+    @site_admin_or_reader()
     async def jobs(
         self,
         actor_id: UUID,
@@ -164,11 +181,39 @@ class PortalService(AuthorizedService):
         if not needle:
             return (), False
 
-        return await self._jobs.search_published(
+        results, has_more = await self._jobs.search_published(
             team_id,
             needle,
             limit=page_size,
             offset=(page - 1) * page_size,
+        )
+
+        # Logged on every page, not just the first: page 2 of a scan is still
+        # a search someone ran, and a leader scanning activity wants the
+        # real count of lookups, not just distinct queries.
+        await self._search_log.record(team_id, actor_id, needle, len(results))
+
+        return results, has_more
+
+    @site_admin_or_leader()
+    async def recent_searches(
+        self,
+        actor_id: UUID,
+        team_id: UUID,
+    ) -> tuple[SearchLogEntry, ...]:
+        return await self._search_log.recent_for_team(team_id)
+
+    @site_admin
+    async def team_search_activity(
+        self, actor_id: UUID
+    ) -> tuple[TeamSearchActivity, ...]:
+        return await self._search_log.team_totals()
+
+    @site_admin
+    async def system_health(self, actor_id: UUID) -> SystemHealth:
+        return SystemHealth(
+            queue=await self._jobs.queue_health(),
+            workers=await self._workers.all_workers_with_status(),
         )
 
     @public
@@ -176,10 +221,16 @@ class PortalService(AuthorizedService):
         self,
         actor_id: UUID,
     ) -> tuple[JobEvent, ...]:
-        teams = await self.teams(actor_id)
+        # A site admin isn't necessarily a member of any team, so their own
+        # memberships would leave this feed empty even though they're meant
+        # to see activity across the whole installation.
+        if await self._teams.is_site_admin(actor_id):
+            team_ids = tuple(team.id for team in await self._teams.all_teams())
+        else:
+            team_ids = tuple(team.id for team in await self.teams(actor_id))
 
         return await self._jobs.recent_job_events(
-            tuple(team.id for team in teams),
+            team_ids,
             TERMINAL_JOB_EVENTS,
             limit=100,
         )
@@ -229,13 +280,32 @@ class PortalService(AuthorizedService):
             )
         )
 
-    @team_leader()
+    @site_admin_or_leader()
     async def credentials(
         self,
         actor_id: UUID,
         team_id: UUID,
     ) -> tuple[CredentialVersion, ...]:
         return await self._credentials.credentials_for_team(team_id)
+
+    @site_admin_or_leader()
+    async def rename_credential(
+        self,
+        actor_id: UUID,
+        team_id: UUID,
+        credential_id: UUID,
+        label: str,
+    ) -> None:
+        clean = label.strip()
+
+        if not 1 <= len(clean) <= 120:
+            raise CredentialConfigurationError(Reason.LABEL_LENGTH)
+
+        await self._credentials.rename_credential(credential_id, team_id, clean)
+
+    async def _require_site_admin(self, actor_id: UUID) -> None:
+        if not await self._teams.is_site_admin(actor_id):
+            raise PermissionDenied(Reason.SITE_ADMIN_REQUIRED)
 
     async def _require_reader(
         self,
@@ -260,6 +330,26 @@ class PortalService(AuthorizedService):
             raise PermissionDenied(Reason.LEADER_REQUIRED)
 
         return role
+
+    async def _require_reader_or_site_admin(
+        self,
+        actor_id: UUID,
+        team_id: UUID,
+    ) -> None:
+        if await self._teams.is_site_admin(actor_id):
+            return
+
+        await self._require_reader(actor_id, team_id)
+
+    async def _require_leader_or_site_admin(
+        self,
+        actor_id: UUID,
+        team_id: UUID,
+    ) -> None:
+        if await self._teams.is_site_admin(actor_id):
+            return
+
+        await self._require_leader(actor_id, team_id)
 
     async def _require_active_credential(
         self,

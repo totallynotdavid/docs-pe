@@ -33,6 +33,18 @@
             Gestionar
           </ActionButton>
         </ListItem>
+        <ListItem>
+          <div>
+            <a href="/teams/{{ team.id }}/settings/search-activity">Actividad de búsqueda</a>
+            <MetaText>
+              Quién ha buscado, y cuánto.
+            </MetaText>
+          </div>
+          <ActionButton variant="secondary"
+                        :href="'/teams/' ~ team.id ~ '/settings/search-activity'">
+            Ver
+          </ActionButton>
+        </ListItem>
       </List>
     </Panel>
   </MainContent>

@@ -18,6 +18,7 @@ def user_row(row: Record) -> PortalUser:
         email=row["email"],
         is_site_admin=bool(row["is_site_admin"]),
         mfa_enabled=bool(row["mfa_enabled"]),
+        is_active=bool(row["is_active"]),
     )
 
 

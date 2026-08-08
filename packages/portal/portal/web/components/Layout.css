@@ -98,6 +98,13 @@ p {
   min-height: 100dvh;
 }
 
+/* No management nav to reserve a column for: the top strip carries only the
+   brand and account menu, and content runs full width underneath it. */
+.app-shell--minimal {
+  display: block;
+  min-height: 100dvh;
+}
+
 .workspace {
   min-width: 0;
 }

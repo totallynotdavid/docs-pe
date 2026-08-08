@@ -20,6 +20,12 @@ CREATE TABLE portal_users (
     password_hash text NOT NULL,
     is_site_admin boolean NOT NULL DEFAULT false,
 
+    -- A deactivated account keeps every row it ever created (teams, jobs,
+    -- credentials) intact; only login and role guards look at this.
+    is_active boolean NOT NULL DEFAULT true,
+    deactivated_at timestamptz,
+    deactivated_by uuid REFERENCES portal_users(id),
+
     mfa_secret_ciphertext bytea,
     mfa_secret_wrapped_data_key bytea,
     mfa_secret_master_key_version text,
@@ -38,7 +44,9 @@ CREATE TABLE portal_users (
 
     -- An administrator with a password and nothing else is one phished
     -- credential away from owning the installation.
-    CONSTRAINT portal_site_admin_requires_mfa CHECK (NOT is_site_admin OR mfa_enabled)
+    CONSTRAINT portal_site_admin_requires_mfa CHECK (NOT is_site_admin OR mfa_enabled),
+
+    CONSTRAINT portal_user_active_consistent CHECK (is_active = (deactivated_at IS NULL))
 );
 
 -- Single-use, hashed at rest. Codes carry 128 bits of randomness, so SHA-256 is
@@ -312,6 +320,36 @@ CREATE TRIGGER portal_installation_state_set_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION portal_set_updated_at();
 
+-- Mirrors portal_require_team_leader: deactivating or demoting the last site
+-- administrator would leave nobody able to administer the installation.
+-- portal_installation_state's singleton row is locked as the mutex, the same
+-- role the team row plays for portal_require_team_leader, since there is no
+-- natural parent row for a site-wide invariant over portal_users itself.
+CREATE OR REPLACE FUNCTION portal_require_site_admin()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    PERFORM 1 FROM portal_installation_state WHERE singleton = true FOR UPDATE;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM portal_users WHERE is_site_admin AND is_active
+    ) THEN
+        RAISE EXCEPTION 'the installation must retain at least one active site administrator'
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER portal_installation_must_have_admin
+    AFTER UPDATE OF is_site_admin, is_active
+    ON portal_users
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW
+    EXECUTE FUNCTION portal_require_site_admin();
+
 CREATE TABLE portal_queue_control (
     singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
 
@@ -528,6 +566,21 @@ CREATE TABLE portal_job_events (
 CREATE INDEX portal_job_events_job_idx
     ON portal_job_events (job_id, sequence);
 
+-- Append-only, like portal_job_events: nothing ever mutates a past search, so
+-- there is no update/delete trigger to write. This is what "usage/traffic"
+-- visibility for team leads and admins reads from.
+CREATE TABLE portal_search_log (
+    id uuid PRIMARY KEY,
+    team_id uuid NOT NULL REFERENCES portal_teams(id) ON DELETE CASCADE,
+    actor_id uuid NOT NULL REFERENCES portal_users(id),
+    query text NOT NULL CHECK (length(trim(query)) > 0),
+    result_count integer NOT NULL CHECK (result_count >= 0),
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX portal_search_log_team_idx
+    ON portal_search_log (team_id, created_at DESC);
+
 CREATE TABLE portal_notification_outbox (
     id uuid PRIMARY KEY,
     event_id uuid NOT NULL
@@ -572,7 +625,14 @@ CREATE TABLE portal_workers (
     credential_hash text NOT NULL CHECK (credential_hash ~ '^[0-9a-f]{64}$'),
     tailscale_hostname text NOT NULL CHECK (length(trim(tailscale_hostname)) > 0),
     created_at timestamptz NOT NULL DEFAULT now(),
-    revoked_at timestamptz
+    revoked_at timestamptz,
+
+    -- Current-state only, overwritten on every heartbeat. No history table:
+    -- the ask is "is the fleet healthy right now," not a metrics time series.
+    last_seen_at timestamptz,
+    cpu_percent real CHECK (cpu_percent IS NULL OR cpu_percent >= 0),
+    memory_mb real CHECK (memory_mb IS NULL OR memory_mb >= 0),
+    current_job_id uuid REFERENCES portal_jobs(id) ON DELETE SET NULL
 );
 
 CREATE TABLE portal_audit_log (

@@ -18,6 +18,7 @@ from portal.domain.models import (
     JobItem,
     JobState,
     ProtectedSecret,
+    QueueHealth,
     SearchResult,
     SubmissionPlan,
     SubmitJob,
@@ -446,6 +447,21 @@ class PostgresJobRepository:
             )
 
         return tuple(self._job(row) for row in rows)
+
+    async def queue_health(self) -> QueueHealth:
+        async with self._pool.acquire() as connection:
+            active = int(await connection.fetchval(_ACTIVE_COUNT))
+            queued = int(
+                await connection.fetchval(
+                    "SELECT count(*) FROM portal_jobs WHERE state = 'queued'"
+                )
+            )
+
+        return QueueHealth(
+            active_jobs=active,
+            max_active_jobs=MAX_ACTIVE_JOBS,
+            queued_jobs=queued,
+        )
 
     async def add_object_reference(self, reference: ObjectReference) -> None:
         async with self._pool.acquire() as connection:

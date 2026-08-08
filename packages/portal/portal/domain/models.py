@@ -74,6 +74,12 @@ class AuditAction(StrEnum):
     STEP_UP_FAILED = "auth.step_up_failed"
 
     USER_CREATED = "admin.user_created"
+    USER_DEACTIVATED = "admin.user_deactivated"
+    USER_REACTIVATED = "admin.user_reactivated"
+    USER_DELETED = "admin.user_deleted"
+    USER_PROMOTED = "admin.user_promoted"
+    USER_DEMOTED = "admin.user_demoted"
+    USER_PASSWORD_RESET = "admin.user_password_reset"
     TEAM_CREATED = "admin.team_created"
     MEMBER_ADDED = "team.member_added"
     MEMBER_REMOVED = "team.member_removed"
@@ -129,6 +135,7 @@ class PortalUser:
     email: str
     is_site_admin: bool = False
     mfa_enabled: bool = False
+    is_active: bool = True
 
 
 @dataclass(frozen=True)
@@ -165,6 +172,7 @@ class Team:
 class CredentialVersion:
     id: UUID
     team_id: UUID
+    credential_id: UUID
     label: str
     version: int
     is_active: bool = True
@@ -295,3 +303,44 @@ class SearchResult:
     job_id: UUID
     filename: str
     document: str
+
+
+@dataclass(frozen=True)
+class SearchLogEntry:
+    id: UUID
+    query: str
+    result_count: int
+    actor_email: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class TeamSearchActivity:
+    team_id: UUID
+    team_name: str
+    search_count: int
+    last_searched_at: datetime | None
+
+
+@dataclass(frozen=True)
+class WorkerStatus:
+    worker_id: str
+    tailscale_hostname: str
+    online: bool
+    last_seen_at: datetime | None
+    cpu_percent: float | None
+    memory_mb: float | None
+    current_job_id: UUID | None
+
+
+@dataclass(frozen=True)
+class QueueHealth:
+    active_jobs: int
+    max_active_jobs: int
+    queued_jobs: int
+
+
+@dataclass(frozen=True)
+class SystemHealth:
+    queue: QueueHealth
+    workers: tuple[WorkerStatus, ...]

@@ -15,7 +15,7 @@ from portal.application.service import PortalService
 from portal.domain.errors import PortalError
 from portal.domain.models import BrowserSession, RequestTrace
 from portal.settings import PortalSettings
-from portal.web.deps import require_verified_session
+from portal.web.deps import is_search_only, require_verified_session
 from portal.web.render import render, render_hx
 
 
@@ -38,11 +38,20 @@ async def dashboard(
         if status.can_create_first_team:
             return Redirect("/setup", status_code=303)
 
+    teams = await service.teams(page_session.user.id)
+    minimal = is_search_only(page_session.user, teams)
+
+    # A search-only session has one goal. With a single team there is no
+    # choice to present, so skip straight past the team list to it.
+    if minimal and len(teams) == 1:
+        return Redirect(f"/teams/{teams[0].id}/search", status_code=303)
+
     return render(
         "Dashboard",
         user=page_session.user,
         csrf_token=page_session.csrf_token,
-        teams=await service.teams(page_session.user.id),
+        teams=teams,
+        minimal=minimal,
     )
 
 

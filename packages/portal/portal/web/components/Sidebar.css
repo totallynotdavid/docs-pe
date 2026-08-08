@@ -150,3 +150,24 @@
     display: none;
   }
 }
+
+/* A search-only session gets a slim top strip instead of a nav column:
+   brand and account menu, nothing to manage. */
+.sidebar--minimal {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  border-right: 0;
+  flex-direction: row;
+  padding: 10px 14px;
+}
+
+.sidebar--minimal .sidebar__brand {
+  margin: 0;
+}
+
+.sidebar--minimal .sidebar__account {
+  border-top: 0;
+  margin-left: auto;
+  margin-top: 0;
+  padding: 0;
+}
