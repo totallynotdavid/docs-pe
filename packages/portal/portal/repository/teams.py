@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 from portal.domain.errors import ProvisioningError, Reason
 from portal.domain.models import PortalUser, Team, TeamRole
-from portal.repository.shared import lock_team_row, user_row
+from portal.repository.shared import has_passkey_sql, lock_team_row, user_row
 
 
 if TYPE_CHECKING:
@@ -78,8 +78,9 @@ class PostgresTeamRepository:
     async def users(self) -> tuple[PortalUser, ...]:
         async with self._pool.acquire() as connection:
             rows = await connection.fetch(
-                """
-                SELECT id, email, is_site_admin, is_active, mfa_enabled
+                f"""
+                SELECT id, email, is_site_admin, is_active, mfa_enabled,
+                       pending_site_admin, {has_passkey_sql()}
                   FROM portal_users
                  ORDER BY email
                 """
@@ -321,12 +322,14 @@ class PostgresTeamRepository:
     ) -> tuple[tuple[PortalUser, TeamRole], ...]:
         async with self._pool.acquire() as connection:
             rows = await connection.fetch(
-                """
+                f"""
                 SELECT user_account.id,
                        user_account.email,
                        user_account.is_site_admin,
                        user_account.is_active,
                        user_account.mfa_enabled,
+                       user_account.pending_site_admin,
+                       {has_passkey_sql("user_account")},
                        membership.role
                   FROM portal_team_memberships AS membership
                   JOIN portal_users AS user_account

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
+
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, Any
 
 from litestar import Request, Response, get, post
 from litestar.di import NamedDependency
@@ -14,6 +16,7 @@ from portal.application.login import (
     LoginService,
     MfaAttempt,
     MfaChallengeIssued,
+    PasskeyLoginAttempt,
     SessionIssued,
 )
 from portal.domain.models import BrowserSession, RequestTrace
@@ -33,6 +36,12 @@ class LoginForm:
 @dataclass
 class MfaForm:
     code: str
+
+
+@dataclass
+class PasskeyLoginForm:
+    login_token: str
+    response: dict[str, Any]
 
 
 @dataclass
@@ -87,7 +96,7 @@ async def login_post(
     # extends the lifetime of the cookie it replaced.
     await login.logout(request.cookies.get(settings.session_cookie), trace)
 
-    return _signed_in(outcome.cookie_token, settings)
+    return _signed_in(outcome, settings)
 
 
 @get("/login/mfa")
@@ -124,7 +133,58 @@ async def login_mfa_post(
         # guess. That bounds guesses at one per password verification.
         return _signed_out("/login?error=1", settings)
 
-    return _signed_in(outcome.cookie_token, settings)
+    return _signed_in(outcome, settings)
+
+
+@post("/login/passkey/options", guards=[require_same_origin], status_code=200)
+async def login_passkey_options_post(
+    request: Request,
+    login: NamedDependency[LoginService],
+    settings: NamedDependency[PortalSettings],
+) -> Response:
+    """Called from /login (no pending_mfa cookie: discoverable/passwordless)
+    or from /login/mfa (cookie present: a passkey offered instead of a TOTP
+    code). Either way the challenge itself, not a form CSRF token, is what
+    makes the follow-up /login/passkey/verify call single-use."""
+    challenge = await login.begin_passkey_login(
+        request.cookies.get(settings.pending_mfa_cookie)
+    )
+
+    return Response(
+        content={
+            "loginToken": challenge.login_token,
+            "options": json.loads(challenge.options_json),
+        },
+        media_type="application/json",
+    )
+
+
+@post("/login/passkey/verify", guards=[require_same_origin], status_code=200)
+async def login_passkey_verify_post(
+    request: Request,
+    login: NamedDependency[LoginService],
+    settings: NamedDependency[PortalSettings],
+    trace: NamedDependency[RequestTrace],
+    data: PasskeyLoginForm,
+) -> Response:
+    outcome = await login.complete_passkey_login(
+        PasskeyLoginAttempt(
+            login_token=data.login_token,
+            response_json=json.dumps(data.response),
+            trace=trace,
+        )
+    )
+
+    if not isinstance(outcome, SessionIssued):
+        return Response(
+            content={"error": True},
+            status_code=401,
+            media_type="application/json",
+        )
+
+    await login.logout(request.cookies.get(settings.session_cookie), trace)
+
+    return _signed_in(outcome, settings, body={"redirectTo": _next(outcome)})
 
 
 @post("/logout", status_code=200)
@@ -148,12 +208,26 @@ def _challenge(pending_token: str, settings: PortalSettings) -> Response:
     return response
 
 
-def _signed_in(cookie_token: str, settings: PortalSettings) -> Response:
-    response = Redirect("/", status_code=303)
-    _set_cookie(response, settings.session_cookie, cookie_token, settings)
+def _signed_in(
+    outcome: SessionIssued,
+    settings: PortalSettings,
+    *,
+    body: dict[str, object] | None = None,
+) -> Response:
+    destination = _next(outcome)
+    response: Response = (
+        Response(content=body, media_type="application/json")
+        if body is not None
+        else Redirect(destination, status_code=303)
+    )
+    _set_cookie(response, settings.session_cookie, outcome.cookie_token, settings)
     _clear_cookie(response, settings.pending_mfa_cookie, settings)
 
     return response
+
+
+def _next(outcome: SessionIssued) -> str:
+    return "/security" if outcome.needs_setup else "/"
 
 
 def _signed_out(location: str, settings: PortalSettings) -> Response:
@@ -189,4 +263,12 @@ def _set_cookie(
     )
 
 
-handlers = (login_get, login_post, login_mfa_get, login_mfa_post, logout_post)
+handlers = (
+    login_get,
+    login_post,
+    login_mfa_get,
+    login_mfa_post,
+    login_passkey_options_post,
+    login_passkey_verify_post,
+    logout_post,
+)

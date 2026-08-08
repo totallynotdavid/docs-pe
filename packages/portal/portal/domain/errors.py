@@ -47,6 +47,12 @@ class Reason(StrEnum):
     USER_CANNOT_DEACTIVATE_SELF = "user_cannot_deactivate_self"
     USER_HAS_HISTORY = "user_has_history"
 
+    LAST_SECOND_FACTOR = "last_second_factor"
+    SETUP_EXPIRED = "setup_expired"
+    TOTP_CODE_INVALID = "totp_code_invalid"
+    WEBAUTHN_VERIFICATION_FAILED = "webauthn_verification_failed"
+    PASSKEY_NOT_FOUND = "passkey_not_found"
+
     WORKER_SOURCE_REQUIRED = "worker_source_required"
 
     CSV_REQUIRED = "csv_required"

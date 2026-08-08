@@ -162,6 +162,16 @@ class OneTimeTokens:
 
         return await self._store.take(_token_key(purpose, token))
 
+    async def peek(self, purpose: str, token: str | None) -> str | None:
+        """Read without spending. For a step that must not count as the one
+        guess a token's later consume() bounds, such as fetching WebAuthn
+        options before the user has produced (or failed to produce) a proof.
+        """
+        if not token:
+            return None
+
+        return await self._store.read(_token_key(purpose, token))
+
 
 def _verified_at(record: dict[str, Any]) -> datetime | None:
     stamp = record.get("mfa_verified_at")

@@ -141,9 +141,10 @@ uv run portal new-key --version v1 > /etc/portal/master.key
 ```
 
 Back it up separately from the database. A database backup without this file
-restores nothing usable; the file without the database is inert. Losing it means
-every stored proxy credential and every enrolled second factor has to be
-re-entered.
+restores nothing usable; the file without the database is inert. Losing it
+means every stored proxy credential and every enrolled TOTP secret has to be
+re-entered. Passkeys are unaffected: only a public key is stored, never
+enveloped under the master key, so a lost key file does not strand them.
 
 ### Rotating it
 

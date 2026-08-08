@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 import re
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -31,24 +32,30 @@ from portal.domain.models import (
     AuditEvent,
     CredentialState,
     CredentialVersion,
-    MfaEnrollment,
     PortalUser,
     RequestTrace,
     Team,
     TeamRole,
+    WebAuthnCredential,
 )
 from portal.security import (
     hash_password,
     new_recovery_codes,
     new_totp_secret,
+    new_webauthn_registration_options,
     token_hash,
     totp_enrollment_uri,
+    totp_matches,
+    verify_webauthn_registration,
+    webauthn_challenge_bytes,
+    webauthn_challenge_text,
 )
 
 
 if TYPE_CHECKING:
     from fetch.proxy.base import Field
 
+    from portal.application.sessions import OneTimeTokens
     from portal.repository.audit import PostgresAuditLog
     from portal.repository.auth import PostgresAuthRepository
     from portal.repository.credentials import PostgresCredentialRepository
@@ -57,6 +64,14 @@ if TYPE_CHECKING:
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _MIN_PASSWORD = 12
+
+# Purposes for ProvisioningService's own OneTimeTokens, distinct from
+# login.py's PENDING_MFA/LOGIN_CSRF: a secret or challenge generated here
+# is never valid to log in with by itself, only to confirm a setup step.
+_TOTP_SETUP = "totp_setup"
+_TOTP_SETUP_TTL = timedelta(minutes=10)
+_PASSKEY_SETUP = "passkey_setup"
+_PASSKEY_SETUP_TTL = timedelta(minutes=5)
 
 
 @dataclass(frozen=True)
@@ -79,6 +94,22 @@ class FirstTeamResult:
     created: bool
 
 
+@dataclass(frozen=True)
+class TotpSetup:
+    """Not yet enabled: confirm_totp_setup makes it live."""
+
+    setup_token: str
+    enrollment_uri: str
+
+
+@dataclass(frozen=True)
+class PasskeySetup:
+    """Not yet enabled: confirm_passkey_registration makes it live."""
+
+    setup_token: str
+    options_json: str
+
+
 class ProvisioningService(AuthorizedService):
     def __init__(
         self,
@@ -88,13 +119,20 @@ class ProvisioningService(AuthorizedService):
         protector: EnvelopeProtector,
         audit: PostgresAuditLog,
         issuer: str,
+        *,
+        public_origin: str,
+        setup_tokens: OneTimeTokens,
     ) -> None:
         self._auth = auth
         self._teams = teams
         self._credentials = credentials
         self._protector = protector
         self._audit = audit
+        # Also the WebAuthn RP ID: both must be the request's hostname for a
+        # ceremony to verify, and issuer already is (see settings.hostname).
         self._issuer = issuer
+        self._public_origin = public_origin
+        self._setup_tokens = setup_tokens
 
     @public
     async def require_site_admin(self, actor_id: UUID) -> None:
@@ -117,22 +155,22 @@ class ProvisioningService(AuthorizedService):
         self,
         email: str,
         password_hash: str,
-    ) -> tuple[PortalUser, MfaEnrollment | None]:
+    ) -> tuple[PortalUser, bool]:
         """Create or verify the initial administrator.
 
-        portal_site_admin_requires_mfa means the promotion and the second
-        factor happen together. An account that already carries one keeps it:
-        re-running provisioning must not silently invalidate the authenticator
-        the administrator is holding.
+        Returns (user, needs_setup): needs_setup is True until the account
+        completes its own enrollment at /security/setup. Nothing here ever
+        generates a second factor: unlike the old flow, no secret is
+        available for an operator to see, only the account to sign into.
         """
         user = await self._auth.create_account(email, password_hash)
 
-        if user.mfa_enabled:
-            return user, None
+        if user.has_second_factor:
+            return user, False
 
-        enrollment = await self._enroll_mfa(user, promote_to_site_admin=True)
+        await self._auth.set_pending_site_admin(user.id, pending=True)
 
-        return await self._reload(user.id), enrollment
+        return await self._reload(user.id), True
 
     @site_admin
     async def create_first_team(
@@ -326,13 +364,13 @@ class ProvisioningService(AuthorizedService):
         user_id: UUID,
         mfa_verified_at: datetime | None,
         trace: RequestTrace,
-    ) -> MfaEnrollment | None:
-        """Promotes and enrolls a second factor in one step.
+    ) -> bool:
+        """Promote, or mark the target pending their own enrollment.
 
-        portal_site_admin_requires_mfa means is_site_admin can only become
-        true alongside mfa_enabled, so this reuses _enroll_mfa (the same path
-        bootstrap uses) rather than a bare UPDATE. Returns the enrollment
-        (shown once, like bootstrap's) only when a new one was created.
+        Returns needs_setup. A target who already self-enrolled a factor (see
+        the self-service methods below) promotes immediately: the promoting
+        admin never generates or sees another account's second factor, only
+        whether one is still needed.
         """
         user = await self._auth.user_by_id(user_id)
 
@@ -340,13 +378,18 @@ class ProvisioningService(AuthorizedService):
             raise NotFound(Reason.USER_NOT_FOUND)
 
         if user.is_site_admin:
-            return None
+            return False
 
-        enrollment = await self._enroll_mfa(user, promote_to_site_admin=True)
+        if user.has_second_factor:
+            await self._auth.promote_now(user_id)
+            needs_setup = False
+        else:
+            await self._auth.set_pending_site_admin(user_id, pending=True)
+            needs_setup = True
 
         await self._record(AuditAction.USER_PROMOTED, actor_id, trace, user=user_id)
 
-        return enrollment
+        return needs_setup
 
     @site_admin_step_up()
     async def demote_site_admin(
@@ -393,6 +436,150 @@ class ProvisioningService(AuthorizedService):
             trace,
             user=user_id,
         )
+
+    # --- Self-service second factors -----------------------------------
+    #
+    # @public here means what it always means in this file: no role check,
+    # because every one of these acts on the caller's own account
+    # (actor_id is always "myself"). Open to any signed-in user, not just
+    # site admins: portal_admin_requires_second_factor only requires one of
+    # a site admin, but nothing stops a team member from adding their own.
+
+    @public
+    async def begin_totp_setup(self, actor_id: UUID) -> TotpSetup:
+        user = await self._reload(actor_id)
+        secret = new_totp_secret()
+
+        setup_token = await self._setup_tokens.issue(
+            _TOTP_SETUP,
+            json.dumps({"user_id": str(user.id), "secret": secret}),
+            _TOTP_SETUP_TTL,
+        )
+
+        return TotpSetup(
+            setup_token=setup_token,
+            enrollment_uri=totp_enrollment_uri(
+                secret,
+                email=user.email,
+                issuer=self._issuer,
+            ),
+        )
+
+    @public
+    async def confirm_totp_setup(
+        self,
+        actor_id: UUID,
+        *,
+        setup_token: str,
+        code: str,
+    ) -> tuple[str, ...] | None:
+        """Returns freshly issued recovery codes, shown once, only when this
+        was the caller's first second factor.
+
+        Unlike login's pending-MFA token, a wrong code here does not spend
+        setup_token: the secret is a long-lived QR the user already has in
+        front of them, not a guessable target, so a typo should mean "try
+        again" rather than "scan a new code." Only a successful confirm (or
+        the token's own TTL) retires it.
+        """
+        user = await self._reload(actor_id)
+        pending = await self._peek_setup(_TOTP_SETUP, setup_token, user.id)
+        secret = str(pending["secret"])
+
+        if not totp_matches(secret, code):
+            raise ProvisioningError(Reason.TOTP_CODE_INVALID)
+
+        await self._setup_tokens.consume(_TOTP_SETUP, setup_token)
+
+        return await self._commit_totp(user, secret)
+
+    @public
+    async def disable_totp(self, actor_id: UUID) -> None:
+        await self._auth.disable_totp(actor_id)
+        await self._record(AuditAction.MFA_REMOVED, actor_id, RequestTrace())
+
+    @public
+    async def begin_passkey_registration(self, actor_id: UUID) -> PasskeySetup:
+        user = await self._reload(actor_id)
+        existing = await self._auth.webauthn_credentials(user.id)
+
+        challenge = new_webauthn_registration_options(
+            rp_id=self._issuer,
+            rp_name=self._issuer,
+            user_id=user.id.bytes,
+            user_email=user.email,
+            exclude_credential_ids=[
+                credential.credential_id for credential in existing
+            ],
+        )
+
+        setup_token = await self._setup_tokens.issue(
+            _PASSKEY_SETUP,
+            json.dumps(
+                {
+                    "user_id": str(user.id),
+                    "challenge": webauthn_challenge_text(challenge.challenge),
+                }
+            ),
+            _PASSKEY_SETUP_TTL,
+        )
+
+        return PasskeySetup(setup_token=setup_token, options_json=challenge.options_json)
+
+    @public
+    async def confirm_passkey_registration(
+        self,
+        actor_id: UUID,
+        *,
+        setup_token: str,
+        response_json: str,
+        label: str,
+    ) -> tuple[str, ...] | None:
+        """Returns freshly issued recovery codes, shown once, only when this
+        was the caller's first second factor."""
+        user = await self._reload(actor_id)
+        pending = await self._consume_setup(_PASSKEY_SETUP, setup_token, user.id)
+
+        verified = verify_webauthn_registration(
+            response_json=response_json,
+            expected_challenge=webauthn_challenge_bytes(str(pending["challenge"])),
+            expected_origin=self._public_origin,
+            expected_rp_id=self._issuer,
+        )
+
+        if verified is None:
+            raise ProvisioningError(Reason.WEBAUTHN_VERIFICATION_FAILED)
+
+        first_factor = not user.has_second_factor
+        recovery_codes = new_recovery_codes() if first_factor else None
+
+        await self._auth.add_webauthn_credential(
+            user.id,
+            credential_id=verified.credential_id,
+            public_key=verified.public_key,
+            sign_count=verified.sign_count,
+            transports=verified.transports,
+            label=self._label(label) if label.strip() else "Clave de acceso",
+            recovery_code_hashes=(
+                None
+                if recovery_codes is None
+                else tuple(token_hash(code) for code in recovery_codes)
+            ),
+            promote_to_site_admin=user.pending_site_admin,
+        )
+
+        await self._record(AuditAction.PASSKEY_REGISTERED, user.id, RequestTrace())
+
+        return recovery_codes
+
+    @public
+    async def passkeys(self, actor_id: UUID) -> tuple[WebAuthnCredential, ...]:
+        return await self._auth.webauthn_credentials(actor_id)
+
+    @public
+    async def remove_passkey(self, actor_id: UUID, *, credential_id: UUID) -> None:
+        await self._auth.remove_webauthn_credential(actor_id, credential_id)
+        await self._record(AuditAction.PASSKEY_REMOVED, actor_id, RequestTrace())
 
     @site_admin
     async def teams(self, actor_id: UUID) -> tuple[Team, ...]:
@@ -545,32 +732,58 @@ class ProvisioningService(AuthorizedService):
 
         return credential
 
-    async def _enroll_mfa(
+    async def _commit_totp(
         self,
         user: PortalUser,
-        *,
-        promote_to_site_admin: bool,
-    ) -> MfaEnrollment:
-        secret = new_totp_secret()
-        recovery_codes = new_recovery_codes()
+        secret: str,
+    ) -> tuple[str, ...] | None:
+        first_factor = not user.has_second_factor
+        recovery_codes = new_recovery_codes() if first_factor else None
 
-        await self._auth.enable_mfa(
+        await self._auth.enable_totp(
             user.id,
             self._protector.protect(secret.encode("utf-8")),
-            tuple(token_hash(code) for code in recovery_codes),
-            promote_to_site_admin=promote_to_site_admin,
+            (
+                None
+                if recovery_codes is None
+                else tuple(token_hash(code) for code in recovery_codes)
+            ),
+            promote_to_site_admin=user.pending_site_admin,
         )
 
         await self._record(AuditAction.MFA_ENROLLED, user.id, RequestTrace())
 
-        return MfaEnrollment(
-            enrollment_uri=totp_enrollment_uri(
-                secret,
-                email=user.email,
-                issuer=self._issuer,
-            ),
-            recovery_codes=recovery_codes,
-        )
+        return recovery_codes
+
+    async def _consume_setup(
+        self,
+        purpose: str,
+        setup_token: str,
+        user_id: UUID,
+    ) -> dict[str, str]:
+        payload = await self._setup_tokens.consume(purpose, setup_token)
+        return self._parse_setup(payload, user_id)
+
+    async def _peek_setup(
+        self,
+        purpose: str,
+        setup_token: str,
+        user_id: UUID,
+    ) -> dict[str, str]:
+        payload = await self._setup_tokens.peek(purpose, setup_token)
+        return self._parse_setup(payload, user_id)
+
+    @staticmethod
+    def _parse_setup(payload: str | None, user_id: UUID) -> dict[str, str]:
+        if payload is None:
+            raise ProvisioningError(Reason.SETUP_EXPIRED)
+
+        pending: dict[str, str] = json.loads(payload)
+
+        if pending["user_id"] != str(user_id):
+            raise ProvisioningError(Reason.SETUP_EXPIRED)
+
+        return pending
 
     async def _record(
         self,

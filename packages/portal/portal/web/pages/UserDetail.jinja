@@ -16,6 +16,8 @@
             Cuenta desactivada
           {% elif person.is_site_admin %}
             Administradora del sitio
+          {% elif person.pending_site_admin %}
+            Configuración de seguridad pendiente
           {% else %}
             Cuenta activa
           {% endif %}
@@ -28,6 +30,9 @@
         {% else %}
           {% if is_sole_active_admin %}
             <p class="subtitle">Es la única persona administradora activa. Asigna otra administradora antes de desactivarla, eliminarla o quitarle la administración del sitio.</p>
+          {% endif %}
+          {% if person.pending_site_admin %}
+            <p class="subtitle">La promoción quedará pendiente hasta que esta persona configure su propio factor de seguridad en /security al iniciar sesión. No verás ni podrás generar ese factor por ella.</p>
           {% endif %}
           <Actions position="above">
             {% if not is_sole_active_admin %}
@@ -53,6 +58,11 @@
                 <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
                   <input type="hidden" name="action" value="demote">
                   <button type="submit">Quitar administración del sitio</button>
+                </InlineAction>
+              {% elif person.pending_site_admin %}
+                <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
+                  <input type="hidden" name="action" value="demote">
+                  <button type="submit">Cancelar promoción pendiente</button>
                 </InlineAction>
               {% else %}
                 <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">

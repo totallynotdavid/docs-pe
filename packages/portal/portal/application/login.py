@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
+
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -18,10 +20,15 @@ from portal.domain.models import (
     RequestTrace,
 )
 from portal.security import (
+    new_webauthn_authentication_options,
     token_hash,
     totp_matches,
     verify_dummy_password,
     verify_password,
+    verify_webauthn_authentication,
+    webauthn_challenge_bytes,
+    webauthn_challenge_text,
+    webauthn_credential_id,
 )
 
 
@@ -33,6 +40,13 @@ if TYPE_CHECKING:
     from portal.repository.audit import PostgresAuditLog
     from portal.repository.auth import PostgresAuthRepository
     from portal.turnstile import HumanCheck
+
+
+# A passkey login challenge, distinct from PENDING_MFA: it names the account
+# only when this is the second-factor path (see begin_passkey_login), and
+# what it stores is a WebAuthn challenge rather than a bare user id.
+PASSKEY_LOGIN = "passkey_login"
+PASSKEY_LOGIN_TTL = timedelta(minutes=5)
 
 
 @dataclass(frozen=True)
@@ -52,8 +66,22 @@ class MfaAttempt:
 
 
 @dataclass(frozen=True)
+class PasskeyLoginChallenge:
+    login_token: str
+    options_json: str
+
+
+@dataclass(frozen=True)
+class PasskeyLoginAttempt:
+    login_token: str
+    response_json: str
+    trace: RequestTrace
+
+
+@dataclass(frozen=True)
 class SessionIssued:
     cookie_token: str
+    needs_setup: bool = False
 
 
 @dataclass(frozen=True)
@@ -86,6 +114,9 @@ class LoginService:
         human_check: HumanCheck,
         protector: EnvelopeProtector,
         audit: PostgresAuditLog,
+        *,
+        rp_id: str,
+        public_origin: str,
     ) -> None:
         self._users = users
         self._sessions = sessions
@@ -94,6 +125,8 @@ class LoginService:
         self._human_check = human_check
         self._protector = protector
         self._audit = audit
+        self._rp_id = rp_id
+        self._public_origin = public_origin
 
     async def issue_login_csrf(self) -> str:
         return await self._tokens.issue(LOGIN_CSRF, "", LOGIN_CSRF_TTL)
@@ -125,7 +158,7 @@ class LoginService:
 
         await self._throttle.clear(attempt.email, attempt.trace.source)
 
-        if user.mfa_enabled:
+        if user.has_second_factor:
             return MfaChallengeIssued(
                 await self._tokens.issue(
                     PENDING_MFA,
@@ -150,6 +183,104 @@ class LoginService:
         if not await self._second_factor_accepted(user, attempt.code):
             await self._throttle.record_failure(user.email, attempt.trace.source)
             return await self._reject_mfa(user, attempt, LoginRejection.MFA_CODE)
+
+        return await self._establish(user, attempt.trace, mfa_verified=True)
+
+    async def begin_passkey_login(self, pending_token: str | None) -> PasskeyLoginChallenge:
+        """pending_token names the account when called from /login/mfa (a
+        passkey offered as an alternative to a TOTP code); None means a
+        passwordless, discoverable login called straight from /login.
+
+        Reads PENDING_MFA rather than consuming it: fetching options is not
+        itself a guess, so it must not spend the one attempt a wrong TOTP
+        code would. complete_passkey_login below is what settles PASSKEY_LOGIN.
+        """
+        user_id: UUID | None = None
+
+        if pending_token is not None:
+            raw = await self._tokens.peek(PENDING_MFA, pending_token)
+            user_id = UUID(raw) if raw is not None else None
+
+        allow_credential_ids: tuple[bytes, ...] = ()
+
+        if user_id is not None:
+            allow_credential_ids = tuple(
+                credential.credential_id
+                for credential in await self._users.webauthn_credentials(user_id)
+            )
+
+        challenge = new_webauthn_authentication_options(
+            rp_id=self._rp_id,
+            allow_credential_ids=allow_credential_ids,
+        )
+
+        login_token = await self._tokens.issue(
+            PASSKEY_LOGIN,
+            json.dumps(
+                {
+                    "user_id": str(user_id) if user_id is not None else None,
+                    "challenge": webauthn_challenge_text(challenge.challenge),
+                }
+            ),
+            PASSKEY_LOGIN_TTL,
+        )
+
+        return PasskeyLoginChallenge(login_token, challenge.options_json)
+
+    async def complete_passkey_login(self, attempt: PasskeyLoginAttempt) -> LoginOutcome:
+        """A userVerification: required assertion is possession plus the
+        device's own knowledge/inherence check, so unlike a TOTP code it
+        already satisfies the second factor on its own: this always
+        establishes with mfa_verified=True, whether reached from /login/mfa
+        or directly from /login (see begin_passkey_login).
+        """
+        pending = await self._tokens.consume(PASSKEY_LOGIN, attempt.login_token)
+
+        if pending is None:
+            return await self._reject_passkey(attempt)
+
+        payload = json.loads(pending)
+        expected_user_id = (
+            UUID(payload["user_id"]) if payload["user_id"] is not None else None
+        )
+        challenge = webauthn_challenge_bytes(str(payload["challenge"]))
+
+        credential_id = webauthn_credential_id(attempt.response_json)
+        stored = (
+            await self._users.webauthn_credential_by_credential_id(credential_id)
+            if credential_id is not None
+            else None
+        )
+
+        if stored is None or (
+            expected_user_id is not None and stored.user_id != expected_user_id
+        ):
+            return await self._reject_passkey(attempt)
+
+        verified = verify_webauthn_authentication(
+            response_json=attempt.response_json,
+            expected_challenge=challenge,
+            expected_origin=self._public_origin,
+            expected_rp_id=self._rp_id,
+            public_key=stored.public_key,
+            sign_count=stored.sign_count,
+        )
+
+        if verified is None:
+            return await self._reject_passkey(attempt)
+
+        # WHERE sign_count advanced is what turns a replayed/cloned
+        # assertion into a rejected write instead of a silent pass.
+        if not await self._users.touch_webauthn_credential(
+            stored.id,
+            sign_count=verified.new_sign_count,
+        ):
+            return await self._reject_passkey(attempt)
+
+        user = await self._users.user_by_id(stored.user_id)
+
+        if user is None or not user.is_active:
+            return await self._reject_passkey(attempt)
 
         return await self._establish(user, attempt.trace, mfa_verified=True)
 
@@ -259,7 +390,7 @@ class LoginService:
             )
         )
 
-        return SessionIssued(cookie_token)
+        return SessionIssued(cookie_token, needs_setup=user.pending_site_admin)
 
     async def _reject(
         self,
@@ -292,3 +423,14 @@ class LoginService:
         )
 
         return LoginRejected(rejection)
+
+    async def _reject_passkey(self, attempt: PasskeyLoginAttempt) -> LoginRejected:
+        await self._audit.record(
+            AuditEvent(
+                action=AuditAction.LOGIN_FAILED,
+                trace=attempt.trace,
+                metadata={"rejection": LoginRejection.PASSKEY_INVALID.value},
+            )
+        )
+
+        return LoginRejected(LoginRejection.PASSKEY_INVALID)

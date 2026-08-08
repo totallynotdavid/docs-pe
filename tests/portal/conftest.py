@@ -18,7 +18,7 @@ import pytest
 from litestar.testing import AsyncTestClient, TestClient
 from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
-from portal.application.sessions import BrowserSessions
+from portal.application.sessions import BrowserSessions, OneTimeTokens
 from portal.credentials.masterkey import MasterKeyring
 from portal.credentials.secrets import EnvelopeProtector
 from portal.domain.models import (
@@ -256,6 +256,7 @@ def provisioning(
     credential_repository: PostgresCredentialRepository,
     protector: EnvelopeProtector,
     audit_repository: PostgresAuditLog,
+    store: EphemeralStore,
 ) -> ProvisioningService:
     return ProvisioningService(
         auth_repository,
@@ -264,6 +265,8 @@ def provisioning(
         protector,
         audit_repository,
         "testserver.local",
+        public_origin=ORIGIN,
+        setup_tokens=OneTimeTokens(store),
     )
 
 
@@ -516,7 +519,7 @@ async def seed_site_admin(pool: asyncpg.Pool, email: str) -> UUID:
     protector = EnvelopeProtector(KEYRING)
     user = await auth.create_account(email, hash_password(PASSWORD))
 
-    await auth.enable_mfa(
+    await auth.enable_totp(
         user.id,
         protector.protect(TOTP_SECRET.encode("utf-8")),
         (token_hash(RECOVERY_CODE),),

@@ -42,6 +42,8 @@
                 Desactivada
               {% elif person.is_site_admin %}
                 Administradora de la plataforma
+              {% elif person.pending_site_admin %}
+                Configuración de seguridad pendiente
               {% else %}
                 Activa
               {% endif %}

@@ -176,11 +176,12 @@ def is_step_up_fresh(
 
 def _step_up(*, within: timedelta = STEP_UP_WINDOW) -> Callable[[F], F]:
     """Layers a freshness check on top of whatever role check already guards
-    this method. Private: only site_admin_step_up composes it, because the
-    only enrollment path in this system is ensure_site_admin, so admin is
-    the only role a second factor can ever exist for. A step-up check on any
-    other role would be a permanent, silent deny for an actor who could never
-    produce a fresh proof, not a real access control.
+    this method. Private: only site_admin_step_up composes it. Any signed-in
+    user can self-enroll a second factor, but only a site admin is ever
+    required to hold one, so only admin-gated methods can assume every actor
+    who reaches them has fresh MFA proof available at all. A step-up check on
+    any other role could be a permanent, silent deny for an actor who never
+    enrolled and was never asked to, not a real access control.
 
     The wrapped method must declare a parameter literally named
     `mfa_verified_at` (datetime | None) with no default, so a caller cannot
