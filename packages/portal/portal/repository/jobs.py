@@ -17,6 +17,7 @@ from portal.domain.models import (
     JobEvent,
     JobItem,
     JobState,
+    ProtectedSecret,
     SearchResult,
     SubmissionPlan,
     SubmitJob,
@@ -675,11 +676,14 @@ class PostgresJobRepository:
             """
             SELECT
                 version.provider,
-                version.config_ciphertext
+                version.config_ciphertext,
+                version.wrapped_data_key,
+                version.master_key_version
               FROM portal_jobs AS job
               JOIN portal_team_proxy_credential_versions AS version
                 ON version.id = job.credential_version_id
              WHERE job.id = $1
+               AND version.wrapped_data_key IS NOT NULL
             """,
             job_id,
         )
@@ -689,7 +693,11 @@ class PostgresJobRepository:
 
         return JobCredential(
             row["provider"],
-            bytes(row["config_ciphertext"]),
+            ProtectedSecret(
+                ciphertext=bytes(row["config_ciphertext"]),
+                wrapped_data_key=bytes(row["wrapped_data_key"]),
+                master_key_version=str(row["master_key_version"]),
+            ),
         )
 
     async def item_team(self, item_id: UUID) -> UUID | None:

@@ -3,13 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from portal.domain.models import BrowserSession, PortalUser
+from portal.domain.models import PortalUser, ProtectedSecret
 from portal.repository.shared import user_row
 
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from asyncpg import Pool
 
 
@@ -18,6 +16,8 @@ def normalize_email(email: str) -> str:
 
 
 class PostgresAuthRepository:
+    """Durable account state. Sessions and login counters live in EphemeralStore."""
+
     def __init__(self, pool: Pool) -> None:
         self._pool = pool
 
@@ -25,7 +25,7 @@ class PostgresAuthRepository:
         async with self._pool.acquire() as connection:
             row = await connection.fetchrow(
                 """
-                SELECT id, email, is_site_admin, password_hash
+                SELECT id, email, is_site_admin, mfa_enabled, password_hash
                   FROM portal_users
                  WHERE email = $1
                 """,
@@ -41,7 +41,7 @@ class PostgresAuthRepository:
         async with self._pool.acquire() as connection:
             row = await connection.fetchrow(
                 """
-                SELECT id, email, is_site_admin
+                SELECT id, email, is_site_admin, mfa_enabled
                   FROM portal_users
                  WHERE id = $1
                 """,
@@ -81,25 +81,24 @@ class PostgresAuthRepository:
 
         return user
 
-    async def provision_site_admin(
-        self,
-        email: str,
-        password_hash: str,
-    ) -> PortalUser:
-        """Create or promote the initial administrator without changing its password."""
+    async def create_account(self, email: str, password_hash: str) -> PortalUser:
+        """Create the account an administrator will be promoted from.
+
+        portal_site_admin_requires_mfa means promotion cannot happen until a
+        TOTP secret is enrolled, so provisioning creates the account first and
+        promotes it in enroll_mfa().
+        """
         async with self._pool.acquire() as connection:
             row = await connection.fetchrow(
                 """
-                INSERT INTO portal_users (
-                    id,
-                    email,
-                    password_hash,
-                    is_site_admin
-                )
-                VALUES ($1, $2, $3, true)
+                -- The no-op SET is what makes RETURNING fire on conflict, so
+                -- rerunning provisioning reads the existing account back
+                -- without a second query and without touching its password.
+                INSERT INTO portal_users (id, email, password_hash)
+                VALUES ($1, $2, $3)
                 ON CONFLICT (email) DO UPDATE
-                    SET is_site_admin = true
-                RETURNING id, email, is_site_admin
+                    SET email = EXCLUDED.email
+                RETURNING id, email, is_site_admin, mfa_enabled
                 """,
                 uuid4(),
                 normalize_email(email),
@@ -108,176 +107,83 @@ class PostgresAuthRepository:
 
         return user_row(row)
 
-    async def create_session(
-        self,
-        user_id: UUID,
-        token_hash: str,
-        csrf_token: str,
-        expires_at: datetime,
-    ) -> None:
-        async with self._pool.acquire() as connection:
-            await connection.execute(
-                """
-                INSERT INTO portal_sessions (
-                    id,
-                    user_id,
-                    token_hash,
-                    csrf_token,
-                    expires_at
-                )
-                VALUES ($1, $2, $3, $4, $5)
-                """,
-                uuid4(),
-                user_id,
-                token_hash,
-                csrf_token,
-                expires_at,
-            )
-
-    async def browser_session(
-        self,
-        token_hash: str,
-        now: datetime,
-    ) -> BrowserSession | None:
+    async def mfa_secret(self, user_id: UUID) -> ProtectedSecret | None:
         async with self._pool.acquire() as connection:
             row = await connection.fetchrow(
                 """
-                SELECT
-                    user_account.id,
-                    user_account.email,
-                    user_account.is_site_admin,
-                    session.csrf_token
-                  FROM portal_sessions AS session
-                  JOIN portal_users AS user_account
-                    ON user_account.id = session.user_id
-                 WHERE session.token_hash = $1
-                   AND session.expires_at > $2
-                   AND session.csrf_token IS NOT NULL
+                SELECT mfa_secret_ciphertext,
+                       mfa_secret_wrapped_data_key,
+                       mfa_secret_master_key_version
+                  FROM portal_users
+                 WHERE id = $1
+                   AND mfa_enabled
                 """,
-                token_hash,
-                now,
-            )
-
-            await connection.execute(
-                """
-                DELETE FROM portal_sessions
-                 WHERE expires_at <= $1
-                """,
-                now,
+                user_id,
             )
 
         if row is None:
             return None
 
-        return BrowserSession(user_row(row), str(row["csrf_token"]))
+        return ProtectedSecret(
+            ciphertext=bytes(row["mfa_secret_ciphertext"]),
+            wrapped_data_key=bytes(row["mfa_secret_wrapped_data_key"]),
+            master_key_version=str(row["mfa_secret_master_key_version"]),
+        )
 
-    async def destroy_session(self, token_hash: str) -> None:
-        async with self._pool.acquire() as connection:
-            await connection.execute(
-                """
-                DELETE FROM portal_sessions
-                 WHERE token_hash = $1
-                """,
-                token_hash,
-            )
-
-    async def issue_login_csrf(
+    async def enable_mfa(
         self,
-        token: str,
-        expires_at: datetime,
+        user_id: UUID,
+        secret: ProtectedSecret,
+        recovery_code_hashes: tuple[str, ...],
+        *,
+        promote_to_site_admin: bool,
     ) -> None:
-        async with self._pool.acquire() as connection:
+        """Replace the secret and the whole recovery set in one transaction."""
+        async with self._pool.acquire() as connection, connection.transaction():
             await connection.execute(
                 """
-                INSERT INTO portal_login_csrf_tokens (token, expires_at)
-                VALUES ($1, $2)
+                UPDATE portal_users
+                   SET mfa_secret_ciphertext = $2,
+                       mfa_secret_wrapped_data_key = $3,
+                       mfa_secret_master_key_version = $4,
+                       mfa_enabled = true,
+                       is_site_admin = is_site_admin OR $5
+                 WHERE id = $1
                 """,
-                token,
-                expires_at,
-            )
-
-    async def consume_login_csrf(
-        self,
-        token: str,
-        now: datetime,
-    ) -> bool:
-        async with self._pool.acquire() as connection:
-            consumed = await connection.fetchval(
-                """
-                DELETE FROM portal_login_csrf_tokens
-                 WHERE token = $1
-                   AND expires_at > $2
-                RETURNING token
-                """,
-                token,
-                now,
+                user_id,
+                secret.ciphertext,
+                secret.wrapped_data_key,
+                secret.master_key_version,
+                promote_to_site_admin,
             )
 
             await connection.execute(
-                """
-                DELETE FROM portal_login_csrf_tokens
-                 WHERE expires_at <= $1
-                """,
-                now,
+                "DELETE FROM portal_mfa_recovery_codes WHERE user_id = $1",
+                user_id,
             )
 
-        return consumed is not None
-
-    async def login_allowed(
-        self,
-        email: str,
-        client_ip: str,
-        now: datetime,
-    ) -> bool:
-        async with self._pool.acquire() as connection:
-            failures = await connection.fetchval(
+            await connection.executemany(
                 """
-                SELECT count(*)
-                  FROM portal_login_failures
-                 WHERE email = $1
-                   AND client_ip = $2
-                   AND attempted_at > $3::timestamptz - interval '5 minutes'
-                """,
-                normalize_email(email),
-                client_ip,
-                now,
-            )
-
-        return int(failures) < 5
-
-    async def record_login_failure(
-        self,
-        email: str,
-        client_ip: str,
-        now: datetime,
-    ) -> None:
-        async with self._pool.acquire() as connection:
-            await connection.execute(
-                """
-                INSERT INTO portal_login_failures (
-                    email,
-                    client_ip,
-                    attempted_at
-                )
+                INSERT INTO portal_mfa_recovery_codes (id, user_id, code_hash)
                 VALUES ($1, $2, $3)
                 """,
-                normalize_email(email),
-                client_ip,
-                now,
+                [(uuid4(), user_id, code) for code in recovery_code_hashes],
             )
 
-    async def clear_login_failures(
-        self,
-        email: str,
-        client_ip: str,
-    ) -> None:
+    async def consume_recovery_code(self, user_id: UUID, code_hash: str) -> bool:
+        """Spend one unused code. The WHERE clause is what makes it single-use."""
         async with self._pool.acquire() as connection:
-            await connection.execute(
+            spent = await connection.fetchval(
                 """
-                DELETE FROM portal_login_failures
-                 WHERE email = $1
-                   AND client_ip = $2
+                UPDATE portal_mfa_recovery_codes
+                   SET used_at = now()
+                 WHERE user_id = $1
+                   AND code_hash = $2
+                   AND used_at IS NULL
+                RETURNING id
                 """,
-                normalize_email(email),
-                client_ip,
+                user_id,
+                code_hash,
             )
+
+        return spent is not None

@@ -1473,7 +1473,9 @@ dependencies = [
     { name = "jinjax" },
     { name = "litestar" },
     { name = "litestar-htmx" },
+    { name = "msgspec" },
     { name = "pwdlib", extra = ["argon2"] },
+    { name = "pyotp" },
     { name = "uvicorn" },
 ]
 
@@ -1487,7 +1489,9 @@ requires-dist = [
     { name = "jinjax", specifier = ">=0.65" },
     { name = "litestar", specifier = ">=2.24.0" },
     { name = "litestar-htmx", specifier = ">=0.5.0" },
+    { name = "msgspec", specifier = ">=0.19.0" },
     { name = "pwdlib", extras = ["argon2"], specifier = ">=0.3.0" },
+    { name = "pyotp", specifier = ">=2.10.0" },
     { name = "uvicorn", specifier = ">=0.52.1" },
 ]
 

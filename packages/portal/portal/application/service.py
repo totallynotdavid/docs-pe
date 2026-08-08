@@ -2,30 +2,26 @@ from __future__ import annotations
 
 import hashlib
 
-from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from portal.application.access import (
+    AuthorizedService,
+    public,
+    team_leader,
+    team_reader,
+)
 from portal.domain.errors import NotFound, PermissionDenied, Reason
 from portal.domain.models import (
     TERMINAL_JOB_EVENTS,
     CredentialState,
     InputLine,
-    PortalUser,
     SearchResult,
     SubmitJob,
     Team,
     TeamRole,
 )
 from portal.domain.planning import plan_submission
-from portal.security import (
-    new_csrf_token,
-    new_session_token,
-    token_hash,
-    valid_csrf,
-    verify_dummy_password,
-    verify_password,
-)
 from portal.storage.port import ObjectReference
 
 
@@ -33,33 +29,34 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from portal.domain.models import (
-        BrowserSession,
         CredentialVersion,
         Job,
         JobEvent,
     )
-    from portal.repository.auth import PostgresAuthRepository
     from portal.repository.credentials import PostgresCredentialRepository
     from portal.repository.jobs import PostgresJobRepository
     from portal.repository.teams import PostgresTeamRepository
     from portal.storage.port import ObjectStorage
 
 
-class PortalService:
+class PortalService(AuthorizedService):
+    """Team-scoped reads and writes. Authentication lives in LoginService."""
+
     def __init__(
         self,
-        auth: PostgresAuthRepository,
         teams: PostgresTeamRepository,
         credentials: PostgresCredentialRepository,
         jobs: PostgresJobRepository,
     ) -> None:
-        self._auth = auth
         self._teams = teams
         self._credentials = credentials
         self._jobs = jobs
 
+    @team_leader(
+        actor_id=lambda a: a["command"].actor_id,
+        team_id=lambda a: a["command"].team_id,
+    )
     async def submit(self, command: SubmitJob) -> Job:
-        await self.require_leader(command.actor_id, command.team_id)
         await self._require_active_credential(
             command.credential_version_id,
             command.team_id,
@@ -67,14 +64,13 @@ class PortalService:
 
         return await self._admit(command)
 
+    @team_leader()
     async def cancel(
         self,
         actor_id: UUID,
         team_id: UUID,
         job_id: UUID,
     ) -> Job:
-        await self.require_leader(actor_id, team_id)
-
         job = await self._jobs.cancel(job_id, team_id)
 
         if job is None:
@@ -82,121 +78,25 @@ class PortalService:
 
         return job
 
+    @team_reader()
     async def published_results(
         self,
         actor_id: UUID,
         team_id: UUID,
     ) -> tuple[Job, ...]:
-        await self.require_reader(actor_id, team_id)
-
         return await self._jobs.published_jobs(team_id)
 
-    async def authenticate(
-        self,
-        email: str,
-        password: str,
-    ) -> PortalUser | None:
-        found = await self._auth.user_by_email(email)
-
-        if found is None:
-            verify_dummy_password(password)
-            return None
-
-        user, password_hash = found
-
-        if not verify_password(password, password_hash):
-            return None
-
-        return user
-
-    async def login(
-        self,
-        email: str,
-        password: str,
-        client_ip: str,
-    ) -> tuple[PortalUser, str] | None:
-        now = datetime.now(UTC)
-
-        # Always verify the password to avoid a rate-limit timing oracle.
-        allowed = await self._auth.login_allowed(email, client_ip, now)
-        user = await self.authenticate(email, password)
-
-        if not allowed or user is None:
-            await self._auth.record_login_failure(email, client_ip, now)
-            return None
-
-        await self._auth.clear_login_failures(email, client_ip)
-
-        return user, await self.create_session(user.id)
-
-    async def create_session(self, user_id: UUID) -> str:
-        token = new_session_token()
-
-        await self._auth.create_session(
-            user_id,
-            token_hash(token),
-            new_csrf_token(),
-            datetime.now(UTC) + timedelta(hours=12),
-        )
-
-        return token
-
-    async def browser_session(
-        self,
-        token: str | None,
-    ) -> BrowserSession | None:
-        if not token:
-            return None
-
-        return await self._auth.browser_session(
-            token_hash(token),
-            datetime.now(UTC),
-        )
-
-    async def verify_browser_csrf(
-        self,
-        token: str | None,
-        submitted: str | None,
-    ) -> BrowserSession:
-        session = await self.browser_session(token)
-
-        if session is None or not valid_csrf(submitted, session.csrf_token):
-            raise PermissionDenied(Reason.CSRF_INVALID)
-
-        return session
-
-    async def issue_login_csrf(self) -> str:
-        token = new_csrf_token()
-
-        await self._auth.issue_login_csrf(
-            token,
-            datetime.now(UTC) + timedelta(minutes=10),
-        )
-
-        return token
-
-    async def consume_login_csrf(self, submitted: str | None) -> bool:
-        return bool(
-            submitted
-            and await self._auth.consume_login_csrf(
-                submitted,
-                datetime.now(UTC),
-            )
-        )
-
-    async def destroy_session(self, token: str | None) -> None:
-        if token:
-            await self._auth.destroy_session(token_hash(token))
-
+    @public
     async def teams(self, actor_id: UUID) -> tuple[Team, ...]:
         return await self._teams.teams_for_user(actor_id)
 
+    @team_reader()
     async def team(
         self,
         actor_id: UUID,
         team_id: UUID,
     ) -> Team:
-        role = await self.require_reader(actor_id, team_id)
+        role = await self._require_reader(actor_id, team_id)
         team = await self._teams.team(team_id)
 
         if team is None:
@@ -204,6 +104,7 @@ class PortalService:
 
         return Team(team.id, team.slug, team.name, role)
 
+    @team_reader()
     async def jobs(
         self,
         actor_id: UUID,
@@ -212,22 +113,19 @@ class PortalService:
         page: int,
         page_size: int = 20,
     ) -> tuple[tuple[Job, ...], int]:
-        await self.require_reader(actor_id, team_id)
-
         return await self._jobs.jobs_for_team(
             team_id,
             page=page,
             page_size=page_size,
         )
 
+    @team_reader()
     async def job(
         self,
         actor_id: UUID,
         team_id: UUID,
         job_id: UUID,
     ) -> Job:
-        await self.require_reader(actor_id, team_id)
-
         job = await self._jobs.job(job_id, team_id)
 
         if job is None:
@@ -235,6 +133,7 @@ class PortalService:
 
         return job
 
+    @team_reader()
     async def job_events_after(
         self,
         actor_id: UUID,
@@ -250,6 +149,7 @@ class PortalService:
             sequence,
         )
 
+    @team_reader()
     async def search(
         self,
         actor_id: UUID,
@@ -259,8 +159,6 @@ class PortalService:
         page: int,
         page_size: int = 20,
     ) -> tuple[tuple[SearchResult, ...], bool]:
-        await self.require_reader(actor_id, team_id)
-
         needle = query.strip()
 
         if not needle:
@@ -273,6 +171,7 @@ class PortalService:
             offset=(page - 1) * page_size,
         )
 
+    @public
     async def notifications(
         self,
         actor_id: UUID,
@@ -285,6 +184,7 @@ class PortalService:
             limit=100,
         )
 
+    @team_leader()
     async def submit_input(
         self,
         *,
@@ -298,7 +198,6 @@ class PortalService:
         sources: tuple[str, ...],
         storage: ObjectStorage,
     ) -> Job:
-        await self.require_leader(actor_id, team_id)
         await self._require_active_credential(
             credential_version_id,
             team_id,
@@ -330,16 +229,15 @@ class PortalService:
             )
         )
 
+    @team_leader()
     async def credentials(
         self,
         actor_id: UUID,
         team_id: UUID,
     ) -> tuple[CredentialVersion, ...]:
-        await self.require_leader(actor_id, team_id)
-
         return await self._credentials.credentials_for_team(team_id)
 
-    async def require_reader(
+    async def _require_reader(
         self,
         actor_id: UUID,
         team_id: UUID,
@@ -351,12 +249,12 @@ class PortalService:
 
         return role
 
-    async def require_leader(
+    async def _require_leader(
         self,
         actor_id: UUID,
         team_id: UUID,
     ) -> TeamRole:
-        role = await self.require_reader(actor_id, team_id)
+        role = await self._require_reader(actor_id, team_id)
 
         if role is not TeamRole.TEAM_LEADER:
             raise PermissionDenied(Reason.LEADER_REQUIRED)

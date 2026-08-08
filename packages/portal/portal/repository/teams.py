@@ -78,7 +78,11 @@ class PostgresTeamRepository:
     async def users(self) -> tuple[PortalUser, ...]:
         async with self._pool.acquire() as connection:
             rows = await connection.fetch(
-                "SELECT id, email, is_site_admin FROM portal_users ORDER BY email"
+                """
+                SELECT id, email, is_site_admin, mfa_enabled
+                  FROM portal_users
+                 ORDER BY email
+                """
             )
         return tuple(user_row(row) for row in rows)
 
@@ -261,6 +265,7 @@ class PostgresTeamRepository:
                 SELECT user_account.id,
                        user_account.email,
                        user_account.is_site_admin,
+                       user_account.mfa_enabled,
                        membership.role
                   FROM portal_team_memberships AS membership
                   JOIN portal_users AS user_account

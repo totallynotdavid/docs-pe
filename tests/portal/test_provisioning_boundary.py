@@ -2,43 +2,37 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import asyncpg
 import pytest
 
 from portal.domain.errors import ProvisioningError, Reason
 from portal.domain.models import TeamRole
-from portal.security import hash_password
+from portal.security import RECOVERY_CODE_COUNT, hash_password
 
 from tests.portal.conftest import (
     ORIGIN,
     PASSWORD,
     csrf_token,
     login,
+    seed_site_admin,
     seed_user,
     sync_client,
 )
 
 
 if TYPE_CHECKING:
-    import asyncpg
-
     from litestar import Litestar
     from portal.application.provisioning import ProvisioningService
     from portal.repository.teams import PostgresTeamRepository
 
 
-async def _seed_user(
-    pool: asyncpg.Pool,
-    email: str,
-    *,
-    is_site_admin: bool = False,
-) -> str:
+async def _seed_member(pool: asyncpg.Pool, email: str) -> str:
     user_id = await seed_user(pool, email=email)
 
     await pool.execute(
-        "UPDATE portal_users SET password_hash = $2, is_site_admin = $3 WHERE id = $1",
+        "UPDATE portal_users SET password_hash = $2 WHERE id = $1",
         user_id,
         hash_password(PASSWORD),
-        is_site_admin,
     )
 
     return email
@@ -49,15 +43,8 @@ async def test_first_team_setup_is_the_only_empty_installation_path(
     team_repository: PostgresTeamRepository,
     app: Litestar,
 ) -> None:
-    admin_email = await _seed_user(
-        pool,
-        "admin@osiptel.test",
-        is_site_admin=True,
-    )
-    admin_id = await pool.fetchval(
-        "SELECT id FROM portal_users WHERE email = $1",
-        admin_email,
-    )
+    admin_email = "admin@osiptel.test"
+    admin_id = await seed_site_admin(pool, admin_email)
 
     with sync_client(app) as client:
         assert login(client, admin_email).status_code == 303
@@ -97,13 +84,11 @@ async def test_site_and_team_settings_use_email_selectors_and_keep_members_limit
     team_repository: PostgresTeamRepository,
     app: Litestar,
 ) -> None:
-    admin_email = await _seed_user(
-        pool,
-        "admin@osiptel.test",
-        is_site_admin=True,
-    )
-    leader_email = await _seed_user(pool, "lider@osiptel.test")
-    member_email = await _seed_user(pool, "miembro@osiptel.test")
+    admin_email = "admin@osiptel.test"
+
+    await seed_site_admin(pool, admin_email)
+    leader_email = await _seed_member(pool, "lider@osiptel.test")
+    member_email = await _seed_member(pool, "miembro@osiptel.test")
 
     admin_id = await pool.fetchval(
         "SELECT id FROM portal_users WHERE email = $1",
@@ -172,15 +157,7 @@ async def test_ensure_first_team_creates_once_and_verifies_on_rerun(
     team_repository: PostgresTeamRepository,
     provisioning: ProvisioningService,
 ) -> None:
-    admin_email = await _seed_user(
-        pool,
-        "bootstrap@osiptel.test",
-        is_site_admin=True,
-    )
-    admin_id = await pool.fetchval(
-        "SELECT id FROM portal_users WHERE email = $1",
-        admin_email,
-    )
+    admin_id = await seed_site_admin(pool, "bootstrap@osiptel.test")
 
     created = await provisioning.ensure_first_team(
         admin_id,
@@ -212,15 +189,7 @@ async def test_ensure_first_team_rejects_a_mismatched_rerun(
     team_repository: PostgresTeamRepository,
     provisioning: ProvisioningService,
 ) -> None:
-    admin_email = await _seed_user(
-        pool,
-        "bootstrap@osiptel.test",
-        is_site_admin=True,
-    )
-    admin_id = await pool.fetchval(
-        "SELECT id FROM portal_users WHERE email = $1",
-        admin_email,
-    )
+    admin_id = await seed_site_admin(pool, "bootstrap@osiptel.test")
 
     await team_repository.create_first_team(
         "equipo-inicial",
@@ -236,3 +205,43 @@ async def test_ensure_first_team_rejects_a_mismatched_rerun(
         )
 
     assert excinfo.value.reason is Reason.INITIAL_TEAM_MISMATCH
+
+
+async def test_the_first_administrator_is_enrolled_once_and_only_once(
+    pool: asyncpg.Pool,
+    provisioning: ProvisioningService,
+) -> None:
+    hashed = hash_password(PASSWORD)
+
+    administrator, enrollment = await provisioning.ensure_site_admin(
+        "bootstrap@osiptel.test",
+        hashed,
+    )
+
+    assert administrator.is_site_admin is True
+    assert administrator.mfa_enabled is True
+    assert enrollment is not None
+    assert enrollment.enrollment_uri.startswith("otpauth://totp/")
+    assert len(set(enrollment.recovery_codes)) == RECOVERY_CODE_COUNT
+
+    # Rerunning provisioning must not invalidate the authenticator the
+    # administrator is already holding.
+    again, repeated = await provisioning.ensure_site_admin(
+        "bootstrap@osiptel.test",
+        hashed,
+    )
+
+    assert again.id == administrator.id
+    assert repeated is None
+
+
+async def test_a_site_admin_cannot_exist_without_a_second_factor(
+    pool: asyncpg.Pool,
+) -> None:
+    user_id = await seed_user(pool, email="sin-mfa@osiptel.test")
+
+    with pytest.raises(asyncpg.exceptions.CheckViolationError):
+        await pool.execute(
+            "UPDATE portal_users SET is_site_admin = true WHERE id = $1",
+            user_id,
+        )

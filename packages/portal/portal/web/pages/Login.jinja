@@ -1,4 +1,4 @@
-{#def user, csrf_token, error #}
+{#def user, csrf_token, turnstile_site_key, error #}
 <Layout title="Ingresar · Worker" :user="user" :csrf_token="csrf_token">
   <MainContent>
     <AuthCard title="Iniciar sesión"
@@ -15,6 +15,14 @@
                  autocomplete="current-password"
                  required>
         </Field>
+        {% if turnstile_site_key %}
+          <div class="cf-turnstile"
+               data-sitekey="{{ turnstile_site_key }}"
+               data-response-field-name="turnstile_token"></div>
+          <script src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+                  async
+                  defer></script>
+        {% endif %}
         <button type="submit">Ingresar</button>
       </FormLayout>
     </AuthCard>

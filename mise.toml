@@ -25,7 +25,19 @@ description = "Refresh vendored browser assets"
 run = ["npm ci --no-audit --no-fund", "npm run vendor"]
 
 [tasks."portal:docker:build"]
-run = "docker build --file packages/portal/Dockerfile --tag osiptel-portal ."
+run = "docker build --file packages/portal/Dockerfile --tag portal ."
+
+[tasks."portal:key"]
+description = "Write the local master key file if it is missing"
+run = """
+key_file="$PWD/.data/master.key"
+
+if [ ! -f "$key_file" ]; then
+  mkdir -p "$PWD/.data"
+  uv run portal new-key --version v1 > "$key_file"
+  chmod 600 "$key_file"
+fi
+"""
 
 [tasks."db:init"]
 description = "Create the local postgres cluster if missing"
@@ -41,7 +53,7 @@ fi
 
 [tasks.dev]
 description = "Run postgres, bootstrap, and the app"
-depends = ["db:init"]
+depends = ["db:init", "portal:key"]
 run = """
 data_dir="$PWD/.data/postgres"
 
@@ -56,8 +68,8 @@ until mise x postgres -- pg_isready -h 127.0.0.1 -p 5432 -U postgres -q; do
   sleep 0.1
 done
 
-uv run --env-file .env portal-bootstrap
-uv run --env-file .env osiptel-portal
+uv run --env-file .env portal bootstrap
+uv run --env-file .env portal web
 """
 
 [tasks.reset]
@@ -83,7 +95,7 @@ fi
 description = "Snapshot the portal schema"
 depends = ["db:start"]
 run = """
-uv run --env-file .env portal-migrate
+uv run --env-file .env portal migrate
 
 mise x postgres -- pg_dump -h 127.0.0.1 -p 5432 -U postgres -d postgres \\
   --schema-only --no-owner --no-privileges \\
