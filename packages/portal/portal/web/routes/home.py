@@ -13,7 +13,7 @@ from litestar_htmx import HTMXRequest
 from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
 from portal.domain.errors import PortalError
-from portal.domain.models import BrowserSession
+from portal.domain.models import BrowserSession, RequestTrace
 from portal.settings import PortalSettings
 from portal.web.deps import require_verified_session
 from portal.web.render import render, render_hx
@@ -71,6 +71,7 @@ async def first_team_post(
     service: NamedDependency[PortalService],
     settings: NamedDependency[PortalSettings],
     provisioning: NamedDependency[ProvisioningService],
+    trace: NamedDependency[RequestTrace],
     data: Annotated[
         FirstTeamForm,
         Body(media_type=RequestEncodingType.URL_ENCODED),
@@ -78,7 +79,6 @@ async def first_team_post(
 ) -> Response:
     session = await require_verified_session(
         request,
-        service,
         settings,
         data.csrf_token,
     )
@@ -88,6 +88,7 @@ async def first_team_post(
             session.user.id,
             name=data.name,
             slug=data.slug,
+            trace=trace,
         )
     except (PortalError, ValueError) as error:
         return render(

@@ -1,3 +1,8 @@
+-- The whole portal schema. One file, because the installation is created from
+-- scratch: a migration chain that replays history nobody has is a liability,
+-- not a record. The second file added here will be the first one written
+-- against a database that holds real data.
+
 -- Sites live in one lookup table so the database and
 -- fetch.sites.registry.STABLE_SITES have one list to keep synchronized.
 CREATE TABLE portal_sites (
@@ -7,24 +12,63 @@ CREATE TABLE portal_sites (
 INSERT INTO portal_sites (code)
 VALUES ('osiptel'), ('sunat'), ('sunat_reps');
 
+-- TOTP secrets are enveloped exactly like proxy credentials: the payload is
+-- AES-GCM under a per-secret data key, and only the wrapped data key is stored.
 CREATE TABLE portal_users (
     id uuid PRIMARY KEY,
     email text NOT NULL UNIQUE CHECK (email = lower(email)),
     password_hash text NOT NULL,
     is_site_admin boolean NOT NULL DEFAULT false,
-    created_at timestamptz NOT NULL DEFAULT now()
+
+    mfa_secret_ciphertext bytea,
+    mfa_secret_wrapped_data_key bytea,
+    mfa_secret_master_key_version text,
+    mfa_enabled boolean NOT NULL DEFAULT false,
+
+    created_at timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT portal_mfa_enabled_requires_secret CHECK (
+        NOT mfa_enabled
+        OR (
+            mfa_secret_ciphertext IS NOT NULL
+            AND mfa_secret_wrapped_data_key IS NOT NULL
+            AND mfa_secret_master_key_version IS NOT NULL
+        )
+    ),
+
+    -- An administrator with a password and nothing else is one phished
+    -- credential away from owning the installation.
+    CONSTRAINT portal_site_admin_requires_mfa CHECK (NOT is_site_admin OR mfa_enabled)
 );
 
-CREATE TABLE portal_sessions (
+-- Single-use, hashed at rest. Codes carry 128 bits of randomness, so SHA-256 is
+-- enough: unlike a password there is no guessable input to grind against.
+CREATE TABLE portal_mfa_recovery_codes (
     id uuid PRIMARY KEY,
     user_id uuid NOT NULL REFERENCES portal_users(id) ON DELETE CASCADE,
-    token_hash text NOT NULL UNIQUE,
-    expires_at timestamptz NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now()
+    code_hash text NOT NULL CHECK (code_hash ~ '^[0-9a-f]{64}$'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    used_at timestamptz,
+    UNIQUE (user_id, code_hash)
 );
 
-CREATE INDEX portal_sessions_expiry_idx
-    ON portal_sessions (expires_at);
+CREATE INDEX portal_mfa_recovery_codes_unused_idx
+    ON portal_mfa_recovery_codes (user_id)
+    WHERE used_at IS NULL;
+
+-- Sessions, rate-limit counters, and single-use tokens. Never a system of
+-- record: dropping every row here logs everyone out and resets every counter,
+-- and costs nothing else. It is a Postgres table rather than Redis because at
+-- this installation's size a second stateful service buys no measurable
+-- headroom while adding a failure mode that stops logins.
+CREATE TABLE portal_ephemeral (
+    key text PRIMARY KEY,
+    value text NOT NULL,
+    expires_at timestamptz NOT NULL
+);
+
+CREATE INDEX portal_ephemeral_expiry_idx
+    ON portal_ephemeral (expires_at);
 
 CREATE TABLE portal_teams (
     id uuid PRIMARY KEY,
@@ -144,9 +188,14 @@ CREATE TABLE portal_team_proxy_credential_versions (
     version integer NOT NULL CHECK (version > 0),
     provider text NOT NULL CONSTRAINT portal_proxy_provider_supported
         CHECK (provider IN ('geonode', 'dataimpulse')),
+
+    -- The envelope: ciphertext under a data key that exists only in wrapped
+    -- form here, and the master key version that can unwrap it.
     config_ciphertext bytea NOT NULL
         CHECK (octet_length(config_ciphertext) > 0),
-    key_id text NOT NULL CHECK (length(trim(key_id)) > 0),
+    wrapped_data_key bytea NOT NULL
+        CHECK (octet_length(wrapped_data_key) > 0),
+    master_key_version text NOT NULL CHECK (length(trim(master_key_version)) > 0),
 
     -- Kept as a boolean for direct filtering and synchronized with lifecycle.
     is_active boolean NOT NULL DEFAULT false,
@@ -197,6 +246,8 @@ CREATE INDEX portal_proxy_credential_events_version_idx
         created_at
     );
 
+-- Rotation re-wraps the data key and rewrites master_key_version, so those two
+-- are the only columns a stored credential is allowed to change.
 CREATE OR REPLACE FUNCTION portal_reject_proxy_credential_version_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -207,7 +258,6 @@ BEGIN
        OR NEW.version IS DISTINCT FROM OLD.version
        OR NEW.provider IS DISTINCT FROM OLD.provider
        OR NEW.config_ciphertext IS DISTINCT FROM OLD.config_ciphertext
-       OR NEW.key_id IS DISTINCT FROM OLD.key_id
        OR NEW.created_by IS DISTINCT FROM OLD.created_by
        OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
         RAISE EXCEPTION 'proxy credential versions are immutable';
@@ -511,6 +561,62 @@ CREATE TABLE portal_notification_deliveries (
     attempted_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (outbox_id, attempt)
 );
+
+-- Tailscale membership proves a request came from the tailnet, not which worker
+-- sent it. This is the identity claim and publish authenticate against, and
+-- revoking a row takes effect on the next request rather than waiting for ACL
+-- propagation.
+CREATE TABLE portal_workers (
+    id uuid PRIMARY KEY,
+    worker_id text NOT NULL UNIQUE CHECK (worker_id ~ '^[A-Za-z0-9_-]{1,64}$'),
+    credential_hash text NOT NULL CHECK (credential_hash ~ '^[0-9a-f]{64}$'),
+    tailscale_hostname text NOT NULL CHECK (length(trim(tailscale_hostname)) > 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    revoked_at timestamptz
+);
+
+CREATE TABLE portal_audit_log (
+    id uuid PRIMARY KEY,
+    occurred_at timestamptz NOT NULL DEFAULT now(),
+    actor_id uuid,
+    action text NOT NULL CHECK (length(trim(action)) > 0),
+    target_type text,
+    target_id uuid,
+    ip inet,
+    cf_ray_id text,
+    metadata jsonb NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX portal_audit_log_actor_idx
+    ON portal_audit_log (actor_id, occurred_at DESC);
+
+CREATE INDEX portal_audit_log_action_idx
+    ON portal_audit_log (action, occurred_at DESC);
+
+-- Insert-only at the grant level. An application role that can rewrite its own
+-- audit trail is not an audit trail. The REVOKE is skipped when portal_app has
+-- not been created, which is the case for local clusters and the test suite.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'portal_app') THEN
+        REVOKE UPDATE, DELETE ON portal_audit_log FROM portal_app;
+    END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION portal_reject_audit_log_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION 'portal audit log entries are immutable';
+END;
+$$;
+
+CREATE TRIGGER portal_audit_log_immutable
+    BEFORE UPDATE OR DELETE ON portal_audit_log
+    FOR EACH ROW
+    EXECUTE FUNCTION portal_reject_audit_log_mutation();
 
 -- RUC-10 searches match an embedded DNI, which requires leading-wildcard
 -- substring search.

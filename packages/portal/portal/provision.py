@@ -4,14 +4,18 @@ import argparse
 import asyncio
 import os
 
+from typing import TYPE_CHECKING
+
 import asyncpg
 
 from fetch.proxy.registry import PROVIDERS, spec_for
 
 from portal.application.provisioning import ProvisioningService
-from portal.credentials.secrets import AesGcmSecretProtector
-from portal.domain.models import CredentialState
+from portal.credentials.masterkey import MasterKeyring
+from portal.credentials.secrets import EnvelopeProtector
+from portal.domain.models import CredentialState, MfaEnrollment, RequestTrace
 from portal.migrations import apply_migrations
+from portal.repository.audit import PostgresAuditLog
 from portal.repository.auth import PostgresAuthRepository
 from portal.repository.credentials import PostgresCredentialRepository
 from portal.repository.teams import PostgresTeamRepository
@@ -19,9 +23,14 @@ from portal.security import hash_password
 from portal.settings import PortalSettings
 
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Idempotently provision the portal's initial installation."
+        prog="portal provision",
+        description="Idempotently provision the portal's initial installation.",
     )
     parser.add_argument("--admin-email", required=True)
     parser.add_argument("--admin-password-env", required=True)
@@ -54,6 +63,19 @@ def _proxy_values(provider: str) -> dict[str, str]:
     return values
 
 
+def _print_enrollment(enrollment: MfaEnrollment | None) -> None:
+    """Print the second factor once. Nothing can reproduce it afterwards."""
+    if enrollment is None:
+        print("Second factor: already enrolled (unchanged)")
+        return
+
+    print(f"Second factor: {enrollment.enrollment_uri}")
+    print("Recovery codes (store these now, they are shown only here):")
+
+    for code in enrollment.recovery_codes:
+        print(f"  {code}")
+
+
 async def provision(args: argparse.Namespace) -> None:
     settings = PortalSettings.from_environment()
     settings.validate()
@@ -66,20 +88,20 @@ async def provision(args: argparse.Namespace) -> None:
     try:
         await apply_migrations(pool)
 
-        auth_repo = PostgresAuthRepository(pool)
-        team_repo = PostgresTeamRepository(pool)
         credential_repo = PostgresCredentialRepository(pool)
 
-        administrator = await auth_repo.provision_site_admin(
-            args.admin_email,
-            password_hash,
+        service = ProvisioningService(
+            PostgresAuthRepository(pool),
+            PostgresTeamRepository(pool),
+            credential_repo,
+            EnvelopeProtector(MasterKeyring.from_file(settings.master_key_file)),
+            PostgresAuditLog(pool),
+            settings.hostname,
         )
 
-        service = ProvisioningService(
-            auth_repo,
-            team_repo,
-            credential_repo,
-            AesGcmSecretProtector.from_environment(),
+        administrator, enrollment = await service.ensure_site_admin(
+            args.admin_email,
+            password_hash,
         )
 
         first_team = await service.ensure_first_team(
@@ -93,6 +115,8 @@ async def provision(args: argparse.Namespace) -> None:
             f"({'created' if first_team.created else 'verified'})"
         )
         print(f"Administrator: {administrator.email} (ready)")
+
+        _print_enrollment(enrollment)
 
         provider = args.proxy_provider
         if provider:
@@ -117,6 +141,7 @@ async def provision(args: argparse.Namespace) -> None:
                     label=label,
                     provider=provider,
                     values=_proxy_values(provider),
+                    trace=RequestTrace(),
                 )
                 print(f"Proxy: {credential.label} · {provider} (validated and active)")
             else:
@@ -125,14 +150,10 @@ async def provision(args: argparse.Namespace) -> None:
         await pool.close()
 
 
-def main() -> None:
-    args = build_parser().parse_args()
+def run(argv: Sequence[str]) -> None:
+    args = build_parser().parse_args(argv)
 
     try:
         asyncio.run(provision(args))
     except Exception as error:
         raise SystemExit(f"Provisioning did not complete: {error}") from error
-
-
-if __name__ == "__main__":
-    main()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -61,17 +62,95 @@ MAX_ACTIVE_JOBS = 5
 MAX_LEASE_ATTEMPTS = 4
 
 
+class AuditAction(StrEnum):
+    LOGIN_SUCCEEDED = "login.succeeded"
+    LOGIN_FAILED = "login.failed"
+    SESSION_DESTROYED = "session.destroyed"
+    PERMISSION_DENIED = "permission.denied"
+
+    MFA_ENROLLED = "mfa.enrolled"
+    MFA_REMOVED = "mfa.removed"
+    STEP_UP_VERIFIED = "auth.step_up_verified"
+    STEP_UP_FAILED = "auth.step_up_failed"
+
+    USER_CREATED = "admin.user_created"
+    TEAM_CREATED = "admin.team_created"
+    MEMBER_ADDED = "team.member_added"
+    MEMBER_REMOVED = "team.member_removed"
+
+    CREDENTIAL_CONFIGURED = "credential.configured"
+    CREDENTIAL_REVEALED = "credential.revealed"
+
+    WORKER_ISSUED = "worker.issued"
+    WORKER_REVOKED = "worker.revoked"
+
+
+class LoginRejection(StrEnum):
+    """Why a login stopped. Recorded, never shown: the page stays generic."""
+
+    HUMAN_CHECK = "human_check"
+    CSRF = "csrf"
+    THROTTLED = "throttled"
+    CREDENTIALS = "credentials"
+    MFA_EXPIRED = "mfa_expired"
+    MFA_CODE = "mfa_code"
+
+
+@dataclass(frozen=True)
+class RequestTrace:
+    """How the edge saw a request: the client address and Cloudflare's ray id.
+
+    `ip` is None when no trustworthy address was available, which keeps the
+    audit log's inet column honest instead of storing a placeholder.
+    """
+
+    ip: str | None = None
+    ray_id: str | None = None
+
+    @property
+    def source(self) -> str:
+        """Rate-limit bucket. Unattributable requests share one bucket."""
+        return self.ip or "unknown"
+
+
+@dataclass(frozen=True)
+class AuditEvent:
+    action: AuditAction
+    actor_id: UUID | None = None
+    target_type: str | None = None
+    target_id: UUID | None = None
+    trace: RequestTrace | None = None
+    metadata: Mapping[str, str] = field(default_factory=dict)
+
+
 @dataclass(frozen=True)
 class PortalUser:
     id: UUID
     email: str
     is_site_admin: bool = False
+    mfa_enabled: bool = False
 
 
 @dataclass(frozen=True)
 class BrowserSession:
     user: PortalUser
     csrf_token: str
+    mfa_verified_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class MfaEnrollment:
+    """Shown once, at enrollment. The portal cannot reproduce either value."""
+
+    enrollment_uri: str
+    recovery_codes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class WorkerIdentity:
+    id: UUID
+    worker_id: str
+    tailscale_hostname: str
 
 
 @dataclass(frozen=True)
@@ -94,15 +173,29 @@ class CredentialVersion:
 
 
 @dataclass(frozen=True)
+class ProtectedSecret:
+    """An enveloped payload: what gets stored, and all that gets stored.
+
+    The data key that encrypted `ciphertext` exists only in wrapped form here.
+    `master_key_version` names the keyring entry that can unwrap it, which is
+    what lets a rotation leave older rows readable until they are re-wrapped.
+    """
+
+    ciphertext: bytes
+    wrapped_data_key: bytes
+    master_key_version: str
+
+
+@dataclass(frozen=True)
 class JobCredential:
     """The proxy credential a job's items must be fetched through.
 
-    Stays encrypted until the boundary that hands work to a worker, so the
+    Stays enveloped until the boundary that hands work to a worker, so the
     repository never holds plaintext proxy passwords.
     """
 
     provider: str
-    config_ciphertext: bytes
+    config: ProtectedSecret
 
 
 @dataclass(frozen=True)

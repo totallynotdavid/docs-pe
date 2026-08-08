@@ -11,6 +11,8 @@ from portal.repository.shared import lock_team_row
 if TYPE_CHECKING:
     from asyncpg import Pool, Record
 
+    from portal.domain.models import ProtectedSecret
+
 
 class PostgresCredentialRepository:
     def __init__(self, pool: Pool) -> None:
@@ -64,8 +66,7 @@ class PostgresCredentialRepository:
         team_id: UUID,
         label: str,
         provider: str,
-        config_ciphertext: bytes,
-        key_id: str,
+        config: ProtectedSecret,
         created_by: UUID,
     ) -> CredentialVersion:
         async with self._pool.acquire() as connection, connection.transaction():
@@ -123,16 +124,18 @@ class PostgresCredentialRepository:
                 """
                 INSERT INTO portal_team_proxy_credential_versions
                     (id, credential_id, team_id, version, provider,
-                     config_ciphertext, key_id, lifecycle, is_active, created_by)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, 'validating', false, $8)
+                     config_ciphertext, wrapped_data_key, master_key_version,
+                     lifecycle, is_active, created_by)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'validating', false, $9)
                 """,
                 credential.id,
                 credential_id,
                 team_id,
                 credential.version,
                 provider,
-                config_ciphertext,
-                key_id,
+                config.ciphertext,
+                config.wrapped_data_key,
+                config.master_key_version,
                 created_by,
             )
 

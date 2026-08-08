@@ -6,15 +6,24 @@ import base64
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
+from portal.credentials.secrets import encode_config
 from portal.domain.models import (
     MAX_LEASE_ATTEMPTS,
     InputLine,
     Job,
     JobState,
+    ProtectedSecret,
     SubmitJob,
 )
+from portal.repository.workers import PostgresWorkerRegistry
 
-from tests.portal.conftest import WORKER_TOKEN, object_reference, seed_team
+from tests.portal.conftest import (
+    UNREADABLE_SECRET,
+    WORKER_ID,
+    enroll_worker,
+    object_reference,
+    seed_team,
+)
 
 
 if TYPE_CHECKING:
@@ -22,7 +31,7 @@ if TYPE_CHECKING:
 
     from litestar.testing import AsyncTestClient
     from portal.application.service import PortalService
-    from portal.credentials.secrets import AesGcmSecretProtector
+    from portal.credentials.secrets import EnvelopeProtector
     from portal.repository.jobs import PostgresJobRepository
 
 
@@ -266,36 +275,22 @@ async def test_published_search_finds_a_dni_inside_a_ruc_and_paginates(
 async def test_the_worker_api_leases_an_item_and_publishes_its_result(
     pool: asyncpg.Pool,
     service: PortalService,
-    client: AsyncTestClient,
-    protector: AesGcmSecretProtector,
+    worker_client: AsyncTestClient,
+    protector: EnvelopeProtector,
 ) -> None:
-    secret = await protector.protect(
-        {
-            "username": "equipo",
-            "password": "clave",
-        }
+    config = protector.protect(
+        encode_config({"username": "equipo", "password": "clave"})
     )
 
-    job = await _submit_one(
-        pool,
-        service,
-        ciphertext=secret.ciphertext,
-    )
+    job = await _submit_one(pool, service, config=config)
+    headers = await enroll_worker(pool)
 
-    headers = {
-        "Authorization": f"Bearer {WORKER_TOKEN}",
-        "X-Portal-Worker": "trabajador-uno",
-    }
+    anonymous = await worker_client.post("/claim", json={"sources": []})
 
-    anonymous = await client.post(
-        "/api/worker/claim",
-        json={"sources": []},
-    )
+    assert anonymous.status_code == 403
 
-    assert anonymous.status_code == 401
-
-    response = await client.post(
-        "/api/worker/claim",
+    response = await worker_client.post(
+        "/claim",
         json={"sources": ["osiptel"]},
         headers=headers,
     )
@@ -310,8 +305,8 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
         "password": "clave",
     }
 
-    published = await client.post(
-        "/api/worker/publish",
+    published = await worker_client.post(
+        "/publish",
         json={
             "item_id": claimed["item_id"],
             "fence": claimed["fence"],
@@ -331,16 +326,33 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
     assert finished["state"] == "completed"
 
 
+async def test_a_revoked_worker_stops_claiming(
+    pool: asyncpg.Pool,
+    service: PortalService,
+    worker_client: AsyncTestClient,
+) -> None:
+    await _submit_one(pool, service)
+    headers = await enroll_worker(pool)
+
+    await PostgresWorkerRegistry(pool).revoke(WORKER_ID)
+
+    refused = await worker_client.post(
+        "/claim",
+        json={"sources": ["osiptel"]},
+        headers=headers,
+    )
+
+    assert refused.status_code == 403
+    assert refused.json()["reason"] == "worker_not_authorized"
+
+
 async def _submit_one(
     pool: asyncpg.Pool,
     service: PortalService,
     *,
-    ciphertext: bytes = b"cifrado",
+    config: ProtectedSecret = UNREADABLE_SECRET,
 ) -> Job:
-    actor_id, team_id, credential_id = await seed_team(
-        pool,
-        ciphertext=ciphertext,
-    )
+    actor_id, team_id, credential_id = await seed_team(pool, config=config)
 
     return await service.submit(
         SubmitJob(

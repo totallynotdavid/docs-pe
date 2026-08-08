@@ -31,6 +31,16 @@ def test_responses_use_same_origin_content_security_policy(app: Litestar) -> Non
     assert "unsafe-eval" not in policy
 
 
+def test_responses_deny_powerful_browser_features(app: Litestar) -> None:
+    with TestClient(app) as client:
+        headers = client.get("/login").headers
+
+    assert headers["permissions-policy"] == (
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    )
+    assert headers["x-frame-options"] == "DENY"
+
+
 def test_login_page_uses_available_local_assets(app: Litestar) -> None:
     with TestClient(app) as client:
         page = client.get("/login")

@@ -14,7 +14,7 @@ from litestar_htmx import HTMXRequest
 from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
 from portal.domain.errors import PortalError
-from portal.domain.models import BrowserSession, TeamRole
+from portal.domain.models import BrowserSession, RequestTrace, TeamRole
 from portal.messages import message_for, provider_names
 from portal.settings import PortalSettings
 from portal.web.deps import require_verified_session
@@ -121,12 +121,12 @@ async def team_members_post(
     service: NamedDependency[PortalService],
     settings: NamedDependency[PortalSettings],
     provisioning: NamedDependency[ProvisioningService],
+    trace: NamedDependency[RequestTrace],
     team_id: FromPath[UUID],
     data: Annotated[MemberForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
 ) -> Response:
     session = await require_verified_session(
         request,
-        service,
         settings,
         data.csrf_token,
     )
@@ -137,6 +137,7 @@ async def team_members_post(
             team_id=team_id,
             email=data.email,
             role=data.role,
+            trace=trace,
         )
     except PortalError as error:
         context = await _members_context(
@@ -164,12 +165,12 @@ async def team_members_remove(
     service: NamedDependency[PortalService],
     settings: NamedDependency[PortalSettings],
     provisioning: NamedDependency[ProvisioningService],
+    trace: NamedDependency[RequestTrace],
     team_id: FromPath[UUID],
     data: Annotated[RemoveMemberForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
 ) -> Response:
     session = await require_verified_session(
         request,
-        service,
         settings,
         data.csrf_token,
     )
@@ -178,6 +179,7 @@ async def team_members_remove(
         session.user.id,
         team_id=team_id,
         email=data.email,
+        trace=trace,
     )
 
     return Redirect(f"/teams/{team_id}/settings/members", status_code=303)
@@ -234,6 +236,7 @@ async def proxy_settings_post(
     service: NamedDependency[PortalService],
     settings: NamedDependency[PortalSettings],
     provisioning: NamedDependency[ProvisioningService],
+    trace: NamedDependency[RequestTrace],
     team_id: FromPath[UUID],
 ) -> Response:
     # Proxy fields depend on the selected provider, so this route reads the raw form.
@@ -241,7 +244,6 @@ async def proxy_settings_post(
 
     session = await require_verified_session(
         request,
-        service,
         settings,
         str(form.get("csrf_token", "")),
     )
@@ -260,6 +262,7 @@ async def proxy_settings_post(
             label=label,
             provider=provider,
             values=values,
+            trace=trace,
         )
     except PortalError as error:
         context = await _proxy_context(

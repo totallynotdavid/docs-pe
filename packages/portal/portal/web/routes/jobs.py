@@ -17,6 +17,7 @@ from litestar.response.sse import ServerSentEvent, ServerSentEventMessage
 from litestar_htmx import HTMXRequest
 
 from portal.application.service import PortalService
+from portal.application.sessions import BrowserSessions
 from portal.domain.errors import PortalError
 from portal.domain.models import TERMINAL_JOB_STATES, BrowserSession
 from portal.settings import PortalSettings
@@ -120,7 +121,6 @@ async def new_job_post(
 ) -> Response:
     session = await require_verified_session(
         request,
-        service,
         settings,
         data.csrf_token,
     )
@@ -187,7 +187,6 @@ async def cancel_job(
 ) -> Response:
     session = await require_verified_session(
         request,
-        service,
         settings,
         data.csrf_token,
     )
@@ -202,6 +201,7 @@ async def job_progress(
     request: Request,
     api_session: NamedDependency[BrowserSession],
     service: NamedDependency[PortalService],
+    sessions: NamedDependency[BrowserSessions],
     settings: NamedDependency[PortalSettings],
     team_id: FromPath[UUID],
     job_id: FromPath[UUID],
@@ -212,6 +212,7 @@ async def job_progress(
     return ServerSentEvent(
         _progress_events(
             service,
+            sessions,
             token=request.cookies.get(settings.session_cookie),
             actor_id=api_session.user.id,
             team_id=team_id,
@@ -223,6 +224,7 @@ async def job_progress(
 
 async def _progress_events(
     service: PortalService,
+    sessions: BrowserSessions,
     *,
     token: str | None,
     actor_id: UUID,
@@ -231,7 +233,9 @@ async def _progress_events(
     last_sequence: int,
 ) -> AsyncIterator[ServerSentEventMessage]:
     while True:
-        session = await service.browser_session(token)
+        # Re-checked on every poll: a stream must not outlive the session that
+        # opened it, and the session can be destroyed from another tab.
+        session = await sessions.load(token)
 
         if session is None or session.user.id != actor_id:
             return

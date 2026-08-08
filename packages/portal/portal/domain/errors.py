@@ -7,6 +7,7 @@ class Reason(StrEnum):
     NOT_A_MEMBER = "not_a_member"
     LEADER_REQUIRED = "leader_required"
     SITE_ADMIN_REQUIRED = "site_admin_required"
+    STEP_UP_REQUIRED = "step_up_required"
     CSRF_INVALID = "csrf_invalid"
 
     TEAM_NOT_FOUND = "team_not_found"
@@ -16,6 +17,10 @@ class Reason(StrEnum):
     SOURCE_REQUIRED = "source_required"
     SOURCE_DUPLICATED = "source_duplicated"
     SOURCE_NOT_ENABLED = "source_not_enabled"
+
+    SECRET_UNREADABLE = "secret_unreadable"
+    WORKER_NOT_AUTHORIZED = "worker_not_authorized"
+    WORKER_ID_INVALID = "worker_id_invalid"
 
     CREDENTIAL_REQUIRED = "credential_required"
     CREDENTIAL_WRONG_TEAM = "credential_wrong_team"
@@ -55,6 +60,15 @@ class PortalError(Exception):
 
 class PermissionDenied(PortalError):
     pass
+
+
+class StepUpRequired(PermissionDenied):
+    """The actor is authorized but their second-factor proof is stale.
+
+    A subclass of PermissionDenied rather than a sibling: it is audited by the
+    same after_exception hook, and callers that only handle PermissionDenied
+    still fail closed instead of falling through.
+    """
 
 
 class NotFound(PortalError):

@@ -4,13 +4,21 @@ import re
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 from fetch.domain.errors import ProxyConfigurationError
 from fetch.proxy.registry import PROVIDERS, preflight, spec_for
 
-from portal.credentials.secrets import AesGcmSecretProtector
+from portal.application.access import (
+    AuthorizedService,
+    public,
+    site_admin,
+    site_admin_step_up,
+    team_leader,
+)
+from portal.credentials.secrets import EnvelopeProtector, encode_config
 from portal.domain.errors import (
     CredentialConfigurationError,
     NotFound,
@@ -19,18 +27,29 @@ from portal.domain.errors import (
     Reason,
 )
 from portal.domain.models import (
+    AuditAction,
+    AuditEvent,
     CredentialState,
     CredentialVersion,
+    MfaEnrollment,
     PortalUser,
+    RequestTrace,
     Team,
     TeamRole,
 )
-from portal.security import hash_password
+from portal.security import (
+    hash_password,
+    new_recovery_codes,
+    new_totp_secret,
+    token_hash,
+    totp_enrollment_uri,
+)
 
 
 if TYPE_CHECKING:
     from fetch.proxy.base import Field
 
+    from portal.repository.audit import PostgresAuditLog
     from portal.repository.auth import PostgresAuthRepository
     from portal.repository.credentials import PostgresCredentialRepository
     from portal.repository.teams import PostgresTeamRepository
@@ -60,25 +79,29 @@ class FirstTeamResult:
     created: bool
 
 
-class ProvisioningService:
+class ProvisioningService(AuthorizedService):
     def __init__(
         self,
         auth: PostgresAuthRepository,
         teams: PostgresTeamRepository,
         credentials: PostgresCredentialRepository,
-        secret_protector: AesGcmSecretProtector,
+        protector: EnvelopeProtector,
+        audit: PostgresAuditLog,
+        issuer: str,
     ) -> None:
         self._auth = auth
         self._teams = teams
         self._credentials = credentials
-        self._secret_protector = secret_protector
+        self._protector = protector
+        self._audit = audit
+        self._issuer = issuer
 
+    @public
     async def require_site_admin(self, actor_id: UUID) -> None:
         await self._require_site_admin(actor_id)
 
+    @site_admin
     async def installation_status(self, actor_id: UUID) -> InstallationStatus:
-        await self._require_site_admin(actor_id)
-
         team_count, initial_team_id = await self._teams.installation_status()
         can_create_first_team = team_count == 0 and initial_team_id is None
 
@@ -89,21 +112,48 @@ class ProvisioningService:
             next_step=("create_first_team" if can_create_first_team else "manage_site"),
         )
 
+    @public
+    async def ensure_site_admin(
+        self,
+        email: str,
+        password_hash: str,
+    ) -> tuple[PortalUser, MfaEnrollment | None]:
+        """Create or verify the initial administrator.
+
+        portal_site_admin_requires_mfa means the promotion and the second
+        factor happen together. An account that already carries one keeps it:
+        re-running provisioning must not silently invalidate the authenticator
+        the administrator is holding.
+        """
+        user = await self._auth.create_account(email, password_hash)
+
+        if user.mfa_enabled:
+            return user, None
+
+        enrollment = await self._enroll_mfa(user, promote_to_site_admin=True)
+
+        return await self._reload(user.id), enrollment
+
+    @site_admin
     async def create_first_team(
         self,
         actor_id: UUID,
         *,
         name: str,
         slug: str,
+        trace: RequestTrace,
     ) -> Team:
-        await self._require_site_admin(actor_id)
-
-        return await self._teams.create_first_team(
+        team = await self._teams.create_first_team(
             self._slug(slug),
             self._name(name),
             actor_id,
         )
 
+        await self._record(AuditAction.TEAM_CREATED, actor_id, trace, team=team.id)
+
+        return team
+
+    @site_admin
     async def ensure_first_team(
         self,
         actor_id: UUID,
@@ -112,16 +162,15 @@ class ProvisioningService:
         slug: str,
     ) -> FirstTeamResult:
         """Rerunning bootstrap against an existing installation verifies it."""
-        await self._require_site_admin(actor_id)
-
         normalized_slug = self._slug(slug)
         team_count, initial_team_id = await self._teams.installation_status()
 
         if team_count == 0:
-            team = await self._teams.create_first_team(
-                normalized_slug,
-                self._name(name),
+            team = await self.create_first_team(
                 actor_id,
+                name=name,
+                slug=normalized_slug,
+                trace=RequestTrace(),
             )
             return FirstTeamResult(team, created=True)
 
@@ -138,6 +187,7 @@ class ProvisioningService:
 
         return FirstTeamResult(existing, created=False)
 
+    @site_admin_step_up()
     async def create_team(
         self,
         actor_id: UUID,
@@ -145,48 +195,56 @@ class ProvisioningService:
         name: str,
         slug: str,
         leader_email: str,
+        mfa_verified_at: datetime | None,
+        trace: RequestTrace,
     ) -> Team:
-        await self._require_site_admin(actor_id)
-
         leader = await self._user_by_email(leader_email)
 
-        return await self._teams.create_team(
+        team = await self._teams.create_team(
             self._slug(slug),
             self._name(name),
             actor_id,
             leader.id,
         )
 
+        await self._record(AuditAction.TEAM_CREATED, actor_id, trace, team=team.id)
+
+        return team
+
+    @site_admin_step_up()
     async def create_user(
         self,
         actor_id: UUID,
         *,
         email: str,
         password: str,
+        mfa_verified_at: datetime | None,
+        trace: RequestTrace,
     ) -> PortalUser:
-        await self._require_site_admin(actor_id)
-
         if len(password) < _MIN_PASSWORD:
             raise ProvisioningError(
                 Reason.PASSWORD_TOO_SHORT,
                 minimum=_MIN_PASSWORD,
             )
 
-        return await self._auth.create_user(
+        user = await self._auth.create_user(
             self._email(email),
             hash_password(password),
         )
 
-    async def users(self, actor_id: UUID) -> tuple[PortalUser, ...]:
-        await self._require_site_admin(actor_id)
+        await self._record(AuditAction.USER_CREATED, actor_id, trace, user=user.id)
 
+        return user
+
+    @site_admin
+    async def users(self, actor_id: UUID) -> tuple[PortalUser, ...]:
         return await self._teams.users()
 
+    @site_admin
     async def teams(self, actor_id: UUID) -> tuple[Team, ...]:
-        await self._require_site_admin(actor_id)
-
         return await self._teams.all_teams()
 
+    @team_leader()
     async def invite_or_add_member(
         self,
         actor_id: UUID,
@@ -194,9 +252,8 @@ class ProvisioningService:
         team_id: UUID,
         email: str,
         role: TeamRole,
+        trace: RequestTrace,
     ) -> None:
-        await self._require_leader(actor_id, team_id)
-
         if role not in {TeamRole.TEAM_LEADER, TeamRole.TEAM_MEMBER}:
             raise ProvisioningError(Reason.ROLE_INVALID)
 
@@ -204,44 +261,58 @@ class ProvisioningService:
 
         await self._teams.add_member(team_id, member.id, role)
 
+        await self._record(
+            AuditAction.MEMBER_ADDED,
+            actor_id,
+            trace,
+            team=team_id,
+            user=member.id,
+            role=role.value,
+        )
+
+    @team_leader()
     async def remove_member(
         self,
         actor_id: UUID,
         *,
         team_id: UUID,
         email: str,
+        trace: RequestTrace,
     ) -> None:
-        await self._require_leader(actor_id, team_id)
-
         member = await self._user_by_email(email)
 
         await self._teams.remove_member(team_id, member.id)
 
+        await self._record(
+            AuditAction.MEMBER_REMOVED,
+            actor_id,
+            trace,
+            team=team_id,
+            user=member.id,
+        )
+
+    @team_leader()
     async def members(
         self,
         actor_id: UUID,
         team_id: UUID,
     ) -> tuple[tuple[PortalUser, TeamRole], ...]:
-        await self._require_leader(actor_id, team_id)
-
         return await self._teams.members_for_team(team_id)
 
+    @team_leader()
     async def member_candidates(
         self,
         actor_id: UUID,
         team_id: UUID,
     ) -> tuple[PortalUser, ...]:
-        await self._require_leader(actor_id, team_id)
-
         return await self._teams.users()
 
+    @team_leader()
     async def team_readiness(
         self,
         actor_id: UUID,
         team_id: UUID,
     ) -> TeamReadiness:
-        await self._require_leader(actor_id, team_id)
-
         credentials = await self._credentials.credentials_for_team(team_id)
         has_active_credential = any(
             credential.is_active and credential.state is CredentialState.ACTIVE
@@ -253,6 +324,7 @@ class ProvisioningService:
             next_step=("submit_job" if has_active_credential else "configure_proxy"),
         )
 
+    @team_leader()
     async def configure_proxy(
         self,
         actor_id: UUID,
@@ -261,9 +333,8 @@ class ProvisioningService:
         label: str,
         provider: str,
         values: Mapping[str, str],
+        trace: RequestTrace,
     ) -> CredentialVersion:
-        await self._require_leader(actor_id, team_id)
-
         if provider not in PROVIDERS:
             raise CredentialConfigurationError(Reason.PROXY_UNAVAILABLE)
 
@@ -277,14 +348,13 @@ class ProvisioningService:
                 Reason.PROXY_INVALID,
             ) from error
 
-        protected = await self._secret_protector.protect(normalized)
+        protected = self._protector.protect(encode_config(normalized))
 
         pending = await self._credentials.start_credential_validation(
             team_id,
             clean_label,
             spec.name,
-            protected.ciphertext,
-            protected.key_id,
+            protected,
             actor_id,
         )
 
@@ -303,12 +373,74 @@ class ProvisioningService:
                 Reason.PROXY_PREFLIGHT_FAILED,
             ) from error
 
-        return await self._credentials.finish_credential_validation(
+        credential = await self._credentials.finish_credential_validation(
             pending.id,
             state=CredentialState.ACTIVE,
             detail="",
             actor_id=actor_id,
         )
+
+        await self._record(
+            AuditAction.CREDENTIAL_CONFIGURED,
+            actor_id,
+            trace,
+            team=team_id,
+            credential=credential.id,
+            provider=spec.name,
+        )
+
+        return credential
+
+    async def _enroll_mfa(
+        self,
+        user: PortalUser,
+        *,
+        promote_to_site_admin: bool,
+    ) -> MfaEnrollment:
+        secret = new_totp_secret()
+        recovery_codes = new_recovery_codes()
+
+        await self._auth.enable_mfa(
+            user.id,
+            self._protector.protect(secret.encode("utf-8")),
+            tuple(token_hash(code) for code in recovery_codes),
+            promote_to_site_admin=promote_to_site_admin,
+        )
+
+        await self._record(AuditAction.MFA_ENROLLED, user.id, RequestTrace())
+
+        return MfaEnrollment(
+            enrollment_uri=totp_enrollment_uri(
+                secret,
+                email=user.email,
+                issuer=self._issuer,
+            ),
+            recovery_codes=recovery_codes,
+        )
+
+    async def _record(
+        self,
+        action: AuditAction,
+        actor_id: UUID,
+        trace: RequestTrace,
+        **metadata: object,
+    ) -> None:
+        await self._audit.record(
+            AuditEvent(
+                action=action,
+                actor_id=actor_id,
+                trace=trace,
+                metadata={key: str(value) for key, value in metadata.items()},
+            )
+        )
+
+    async def _reload(self, user_id: UUID) -> PortalUser:
+        user = await self._auth.user_by_id(user_id)
+
+        if user is None:
+            raise NotFound(Reason.USER_NOT_FOUND)
+
+        return user
 
     @staticmethod
     def provider_fields(provider: str) -> tuple[Field, ...]:

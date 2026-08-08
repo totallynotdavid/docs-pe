@@ -4,7 +4,13 @@ import argparse
 import asyncio
 import os
 
+from typing import TYPE_CHECKING
+
 from portal.provision import provision
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 def _required_env(name: str) -> str:
@@ -39,12 +45,11 @@ async def bootstrap() -> None:
     )
 
 
-def main() -> None:
+def run(argv: Sequence[str]) -> None:
+    if argv:
+        raise SystemExit("portal bootstrap takes no arguments")
+
     try:
         asyncio.run(bootstrap())
     except Exception as error:
         raise SystemExit(f"Arranque local no completado: {error}") from error
-
-
-if __name__ == "__main__":
-    main()

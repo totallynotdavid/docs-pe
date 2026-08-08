@@ -12,8 +12,8 @@ from litestar_htmx import HTMXRequest
 
 from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
-from portal.domain.errors import PortalError
-from portal.domain.models import BrowserSession
+from portal.domain.errors import PortalError, StepUpRequired
+from portal.domain.models import BrowserSession, RequestTrace
 from portal.settings import PortalSettings
 from portal.web.deps import require_verified_session
 from portal.web.render import render
@@ -64,11 +64,11 @@ async def admin_users_post(
     service: NamedDependency[PortalService],
     settings: NamedDependency[PortalSettings],
     provisioning: NamedDependency[ProvisioningService],
+    trace: NamedDependency[RequestTrace],
     data: Annotated[NewUserForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
 ) -> Response:
     session = await require_verified_session(
         request,
-        service,
         settings,
         data.csrf_token,
     )
@@ -78,7 +78,11 @@ async def admin_users_post(
             session.user.id,
             email=data.email,
             password=data.password,
+            mfa_verified_at=session.mfa_verified_at,
+            trace=trace,
         )
+    except StepUpRequired:
+        raise
     except (PortalError, ValueError) as error:
         context = await _users_context(
             session,
@@ -129,11 +133,11 @@ async def admin_teams_post(
     service: NamedDependency[PortalService],
     settings: NamedDependency[PortalSettings],
     provisioning: NamedDependency[ProvisioningService],
+    trace: NamedDependency[RequestTrace],
     data: Annotated[NewTeamForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
 ) -> Response:
     session = await require_verified_session(
         request,
-        service,
         settings,
         data.csrf_token,
     )
@@ -144,7 +148,11 @@ async def admin_teams_post(
             name=data.name,
             slug=data.slug,
             leader_email=data.leader_email,
+            mfa_verified_at=session.mfa_verified_at,
+            trace=trace,
         )
+    except StepUpRequired:
+        raise
     except (PortalError, ValueError) as error:
         context = await _teams_context(
             session,
