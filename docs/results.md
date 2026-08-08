@@ -47,13 +47,9 @@ Zero-line share is a useful sanity check for new DNI jobs. Across these
 Molina). Jobs outside roughly 4-30% deserve investigation; results near 0% or
 100% usually indicate a bug, not real data.
 
-piura_dni's input is 565,539 DNIs from the initial piura SUNAT pass plus 700
-DNIs resolved by piura's post-merge retry (see below), run through OSIPTEL in
-a small follow-up (piura_dni_retry) and folded into this row.
-
 Carrier distribution across 3,072,848 lines:
 
-| Carrier                   |   Lines | Share  |
+| Carrier                   |   Lines |  Share |
 | ------------------------- | ------: | -----: |
 | America Movil (Claro)     | 865,472 |  28.2% |
 | Entel                     | 889,956 |  29.0% |
@@ -81,23 +77,6 @@ Jobs before 2026-08-01 had a residual error rate of 0.03-0.04%, entirely
 explained by two parser gaps (sucesión indivisa handling and non-DNI `tipo_doc`
 values, see [sites/sunat.md](sites/sunat.md)) fixed after that date. `surco` was
 the first rerun after those fixes and reached zero errors.
-
-`lima` and `la_molina` also reached zero errors; both ran as one combined job
-over the disjoint RUC union of the two source CSVs, sharded across three boxes
-(zeus, poseidon, master), then split back into per-province output by joining
-SUNAT's `doc` column against each CSV's RUC set. 32 RUCs hit a
-`transport_error` in the first pass and were retried standalone once a box
-freed up; all 32 succeeded on retry, and the 32 DNIs they resolved to were run
-through OSIPTEL in a small follow-up job (`lima_molina_dni_retry`) since the
-main `_dni` jobs had already started before the retry finished.
-
-`piura` was sharded across three boxes (zeus, poseidon, master) over the full
-deduped RUC union. Merging the three shares left 700 RUCs in `failed` and 2 in
-`not_found`; all 702 were retried standalone once the shares finished, all 700
-`failed` RUCs succeeded, and the 2 `not_found` results held, reaching zero
-residual errors. All 700 newly resolved RUCs turned out to be DNI-type
-identities, so they had missed the initial OSIPTEL DNI extraction; see
-`piura_dni` above.
 
 ## SUNAT reps
 
