@@ -376,7 +376,9 @@ function setupPasskeyEnrollment() {
         return;
       }
 
-      window.location.reload();
+      // Not reload(): the add form was opened via ?add=1, and a completed
+      // add should settle back to the plain list, not reopen itself.
+      window.location.href = "/security";
     } catch (error) {
       if (status) {
         status.textContent =

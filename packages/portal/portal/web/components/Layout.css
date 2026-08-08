@@ -109,6 +109,60 @@ p {
   min-width: 0;
 }
 
+/* Onboarding: no nav to show mid-setup, so there's no sidebar column, just a
+   bare brand/logout strip above a narrower centered column. A dashboard's
+   1120px working width would leave a single form looking lost. */
+.onboarding-topbar {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  height: 48px;
+  justify-content: space-between;
+  padding: 0 20px;
+}
+
+.onboarding-topbar__brand {
+  align-items: center;
+  color: inherit;
+  display: flex;
+  font-size: 15px;
+  font-weight: var(--font-weight-semibold);
+  gap: 9px;
+  text-decoration: none;
+}
+
+.onboarding-topbar__mark {
+  align-items: center;
+  background: var(--foreground);
+  border-radius: 6px;
+  color: var(--primary-foreground);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  height: 23px;
+  justify-content: center;
+  width: 23px;
+}
+
+body.onboarding {
+  background: var(--background-app);
+}
+
+body.onboarding .content {
+  max-width: 560px;
+  padding: 48px 20px 72px;
+}
+
+body.onboarding h1 {
+  font-size: var(--font-size-heading-md);
+  letter-spacing: -0.015em;
+  margin: 0 0 6px;
+}
+
+body.onboarding .subtitle {
+  margin-bottom: 24px;
+}
+
 /* The signed-out pages drop the shell and centre a single card instead. */
 body.signed-out {
   align-items: center;

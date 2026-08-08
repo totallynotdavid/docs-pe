@@ -185,7 +185,9 @@ class PostgresAuthRepository:
             )
 
             if recovery_code_hashes is not None:
-                await self._replace_recovery_codes(connection, user_id, recovery_code_hashes)
+                await self._replace_recovery_codes(
+                    connection, user_id, recovery_code_hashes
+                )
 
     async def disable_totp(self, user_id: UUID) -> None:
         """Reject via portal_admin_requires_second_factor if this is a site
@@ -259,9 +261,13 @@ class PostgresAuthRepository:
                 )
 
             if recovery_code_hashes is not None:
-                await self._replace_recovery_codes(connection, user_id, recovery_code_hashes)
+                await self._replace_recovery_codes(
+                    connection, user_id, recovery_code_hashes
+                )
 
-    async def remove_webauthn_credential(self, user_id: UUID, credential_id: UUID) -> None:
+    async def remove_webauthn_credential(
+        self, user_id: UUID, credential_id: UUID
+    ) -> None:
         try:
             async with self._pool.acquire() as connection, connection.transaction():
                 deleted = await connection.execute(
@@ -279,7 +285,9 @@ class PostgresAuthRepository:
         if deleted == "DELETE 0":
             raise NotFound(Reason.PASSKEY_NOT_FOUND)
 
-    async def webauthn_credentials(self, user_id: UUID) -> tuple[WebAuthnCredential, ...]:
+    async def webauthn_credentials(
+        self, user_id: UUID
+    ) -> tuple[WebAuthnCredential, ...]:
         async with self._pool.acquire() as connection:
             rows = await connection.fetch(
                 """

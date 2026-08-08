@@ -8,7 +8,7 @@ from litestar import Response, Router, get, post
 from litestar.di import NamedDependency
 from litestar.enums import RequestEncodingType
 from litestar.exceptions import HTTPException
-from litestar.params import Body, FromPath
+from litestar.params import Body, FromPath, FromQuery
 from litestar.response import Redirect
 from litestar_htmx import HTMXRequest
 
@@ -216,14 +216,21 @@ async def _teams_context(
     session: BrowserSession,
     provisioning: ProvisioningService,
     *,
+    add: bool = False,
     error: str = "",
 ) -> dict[str, object]:
+    teams = await provisioning.teams(session.user.id)
+
     return {
         "user": session.user,
         "csrf_token": session.csrf_token,
-        "teams": await provisioning.teams(session.user.id),
+        "teams": teams,
         "users": await provisioning.users(session.user.id),
         "status": await provisioning.installation_status(session.user.id),
+        # Same idiom as proxy settings and /security: the list is the common
+        # case, the form is a deliberate "+ Add" action, except when there's
+        # nothing to list yet.
+        "show_form": add or not teams,
         "error": error,
     }
 
@@ -232,15 +239,15 @@ async def _teams_context(
 async def admin_teams_get(
     page_session: NamedDependency[BrowserSession],
     provisioning: NamedDependency[ProvisioningService],
+    add: FromQuery[bool] = False,
 ) -> Response:
-    context = await _teams_context(page_session, provisioning)
+    context = await _teams_context(page_session, provisioning, add=add)
     return render("SiteTeams", **context)
 
 
 @dataclass
 class NewTeamForm:
     name: str
-    slug: str
     leader_email: str
     csrf_token: str
 
@@ -264,7 +271,6 @@ async def admin_teams_post(
         team = await provisioning.create_team(
             session.user.id,
             name=data.name,
-            slug=data.slug,
             leader_email=data.leader_email,
             mfa_verified_at=session.mfa_verified_at,
             trace=trace,
@@ -275,6 +281,7 @@ async def admin_teams_post(
         context = await _teams_context(
             session,
             provisioning,
+            add=True,
             error=str(error),
         )
         return render("SiteTeams", **context)

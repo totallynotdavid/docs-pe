@@ -186,7 +186,9 @@ class LoginService:
 
         return await self._establish(user, attempt.trace, mfa_verified=True)
 
-    async def begin_passkey_login(self, pending_token: str | None) -> PasskeyLoginChallenge:
+    async def begin_passkey_login(
+        self, pending_token: str | None
+    ) -> PasskeyLoginChallenge:
         """pending_token names the account when called from /login/mfa (a
         passkey offered as an alternative to a TOTP code); None means a
         passwordless, discoverable login called straight from /login.
@@ -227,7 +229,9 @@ class LoginService:
 
         return PasskeyLoginChallenge(login_token, challenge.options_json)
 
-    async def complete_passkey_login(self, attempt: PasskeyLoginAttempt) -> LoginOutcome:
+    async def complete_passkey_login(
+        self, attempt: PasskeyLoginAttempt
+    ) -> LoginOutcome:
         """A userVerification: required assertion is possession plus the
         device's own knowledge/inherence check, so unlike a TOTP code it
         already satisfies the second factor on its own: this always

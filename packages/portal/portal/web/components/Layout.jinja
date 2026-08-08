@@ -11,14 +11,24 @@
     <script defer src="/static/htmx.min.js"></script>
     <script defer src="/static/portal.js"></script>
   </head>
-  <body{% if not user %} class="signed-out"{% endif %}>
+  <body class="{{ 'signed-out' if not user else ('onboarding' if setup else '') }}">
     <a class="skip-link" href="#content">Saltar al contenido</a>
-    {% if user %}
+    {% if user and setup %}
+      {# No nav to show mid-setup: a bare brand and a way out, not a sidebar
+         with an empty middle. #}
+      <header class="onboarding-topbar">
+        <a class="onboarding-topbar__brand" href="/">
+          <span class="onboarding-topbar__mark" aria-hidden="true">W</span>
+          Worker
+        </a>
+        <InlineAction action="/logout" :csrf_token="csrf_token">
+          <button type="submit">Cerrar sesión</button>
+        </InlineAction>
+      </header>
+      {{ content }}
+    {% elif user %}
       <div class="{{ 'app-shell app-shell--minimal' if minimal else 'app-shell' }}">
-        <Sidebar :user="user"
-                 :csrf_token="csrf_token"
-                 :setup="setup"
-                 :minimal="minimal" />
+        <Sidebar :user="user" :csrf_token="csrf_token" :minimal="minimal" />
         <div class="workspace">{{ content }}</div>
       </div>
     {% else %}

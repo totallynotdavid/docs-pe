@@ -279,7 +279,9 @@ async def test_passkey_login_as_second_factor(
     await provisioning.confirm_passkey_registration(
         user_id,
         setup_token=passkey_setup.setup_token,
-        response_json=json.dumps(authenticator.register(json.loads(passkey_setup.options_json))),
+        response_json=json.dumps(
+            authenticator.register(json.loads(passkey_setup.options_json))
+        ),
         label="Llave",
     )
 
@@ -330,7 +332,9 @@ async def test_discoverable_passkey_login_needs_no_password(
     await provisioning.confirm_passkey_registration(
         user_id,
         setup_token=setup.setup_token,
-        response_json=json.dumps(authenticator.register(json.loads(setup.options_json))),
+        response_json=json.dumps(
+            authenticator.register(json.loads(setup.options_json))
+        ),
         label="Llave",
     )
 
