@@ -31,29 +31,32 @@ result rows + error rows + not_found rows = input rows
 
 Phone lines per document. Input is DNIs unless noted.
 
-| Job            |   Input | With lines | Zero-line |    Rows | Failed |
-| -------------- | ------: | ---------: | --------: | ------: | -----: |
-| barranca_dni   |  50,455 |     41,458 |     8,997 | 107,536 |      0 |
-| ancash_dni     |  69,487 |     66,371 |     3,116 | 174,833 |      0 |
-| la_libertad    |  71,234 |     66,521 |     4,713 | 170,747 |      0 |
-| dni_lambayeque | 208,336 |    195,501 |    12,835 | 518,117 |      0 |
-| surco_dni      | 235,002 |    166,967 |    68,035 | 323,981 |      0 |
+| Job            |   Input | With lines | Zero-line |      Rows | Failed |
+| -------------- | ------: | ---------: | --------: | --------: | -----: |
+| barranca_dni   |  50,455 |     41,458 |     8,997 |   107,536 |      0 |
+| ancash_dni     |  69,487 |     66,371 |     3,116 |   174,833 |      0 |
+| la_libertad    |  71,234 |     66,521 |     4,713 |   170,747 |      0 |
+| dni_lambayeque | 208,336 |    195,501 |    12,835 |   518,117 |      0 |
+| surco_dni      | 235,002 |    166,967 |    68,035 |   323,981 |      0 |
+| lima_dni       | 241,433 |    186,735 |    54,698 |   396,280 |      0 |
+| la_molina_dni  |  99,484 |     69,602 |    29,882 |   133,044 |      0 |
+| piura_dni      | 566,239 |    485,025 |    81,214 | 1,248,310 |      0 |
 
-Zero-line share is a useful sanity check for new DNI jobs. Across these 634,514
-documents, it's 15.4%, ranging from 4.5% (Ancash) to 29.0% (Surco). Jobs outside
-roughly 4-30% deserve investigation; results near 0% or 100% usually indicate a
-bug, not real data.
+Zero-line share is a useful sanity check for new DNI jobs. Across these
+1,541,670 documents, it's 17.1%, ranging from 4.5% (Ancash) to 30.0% (La
+Molina). Jobs outside roughly 4-30% deserve investigation; results near 0% or
+100% usually indicate a bug, not real data.
 
-Carrier distribution across 1,295,214 lines:
+Carrier distribution across 3,072,848 lines:
 
-| Carrier                   |   Lines | Share |
-| ------------------------- | ------: | ----: |
-| America Movil (Claro)     | 394,009 | 30.4% |
-| Entel                     | 372,781 | 28.8% |
-| Telefonica (Movistar)     | 337,068 | 26.0% |
-| Viettel (Bitel)           | 190,964 | 14.7% |
-| Guinea Mobile (Cuy Movil) |     268 | 0.02% |
-| Flash Servicios           |     124 | 0.01% |
+| Carrier                   |   Lines |  Share |
+| ------------------------- | ------: | -----: |
+| America Movil (Claro)     | 865,472 |  28.2% |
+| Entel                     | 889,956 |  29.0% |
+| Telefonica (Movistar)     | 813,982 |  26.5% |
+| Viettel (Bitel)           | 502,744 |  16.4% |
+| Guinea Mobile (Cuy Movil) |     567 | 0.018% |
+| Flash Servicios           |     127 | 0.004% |
 
 ## SUNAT
 
@@ -66,11 +69,14 @@ Identity records for RUC-10 (natural persons).
 | surco      | 235,236 | 235,233 |      0 |         3 |
 | lambayeque | 394,884 | 394,729 |    155 |         0 |
 | trujillo   | 540,756 | 540,606 |    150 |         0 |
+| lima       | 241,603 | 241,591 |      0 |        12 |
+| la_molina  |  99,568 |  99,567 |      0 |         1 |
+| piura      | 566,386 | 566,384 |      0 |         2 |
 
-Jobs before 2026-08-01 had a residual error rate of 0.03-0.04%, entirely
-explained by two parser gaps (sucesión indivisa handling and non-DNI `tipo_doc`
-values, see [sites/sunat.md](sites/sunat.md)) fixed after that date. `surco` was
-the first rerun after those fixes and reached zero errors.
+Jobs before 2026-08-01 had residual error rates ranging from 0.03% to 0.07%,
+entirely explained by two parser gaps (sucesión indivisa handling and non-DNI
+`tipo_doc` values, see [sites/sunat.md](sites/sunat.md)) fixed after that date.
+`surco` was the first rerun after those fixes and reached zero errors.
 
 ## SUNAT reps
 
