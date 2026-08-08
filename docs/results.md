@@ -73,10 +73,10 @@ Identity records for RUC-10 (natural persons).
 | la_molina  |  99,568 |  99,567 |      0 |         1 |
 | piura      | 566,386 | 566,384 |      0 |         2 |
 
-Jobs before 2026-08-01 had a residual error rate of 0.03-0.04%, entirely
-explained by two parser gaps (sucesión indivisa handling and non-DNI `tipo_doc`
-values, see [sites/sunat.md](sites/sunat.md)) fixed after that date. `surco` was
-the first rerun after those fixes and reached zero errors.
+Jobs before 2026-08-01 had residual error rates ranging from 0.03% to 0.07%,
+entirely explained by two parser gaps (sucesión indivisa handling and non-DNI
+`tipo_doc` values, see [sites/sunat.md](sites/sunat.md)) fixed after that date.
+`surco` was the first rerun after those fixes and reached zero errors.
 
 ## SUNAT reps
 
