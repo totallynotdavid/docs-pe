@@ -93,11 +93,11 @@ testpaths = ["tests"]
 
 [dependency-groups]
 dev = [
-  "djlint==1.43.2",
+  "djlint==1.44.1",
   "httpx2>=2.9.1",
   "mypy>=2.3.0",
   "pyinstaller>=6.21.0",
   "pytest>=9.1.1",
   "pytest-asyncio>=1.4.0",
-  "ruff==0.16.1",
+  "ruff==0.16.2",
 ]
