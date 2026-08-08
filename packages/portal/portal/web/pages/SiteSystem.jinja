@@ -1,0 +1,69 @@
+{#def user, csrf_token, health #}
+<Layout title="Sistema · Administración · Worker"
+        :user="user"
+        :csrf_token="csrf_token">
+  <TopBar title="Administración · Sistema">
+    <ActionButton variant="secondary" href="/admin/teams">
+      Equipos
+    </ActionButton>
+    <ActionButton variant="secondary" href="/admin/users">
+      Personas
+    </ActionButton>
+    <ActionButton variant="secondary" href="/admin/search-activity">
+      Búsquedas
+    </ActionButton>
+  </TopBar>
+  <MainContent>
+    <h1 class="sr-only">Salud del sistema</h1>
+    <Panel>
+      <PanelHeader title="Cola de trabajo"
+                   description="Procesos activos frente al límite fijo del sistema." />
+      <PanelBody>
+        <Metrics>
+          <Metric label="Procesos activos">
+            {{ health.queue.active_jobs }} / {{ health.queue.max_active_jobs }}
+          </Metric>
+          <Metric label="En espera">
+            {{ health.queue.queued_jobs }}
+          </Metric>
+        </Metrics>
+      </PanelBody>
+    </Panel>
+    <Panel>
+      <PanelHeader title="Trabajadores"
+                   description="Estado y consumo de recursos de cada nodo del clúster." />
+      <List>
+        {% for worker in health.workers %}
+          <ListItem>
+            <div>
+              <span>{{ worker.worker_id }}</span>
+              <MetaText>
+                {{ worker.tailscale_hostname }}
+                {% if worker.current_job_id %}
+                  · proceso {{ worker.current_job_id|string|truncate(8, true, '') }}
+                {% endif %}
+              </MetaText>
+            </div>
+            <MetaText>
+              {% if worker.online %}
+                En línea
+                {% if worker.cpu_percent is not none %}
+                  · CPU {{ '%.0f'|format(worker.cpu_percent) }}%
+                {% endif %}
+                {% if worker.memory_mb is not none %}
+                  · {{ '%.0f'|format(worker.memory_mb) }} MB
+                {% endif %}
+              {% else %}
+                Sin conexión
+              {% endif %}
+            </MetaText>
+          </ListItem>
+        {% else %}
+          <ListItem class="empty-state">
+            Aún no hay trabajadores registrados.
+          </ListItem>
+        {% endfor %}
+      </List>
+    </Panel>
+  </MainContent>
+</Layout>

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 import msgspec
+import psutil
 
 from fetch.domain.types import Doc
 from fetch.pipeline.breaker import CircuitBreaker
@@ -20,15 +21,20 @@ from fetch.pipeline.session import WorkerConfig, WorkerState, close_session
 from fetch.proxy.registry import provider_from_values
 from fetch.sites.registry import SITES
 
-from portal.worker.protocol import PublishRequest, WorkLease
+from portal.worker.protocol import HeartbeatRequest, PublishRequest, WorkLease
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from uuid import UUID
 
 
 DEFAULT_CONCURRENCY = 4
 IDLE_POLL_SECONDS = 2
+
+# 1/3 of repository/workers.py's HEARTBEAT_STALE_AFTER, so a single missed
+# beat (network blip, slow request) doesn't flip a healthy worker offline.
+HEARTBEAT_INTERVAL_SECONDS = 15
 
 
 @dataclass(frozen=True)
@@ -51,6 +57,10 @@ class WorkerAgent:
     def __init__(self, options: AgentOptions) -> None:
         self.options = options
         self._breakers: dict[tuple[str, str], CircuitBreaker] = {}
+        # Best-effort signal for the admin health page, not correctness-critical:
+        # concurrent lanes can each be mid-flight on a different job, so this is
+        # whichever one claimed most recently, not a per-lane breakdown.
+        self._current_job_id: UUID | None = None
 
     async def run(self) -> None:
         headers = {
@@ -64,8 +74,34 @@ class WorkerAgent:
             timeout=90,
         ) as client:
             await asyncio.gather(
-                *(self._loop(client) for _ in range(self.options.concurrency))
+                self._heartbeat_loop(client),
+                *(self._loop(client) for _ in range(self.options.concurrency)),
             )
+
+    async def _heartbeat_loop(self, client: httpx.AsyncClient) -> None:
+        process = psutil.Process()
+        process.cpu_percent()  # First call only primes the internal baseline.
+
+        while True:
+            await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
+
+            try:
+                response = await client.post(
+                    "/heartbeat",
+                    content=msgspec.json.encode(
+                        HeartbeatRequest(
+                            cpu_percent=process.cpu_percent(),
+                            memory_mb=process.memory_info().rss / (1024 * 1024),
+                            current_job_id=self._current_job_id,
+                        )
+                    ),
+                    headers={"Content-Type": "application/json"},
+                )
+                response.raise_for_status()
+            except httpx.HTTPError:
+                # A missed heartbeat just makes the worker look briefly stale;
+                # it must never take down the claim/execute/publish loops.
+                pass
 
     async def _loop(self, client: httpx.AsyncClient) -> None:
         while True:
@@ -86,7 +122,12 @@ class WorkerAgent:
         )
         response.raise_for_status()
 
-        return msgspec.json.decode(response.content, type=WorkLease | None)
+        lease = msgspec.json.decode(response.content, type=WorkLease | None)
+
+        if lease is not None:
+            self._current_job_id = lease.job_id
+
+        return lease
 
     async def _publish(
         self,

@@ -1,12 +1,13 @@
-{#def user, csrf_token, team, jobs, page, total #}
+{#def user, csrf_token, team, jobs, page, total, minimal=False #}
 <Layout :title="team.name ~ ' · Worker'"
         :user="user"
-        :csrf_token="csrf_token">
+        :csrf_token="csrf_token"
+        :minimal="minimal">
   <TopBar :title="team.name">
     <ActionButton variant="secondary" :href="'/teams/' ~ team.id ~ '/search'">
       Buscar
     </ActionButton>
-    {% if team.role.value == 'team_leader' %}
+    {% if team.role and team.role.value == 'team_leader' %}
       <ActionButton :href="'/teams/' ~ team.id ~ '/jobs/new'">
         Nueva consulta
       </ActionButton>
@@ -14,7 +15,7 @@
   </TopBar>
   <MainContent>
     <h1 class="sr-only">{{ team.name }}</h1>
-    {% if team.role.value == 'team_leader' %}
+    {% if (team.role and team.role.value == 'team_leader') or user.is_site_admin %}
       <Panel aria-labelledby="jobs-title">
         <PanelHeader title="Tareas recientes"
                      description="El estado se actualiza mientras se procesan."

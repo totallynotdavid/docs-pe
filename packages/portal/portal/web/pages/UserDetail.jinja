@@ -1,0 +1,102 @@
+{#def user, csrf_token, person, teams, is_sole_active_admin, error #}
+<Layout :title="person.email ~ ' · Administración · Worker'"
+        :user="user"
+        :csrf_token="csrf_token">
+  <TopBar title="Persona">
+    <ActionButton variant="secondary" href="/admin/users">
+      Personas
+    </ActionButton>
+  </TopBar>
+  <MainContent>
+    <h1 class="sr-only">{{ person.email }}</h1>
+    <Panel>
+      <PanelHeader :title="person.email">
+        <MetaText>
+          {% if not person.is_active %}
+            Cuenta desactivada
+          {% elif person.is_site_admin %}
+            Administradora del sitio
+          {% else %}
+            Cuenta activa
+          {% endif %}
+        </MetaText>
+      </PanelHeader>
+      <PanelBody>
+        {% if error %}<Message>{{ error }}</Message>{% endif %}
+        {% if person.id == user.id %}
+          <p class="subtitle">Esta es tu propia cuenta: las acciones de esta página no aplican sobre ti mismo.</p>
+        {% else %}
+          {% if is_sole_active_admin %}
+            <p class="subtitle">Es la única persona administradora activa. Asigna otra administradora antes de desactivarla, eliminarla o quitarle la administración del sitio.</p>
+          {% endif %}
+          <Actions position="above">
+            {% if not is_sole_active_admin %}
+              {% if person.is_active %}
+                <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
+                  <input type="hidden" name="action" value="deactivate">
+                  <button type="submit">Desactivar</button>
+                </InlineAction>
+              {% endif %}
+            {% endif %}
+            {% if not person.is_active %}
+              <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
+                <input type="hidden" name="action" value="reactivate">
+                <button type="submit">Reactivar</button>
+              </InlineAction>
+              <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
+                <input type="hidden" name="action" value="delete">
+                <button type="submit">Eliminar</button>
+              </InlineAction>
+            {% endif %}
+            {% if not is_sole_active_admin %}
+              {% if person.is_site_admin %}
+                <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
+                  <input type="hidden" name="action" value="demote">
+                  <button type="submit">Quitar administración del sitio</button>
+                </InlineAction>
+              {% else %}
+                <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
+                  <input type="hidden" name="action" value="promote">
+                  <button type="submit">Hacer administradora del sitio</button>
+                </InlineAction>
+              {% endif %}
+            {% endif %}
+          </Actions>
+        {% endif %}
+      </PanelBody>
+    </Panel>
+    <Panel>
+      <PanelHeader title="Equipos"
+                   description="Equipos a los que pertenece esta persona." />
+      <List>
+        {% for team in teams %}
+          <ListItem>
+            <a href="/teams/{{ team.id }}/settings/members">{{ team.name }}</a>
+            <MetaText>
+              {{ team.role|role_name }}
+            </MetaText>
+          </ListItem>
+        {% else %}
+          <ListItem class="empty-state">
+            No pertenece a ningún equipo todavía.
+          </ListItem>
+        {% endfor %}
+      </List>
+    </Panel>
+    {% if person.id != user.id %}
+      <Panel>
+        <PanelHeader title="Restablecer contraseña"
+                     description="La persona deberá usar esta contraseña temporal en su próximo acceso." />
+        <PanelBody>
+          <FormLayout :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
+            <input type="hidden" name="action" value="reset_password">
+            <Field label="Contraseña temporal">
+              <input type="password" name="password" minlength="12" required>
+            </Field>
+            <button type="submit">Restablecer contraseña</button>
+          </FormLayout>
+        </PanelBody>
+      </Panel>
+    {% endif %}
+  </MainContent>
+</Layout>

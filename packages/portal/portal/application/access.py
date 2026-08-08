@@ -112,6 +112,57 @@ def team_reader(
     return decorator
 
 
+def site_admin_or_leader(
+    *,
+    actor_id: str | Callable[[Mapping[str, Any]], UUID] = "actor_id",
+    team_id: str | Callable[[Mapping[str, Any]], UUID] = "team_id",
+) -> Callable[[F], F]:
+    """Requires team_leader on team_id, or site-admin standing.
+
+    Lets a site administrator manage any team's settings (members,
+    credentials) without being enrolled as a member, which would otherwise
+    change who counts toward "a team must retain at least one leader".
+    """
+
+    def decorator(fn: F) -> F:
+        @functools.wraps(fn)
+        async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+            arguments = _arguments(fn, self, args, kwargs)
+            await self._require_leader_or_site_admin(
+                _resolve(actor_id, arguments),
+                _resolve(team_id, arguments),
+            )
+            return await fn(self, *args, **kwargs)
+
+        _mark(wrapper, fn, "site_admin_or_leader")
+        return cast("F", wrapper)
+
+    return decorator
+
+
+def site_admin_or_reader(
+    *,
+    actor_id: str | Callable[[Mapping[str, Any]], UUID] = "actor_id",
+    team_id: str | Callable[[Mapping[str, Any]], UUID] = "team_id",
+) -> Callable[[F], F]:
+    """Requires any membership role on team_id, or site-admin standing."""
+
+    def decorator(fn: F) -> F:
+        @functools.wraps(fn)
+        async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+            arguments = _arguments(fn, self, args, kwargs)
+            await self._require_reader_or_site_admin(
+                _resolve(actor_id, arguments),
+                _resolve(team_id, arguments),
+            )
+            return await fn(self, *args, **kwargs)
+
+        _mark(wrapper, fn, "site_admin_or_reader")
+        return cast("F", wrapper)
+
+    return decorator
+
+
 def is_step_up_fresh(
     verified_at: datetime | None,
     *,

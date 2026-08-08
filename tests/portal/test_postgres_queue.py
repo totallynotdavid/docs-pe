@@ -6,6 +6,8 @@ import base64
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
+import pytest
+
 from portal.credentials.secrets import encode_config
 from portal.domain.models import (
     MAX_LEASE_ATTEMPTS,
@@ -22,6 +24,7 @@ from tests.portal.conftest import (
     WORKER_ID,
     enroll_worker,
     object_reference,
+    seed_site_admin,
     seed_team,
 )
 
@@ -324,6 +327,45 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
     )
 
     assert finished["state"] == "completed"
+
+
+async def test_a_heartbeat_updates_status_and_staleness_flips_it_offline(
+    pool: asyncpg.Pool,
+    worker_client: AsyncTestClient,
+    service: PortalService,
+) -> None:
+    headers = await enroll_worker(pool)
+
+    beat = await worker_client.post(
+        "/heartbeat",
+        json={"cpu_percent": 12.5, "memory_mb": 256.0, "current_job_id": None},
+        headers=headers,
+    )
+    assert beat.status_code == 204
+
+    admin_id = await seed_site_admin(pool, "admin@osiptel.test")
+    health = await service.system_health(admin_id)
+
+    assert len(health.workers) == 1
+    worker = health.workers[0]
+    assert worker.worker_id == WORKER_ID
+    assert worker.online is True
+    assert worker.cpu_percent == pytest.approx(12.5)
+    assert worker.memory_mb == pytest.approx(256.0)
+
+    # Backdate the heartbeat past the staleness window to prove "offline" is
+    # computed from recency, not just from whether one was ever recorded.
+    await pool.execute(
+        """
+        UPDATE portal_workers
+           SET last_seen_at = now() - interval '1 hour'
+         WHERE worker_id = $1
+        """,
+        WORKER_ID,
+    )
+
+    stale = await service.system_health(admin_id)
+    assert stale.workers[0].online is False
 
 
 async def test_a_revoked_worker_stops_claiming(

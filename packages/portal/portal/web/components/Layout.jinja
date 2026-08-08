@@ -1,4 +1,4 @@
-{#def title, user=None, csrf_token="", setup=False #}
+{#def title, user=None, csrf_token="", setup=False, minimal=False #}
 <!DOCTYPE html>
 <html lang="es">
   <head>
@@ -14,8 +14,11 @@
   <body{% if not user %} class="signed-out"{% endif %}>
     <a class="skip-link" href="#content">Saltar al contenido</a>
     {% if user %}
-      <div class="app-shell">
-        <Sidebar :user="user" :csrf_token="csrf_token" :setup="setup" />
+      <div class="{{ 'app-shell app-shell--minimal' if minimal else 'app-shell' }}">
+        <Sidebar :user="user"
+                 :csrf_token="csrf_token"
+                 :setup="setup"
+                 :minimal="minimal" />
         <div class="workspace">{{ content }}</div>
       </div>
     {% else %}

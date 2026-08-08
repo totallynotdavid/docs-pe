@@ -10,7 +10,7 @@ from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
 from portal.application.sessions import BrowserSessions
 from portal.application.throttle import MutationThrottle
-from portal.domain.models import BrowserSession
+from portal.domain.models import BrowserSession, TeamRole
 from portal.security import same_origin
 from portal.settings import PortalSettings
 from portal.storage.port import ObjectStorage
@@ -19,10 +19,25 @@ from portal.web.trace import client_trace
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from litestar import Request
     from litestar.connection import ASGIConnection
     from litestar.datastructures import State
     from litestar.handlers.base import BaseRouteHandler
+
+    from portal.domain.models import PortalUser, Team
+
+
+def is_search_only(user: PortalUser, teams: Sequence[Team]) -> bool:
+    """True when this session has nothing to manage: not a site admin, and
+    not a team_leader anywhere. Drives the minimal, sidebar-less shell:
+    someone whose entire job is searching results shouldn't see a nav built
+    for managing teams and jobs they can't touch."""
+    if user.is_site_admin:
+        return False
+
+    return not any(team.role is TeamRole.TEAM_LEADER for team in teams)
 
 
 def provide_settings(state: State) -> PortalSettings:

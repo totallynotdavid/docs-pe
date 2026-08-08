@@ -79,12 +79,72 @@ class PostgresTeamRepository:
         async with self._pool.acquire() as connection:
             rows = await connection.fetch(
                 """
-                SELECT id, email, is_site_admin, mfa_enabled
+                SELECT id, email, is_site_admin, is_active, mfa_enabled
                   FROM portal_users
                  ORDER BY email
                 """
             )
         return tuple(user_row(row) for row in rows)
+
+    async def teams_for_user_detail(self, user_id: UUID) -> tuple[Team, ...]:
+        """Every team a user belongs to, for the admin user-detail page."""
+        async with self._pool.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT team.id, team.slug, team.name, membership.role
+                  FROM portal_teams AS team
+                  JOIN portal_team_memberships AS membership
+                    ON membership.team_id = team.id
+                 WHERE membership.user_id = $1
+                 ORDER BY team.name
+                """,
+                user_id,
+            )
+        return tuple(
+            Team(row["id"], row["slug"], row["name"], TeamRole(row["role"]))
+            for row in rows
+        )
+
+    async def teams_where_sole_leader(self, user_id: UUID) -> tuple[Team, ...]:
+        """Teams that would lose their last leader if user_id were removed.
+
+        Used to block deactivating an account before another leader is in
+        place, the same guarantee _check_not_last_leader already gives
+        membership changes.
+        """
+        async with self._pool.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT team.id, team.slug, team.name
+                  FROM portal_teams AS team
+                  JOIN portal_team_memberships AS membership
+                    ON membership.team_id = team.id
+                   AND membership.user_id = $1
+                   AND membership.role = 'team_leader'
+                 WHERE (
+                     SELECT count(*)
+                       FROM portal_team_memberships AS other
+                      WHERE other.team_id = team.id
+                        AND other.role = 'team_leader'
+                 ) <= 1
+                 ORDER BY team.name
+                """,
+                user_id,
+            )
+        return tuple(team_row(row) for row in rows)
+
+    async def is_site_admin(self, user_id: UUID) -> bool:
+        async with self._pool.acquire() as connection:
+            flag = await connection.fetchval(
+                """
+                SELECT is_site_admin
+                  FROM portal_users
+                 WHERE id = $1
+                   AND is_active
+                """,
+                user_id,
+            )
+        return bool(flag)
 
     async def installation_status(self) -> tuple[int, UUID | None]:
         async with self._pool.acquire() as connection:
@@ -265,6 +325,7 @@ class PostgresTeamRepository:
                 SELECT user_account.id,
                        user_account.email,
                        user_account.is_site_admin,
+                       user_account.is_active,
                        user_account.mfa_enabled,
                        membership.role
                   FROM portal_team_memberships AS membership

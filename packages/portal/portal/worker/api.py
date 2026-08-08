@@ -23,6 +23,7 @@ from portal.worker.routes import (
     provide_storage,
     provide_worker,
     provide_worker_jobs,
+    provide_worker_registry,
 )
 
 
@@ -67,6 +68,7 @@ def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
         dependencies={
             "worker": Provide(provide_worker),
             "worker_jobs": Provide(provide_worker_jobs, sync_to_thread=False),
+            "workers": Provide(provide_worker_registry, sync_to_thread=False),
             "protector": Provide(provide_protector, sync_to_thread=False),
             "audit": Provide(provide_audit, sync_to_thread=False),
             "storage": Provide(provide_storage, sync_to_thread=False),

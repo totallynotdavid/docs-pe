@@ -33,6 +33,7 @@ from portal.repository.audit import PostgresAuditLog
 from portal.repository.auth import PostgresAuthRepository
 from portal.repository.credentials import PostgresCredentialRepository
 from portal.repository.jobs import PostgresJobRepository
+from portal.repository.search_log import PostgresSearchLogRepository
 from portal.repository.teams import PostgresTeamRepository
 from portal.repository.workers import PostgresWorkerRegistry
 from portal.security import hash_password, new_worker_credential, token_hash
@@ -195,15 +196,29 @@ def audit_repository(portal_db: PortalDatabase) -> PostgresAuditLog:
 
 
 @pytest.fixture
+def search_log_repository(portal_db: PortalDatabase) -> PostgresSearchLogRepository:
+    return PostgresSearchLogRepository(portal_db.pool)
+
+
+@pytest.fixture
+def worker_registry(portal_db: PortalDatabase) -> PostgresWorkerRegistry:
+    return PostgresWorkerRegistry(portal_db.pool)
+
+
+@pytest.fixture
 def service(
     team_repository: PostgresTeamRepository,
     credential_repository: PostgresCredentialRepository,
     job_repository: PostgresJobRepository,
+    search_log_repository: PostgresSearchLogRepository,
+    worker_registry: PostgresWorkerRegistry,
 ) -> PortalService:
     return PortalService(
         team_repository,
         credential_repository,
         job_repository,
+        search_log_repository,
+        worker_registry,
     )
 
 

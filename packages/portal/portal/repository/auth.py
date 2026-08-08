@@ -3,6 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
+import asyncpg
+
+from portal.domain.errors import NotFound, Reason
 from portal.domain.models import PortalUser, ProtectedSecret
 from portal.repository.shared import user_row
 
@@ -25,7 +28,7 @@ class PostgresAuthRepository:
         async with self._pool.acquire() as connection:
             row = await connection.fetchrow(
                 """
-                SELECT id, email, is_site_admin, mfa_enabled, password_hash
+                SELECT id, email, is_site_admin, is_active, mfa_enabled, password_hash
                   FROM portal_users
                  WHERE email = $1
                 """,
@@ -41,7 +44,7 @@ class PostgresAuthRepository:
         async with self._pool.acquire() as connection:
             row = await connection.fetchrow(
                 """
-                SELECT id, email, is_site_admin, mfa_enabled
+                SELECT id, email, is_site_admin, is_active, mfa_enabled
                   FROM portal_users
                  WHERE id = $1
                 """,
@@ -98,7 +101,7 @@ class PostgresAuthRepository:
                 VALUES ($1, $2, $3)
                 ON CONFLICT (email) DO UPDATE
                     SET email = EXCLUDED.email
-                RETURNING id, email, is_site_admin, mfa_enabled
+                RETURNING id, email, is_site_admin, is_active, mfa_enabled
                 """,
                 uuid4(),
                 normalize_email(email),
@@ -187,3 +190,100 @@ class PostgresAuthRepository:
             )
 
         return spent is not None
+
+    async def count_active_site_admins(self) -> int:
+        return int(
+            await self._pool.fetchval(
+                "SELECT count(*) FROM portal_users WHERE is_site_admin AND is_active"
+            )
+        )
+
+    async def deactivate(self, user_id: UUID, actor_id: UUID) -> PortalUser:
+        """Idempotent: deactivating an already-inactive account just confirms it."""
+        async with self._pool.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                UPDATE portal_users
+                   SET is_active = false,
+                       deactivated_at = COALESCE(deactivated_at, now()),
+                       deactivated_by = COALESCE(deactivated_by, $2)
+                 WHERE id = $1
+                RETURNING id, email, is_site_admin, is_active, mfa_enabled
+                """,
+                user_id,
+                actor_id,
+            )
+
+        if row is None:
+            raise NotFound(Reason.USER_NOT_FOUND)
+
+        return user_row(row)
+
+    async def reactivate(self, user_id: UUID) -> PortalUser:
+        async with self._pool.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                UPDATE portal_users
+                   SET is_active = true,
+                       deactivated_at = NULL,
+                       deactivated_by = NULL
+                 WHERE id = $1
+                RETURNING id, email, is_site_admin, is_active, mfa_enabled
+                """,
+                user_id,
+            )
+
+        if row is None:
+            raise NotFound(Reason.USER_NOT_FOUND)
+
+        return user_row(row)
+
+    async def demote(self, user_id: UUID) -> PortalUser:
+        """Revoke site-admin status. Promotion lives in ProvisioningService,
+        since it must also enroll a second factor before is_site_admin can
+        become true (portal_site_admin_requires_mfa)."""
+        async with self._pool.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                UPDATE portal_users
+                   SET is_site_admin = false
+                 WHERE id = $1
+                RETURNING id, email, is_site_admin, is_active, mfa_enabled
+                """,
+                user_id,
+            )
+
+        if row is None:
+            raise NotFound(Reason.USER_NOT_FOUND)
+
+        return user_row(row)
+
+    async def set_password(self, user_id: UUID, password_hash: str) -> None:
+        async with self._pool.acquire() as connection:
+            updated = await connection.execute(
+                "UPDATE portal_users SET password_hash = $2 WHERE id = $1",
+                user_id,
+                password_hash,
+            )
+
+        if updated == "UPDATE 0":
+            raise NotFound(Reason.USER_NOT_FOUND)
+
+    async def delete_if_unused(self, user_id: UUID) -> bool:
+        """True if the account had no history and could be removed outright.
+
+        Every created_by/submitted_by/actor_id column that points at
+        portal_users is a plain RESTRICT foreign key, so letting the database
+        reject the DELETE is the only check that can never drift out of sync
+        with what actually references a user.
+        """
+        async with self._pool.acquire() as connection:
+            try:
+                deleted = await connection.fetchval(
+                    "DELETE FROM portal_users WHERE id = $1 RETURNING id",
+                    user_id,
+                )
+            except asyncpg.exceptions.ForeignKeyViolationError:
+                return False
+
+        return deleted is not None

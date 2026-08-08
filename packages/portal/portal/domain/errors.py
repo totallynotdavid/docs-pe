@@ -37,9 +37,15 @@ class Reason(StrEnum):
     SLUG_INVALID = "slug_invalid"
     EMAIL_INVALID = "email_invalid"
     LABEL_LENGTH = "label_length"
+    LABEL_TAKEN = "label_taken"
     PASSWORD_TOO_SHORT = "password_too_short"
     ROLE_INVALID = "role_invalid"
     LAST_LEADER = "last_leader"
+
+    USER_LAST_LEADER = "user_last_leader"
+    LAST_SITE_ADMIN = "last_site_admin"
+    USER_CANNOT_DEACTIVATE_SELF = "user_cannot_deactivate_self"
+    USER_HAS_HISTORY = "user_has_history"
 
     WORKER_SOURCE_REQUIRED = "worker_source_required"
 

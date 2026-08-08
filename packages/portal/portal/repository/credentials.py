@@ -3,7 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from portal.domain.errors import CredentialConfigurationError, Reason
+import asyncpg
+
+from portal.domain.errors import CredentialConfigurationError, NotFound, Reason
 from portal.domain.models import CredentialState, CredentialVersion
 from portal.repository.shared import lock_team_row
 
@@ -25,7 +27,8 @@ class PostgresCredentialRepository:
         async with self._pool.acquire() as connection:
             row = await connection.fetchrow(
                 """
-                SELECT version.id, version.team_id, credential.label,
+                SELECT version.id, version.team_id,
+                       credential.id AS credential_id, credential.label,
                        version.version, version.is_active, version.lifecycle,
                        version.provider
                   FROM portal_team_proxy_credential_versions AS version
@@ -46,7 +49,8 @@ class PostgresCredentialRepository:
         async with self._pool.acquire() as connection:
             rows = await connection.fetch(
                 """
-                SELECT version.id, version.team_id, credential.label,
+                SELECT version.id, version.team_id,
+                       credential.id AS credential_id, credential.label,
                        version.version, version.is_active, version.lifecycle,
                        version.provider
                   FROM portal_team_proxy_credential_versions AS version
@@ -60,6 +64,31 @@ class PostgresCredentialRepository:
             )
 
         return tuple(self._credential(row) for row in rows)
+
+    async def rename_credential(
+        self,
+        credential_id: UUID,
+        team_id: UUID,
+        new_label: str,
+    ) -> None:
+        try:
+            async with self._pool.acquire() as connection:
+                updated = await connection.execute(
+                    """
+                    UPDATE portal_team_proxy_credentials
+                       SET label = $3
+                     WHERE id = $1
+                       AND team_id = $2
+                    """,
+                    credential_id,
+                    team_id,
+                    new_label,
+                )
+        except asyncpg.exceptions.UniqueViolationError as error:
+            raise CredentialConfigurationError(Reason.LABEL_TAKEN) from error
+
+        if updated == "UPDATE 0":
+            raise NotFound(Reason.CREDENTIAL_WRONG_TEAM)
 
     async def start_credential_validation(
         self,
@@ -118,6 +147,7 @@ class PostgresCredentialRepository:
                 is_active=False,
                 state=CredentialState.VALIDATING,
                 provider=provider,
+                credential_id=credential_id,
             )
 
             await connection.execute(
@@ -264,6 +294,7 @@ class PostgresCredentialRepository:
             is_active=state is CredentialState.ACTIVE,
             state=state,
             provider=row["provider"],
+            credential_id=row["credential_id"],
         )
 
     @staticmethod
@@ -276,4 +307,5 @@ class PostgresCredentialRepository:
             is_active=bool(row["is_active"]),
             state=CredentialState(row["lifecycle"]),
             provider=row["provider"],
+            credential_id=row["credential_id"],
         )

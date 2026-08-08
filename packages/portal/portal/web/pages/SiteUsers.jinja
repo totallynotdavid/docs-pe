@@ -6,6 +6,12 @@
     <ActionButton variant="secondary" href="/admin/teams">
       Equipos
     </ActionButton>
+    <ActionButton variant="secondary" href="/admin/search-activity">
+      Búsquedas
+    </ActionButton>
+    <ActionButton variant="secondary" href="/admin/system">
+      Sistema
+    </ActionButton>
   </TopBar>
   <MainContent>
     <h1 class="sr-only">Administración de personas</h1>
@@ -30,8 +36,16 @@
       <List>
         {% for person in users %}
           <ListItem>
-            <span>{{ person.email }}</span>
-            {% if person.is_site_admin %}<MetaText>Administradora de la plataforma</MetaText>{% endif %}
+            <a href="/admin/users/{{ person.id }}">{{ person.email }}</a>
+            <MetaText>
+              {% if not person.is_active %}
+                Desactivada
+              {% elif person.is_site_admin %}
+                Administradora de la plataforma
+              {% else %}
+                Activa
+              {% endif %}
+            </MetaText>
           </ListItem>
         {% endfor %}
       </List>

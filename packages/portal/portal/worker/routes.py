@@ -22,10 +22,12 @@ from portal.domain.errors import (
 from portal.domain.models import AuditAction, AuditEvent, WorkerIdentity
 from portal.repository.audit import PostgresAuditLog
 from portal.repository.jobs import PostgresJobRepository
+from portal.repository.workers import PostgresWorkerRegistry
 from portal.storage.port import ObjectReference, ObjectStorage
 from portal.worker.protocol import (
     ClaimRequest,
     CredentialLease,
+    HeartbeatRequest,
     PublishRequest,
     PublishResult,
     WorkLease,
@@ -57,6 +59,10 @@ async def provide_worker(request: Request, state: State) -> WorkerIdentity:
 
 def provide_worker_jobs(state: State) -> PostgresJobRepository:
     return state.worker_queue
+
+
+def provide_worker_registry(state: State) -> PostgresWorkerRegistry:
+    return state.workers
 
 
 def provide_protector(state: State) -> EnvelopeProtector:
@@ -155,6 +161,20 @@ async def worker_publish(
     return PublishResult(published=published)
 
 
+@post("/heartbeat", status_code=204)
+async def worker_heartbeat(
+    data: HeartbeatRequest,
+    worker: NamedDependency[WorkerIdentity],
+    workers: NamedDependency[PostgresWorkerRegistry],
+) -> None:
+    await workers.record_heartbeat(
+        worker.worker_id,
+        cpu_percent=data.cpu_percent,
+        memory_mb=data.memory_mb,
+        current_job_id=data.current_job_id,
+    )
+
+
 def _reason_response(error: Exception, status_code: int) -> Response[dict[str, str]]:
     """Answer a machine with a stable code, never a rendered page."""
     reason = error.reason.value if isinstance(error, PortalError) else "unknown"
@@ -175,7 +195,7 @@ def _unusable_credential(
     return _reason_response(error, status_code=409)
 
 
-handlers = (worker_claim, worker_publish)
+handlers = (worker_claim, worker_publish, worker_heartbeat)
 
 EXCEPTION_HANDLERS: ExceptionHandlersMap = {
     CredentialConfigurationError: _unusable_credential,

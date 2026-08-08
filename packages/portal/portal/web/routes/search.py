@@ -9,6 +9,7 @@ from litestar_htmx import HTMXRequest
 
 from portal.application.service import PortalService
 from portal.domain.models import BrowserSession
+from portal.web.deps import is_search_only
 from portal.web.render import render_hx
 
 
@@ -30,6 +31,10 @@ async def search(
         page=current_page,
     )
     team = await service.team(page_session.user.id, team_id)
+    minimal = is_search_only(
+        page_session.user,
+        await service.teams(page_session.user.id),
+    )
 
     return render_hx(
         request,
@@ -42,6 +47,7 @@ async def search(
         results=results,
         page=current_page,
         has_more=has_more,
+        minimal=minimal,
     )
 
 

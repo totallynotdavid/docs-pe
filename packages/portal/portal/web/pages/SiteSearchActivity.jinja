@@ -1,0 +1,41 @@
+{#def user, csrf_token, activity #}
+<Layout title="Búsquedas · Administración · Worker"
+        :user="user"
+        :csrf_token="csrf_token">
+  <TopBar title="Administración · Búsquedas">
+    <ActionButton variant="secondary" href="/admin/teams">
+      Equipos
+    </ActionButton>
+    <ActionButton variant="secondary" href="/admin/users">
+      Personas
+    </ActionButton>
+    <ActionButton variant="secondary" href="/admin/system">
+      Sistema
+    </ActionButton>
+  </TopBar>
+  <MainContent>
+    <h1 class="sr-only">Actividad de búsqueda por equipo</h1>
+    <Panel>
+      <PanelHeader title="Uso de búsqueda por equipo"
+                   description="Últimos 14 días, equipos más activos primero. Los términos de búsqueda quedan dentro de cada equipo." />
+      <List>
+        {% for row in activity %}
+          <ListItem>
+            <a href="/teams/{{ row.team_id }}/settings/search-activity">{{ row.team_name }}</a>
+            <MetaText>
+              {% if row.search_count %}
+                {{ row.search_count }} búsqueda{{ 's' if row.search_count != 1 else '' }}
+              {% else %}
+                Sin búsquedas recientes
+              {% endif %}
+            </MetaText>
+          </ListItem>
+        {% else %}
+          <ListItem class="empty-state">
+            Aún no hay equipos.
+          </ListItem>
+        {% endfor %}
+      </List>
+    </Panel>
+  </MainContent>
+</Layout>

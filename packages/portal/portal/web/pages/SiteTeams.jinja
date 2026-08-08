@@ -4,6 +4,12 @@
     <ActionButton variant="secondary" href="/admin/users">
       Personas
     </ActionButton>
+    <ActionButton variant="secondary" href="/admin/search-activity">
+      Búsquedas
+    </ActionButton>
+    <ActionButton variant="secondary" href="/admin/system">
+      Sistema
+    </ActionButton>
   </TopBar>
   <MainContent>
     <h1 class="sr-only">Administración de equipos</h1>
@@ -38,10 +44,15 @@
       <List>
         {% for team in teams %}
           <ListItem>
-            <span>{{ team.name }}</span>
-            <MetaText>
-              {{ team.slug }}
-            </MetaText>
+            <div>
+              <a href="/teams/{{ team.id }}">{{ team.name }}</a>
+              <MetaText>
+                {{ team.slug }}
+              </MetaText>
+            </div>
+            <ActionButton variant="secondary" :href="'/teams/' ~ team.id ~ '/settings'">
+              Gestionar
+            </ActionButton>
           </ListItem>
         {% else %}
           <ListItem class="empty-state">

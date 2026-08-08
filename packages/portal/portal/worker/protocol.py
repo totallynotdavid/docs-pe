@@ -47,3 +47,12 @@ class PublishRequest(msgspec.Struct, frozen=True):
 
 class PublishResult(msgspec.Struct, frozen=True):
     published: bool
+
+
+class HeartbeatRequest(msgspec.Struct, frozen=True):
+    """Point-in-time resource usage, not a time series: the admin health page
+    only needs to know whether the fleet is healthy right now."""
+
+    cpu_percent: float | None = None
+    memory_mb: float | None = None
+    current_job_id: UUID | None = None

@@ -3,11 +3,12 @@ from __future__ import annotations
 import hmac
 import re
 
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from portal.domain.errors import PermissionDenied, ProvisioningError, Reason
-from portal.domain.models import WorkerIdentity
+from portal.domain.models import WorkerIdentity, WorkerStatus
 from portal.security import token_hash
 
 
@@ -16,6 +17,10 @@ if TYPE_CHECKING:
 
 
 WORKER_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+# 3x the agent's heartbeat interval (worker/agent.py: HEARTBEAT_INTERVAL_SECONDS),
+# so one delayed beat doesn't flip a healthy worker to "offline".
+HEARTBEAT_STALE_AFTER = timedelta(seconds=45)
 
 
 class PostgresWorkerRegistry:
@@ -89,6 +94,56 @@ class PostgresWorkerRegistry:
             id=row["id"],
             worker_id=str(row["worker_id"]),
             tailscale_hostname=str(row["tailscale_hostname"]),
+        )
+
+    async def record_heartbeat(
+        self,
+        worker_id: str,
+        *,
+        cpu_percent: float | None,
+        memory_mb: float | None,
+        current_job_id: UUID | None,
+    ) -> None:
+        await self._pool.execute(
+            """
+            UPDATE portal_workers
+               SET last_seen_at = now(),
+                   cpu_percent = $2,
+                   memory_mb = $3,
+                   current_job_id = $4
+             WHERE worker_id = $1
+            """,
+            worker_id,
+            cpu_percent,
+            memory_mb,
+            current_job_id,
+        )
+
+    async def all_workers_with_status(self) -> tuple[WorkerStatus, ...]:
+        rows = await self._pool.fetch(
+            """
+            SELECT worker_id, tailscale_hostname, last_seen_at,
+                   cpu_percent, memory_mb, current_job_id
+              FROM portal_workers
+             WHERE revoked_at IS NULL
+             ORDER BY worker_id
+            """
+        )
+
+        cutoff = datetime.now(UTC) - HEARTBEAT_STALE_AFTER
+
+        return tuple(
+            WorkerStatus(
+                worker_id=str(row["worker_id"]),
+                tailscale_hostname=str(row["tailscale_hostname"]),
+                online=row["last_seen_at"] is not None
+                and row["last_seen_at"] >= cutoff,
+                last_seen_at=row["last_seen_at"],
+                cpu_percent=row["cpu_percent"],
+                memory_mb=row["memory_mb"],
+                current_job_id=row["current_job_id"],
+            )
+            for row in rows
         )
 
 
