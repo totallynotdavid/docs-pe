@@ -3,15 +3,7 @@
         :user="user"
         :csrf_token="csrf_token">
   <TopBar title="Administración · Sistema">
-    <ActionButton variant="secondary" href="/admin/teams">
-      Equipos
-    </ActionButton>
-    <ActionButton variant="secondary" href="/admin/users">
-      Personas
-    </ActionButton>
-    <ActionButton variant="secondary" href="/admin/search-activity">
-      Búsquedas
-    </ActionButton>
+    <AdminTabs active="system" />
   </TopBar>
   <MainContent>
     <h1 class="sr-only">Salud del sistema</h1>

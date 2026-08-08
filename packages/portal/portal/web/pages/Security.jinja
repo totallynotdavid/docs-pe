@@ -1,17 +1,17 @@
-{#def user, csrf_token, setup, passkeys, error, recovery_codes=None, totp_setup_token="", totp_enrollment_uri="" #}
+{#def user, csrf_token, setup, passkeys, error, show_form, recovery_codes=None, totp_setup_token="", totp_enrollment_uri="" #}
 <Layout title="Seguridad · Worker"
         :user="user"
         :csrf_token="csrf_token"
         :setup="setup">
-  <TopBar title="Seguridad" />
+  {% if not setup %}<TopBar title="Seguridad" />{% endif %}
   <MainContent>
-    <h1 class="sr-only">Seguridad de la cuenta</h1>
     {% if setup %}
-      <Panel>
-        <PanelBody>
-          <p class="subtitle">Tu cuenta será administradora del sitio en cuanto agregues un factor de seguridad: una app de autenticación o una clave de acceso. Ninguna otra persona puede hacer esto por ti.</p>
-        </PanelBody>
-      </Panel>
+      <h1>Protege tu cuenta</h1>
+      <p class="subtitle">
+        Tu cuenta será administradora del sitio en cuanto agregues un factor de seguridad: una app de autenticación o una clave de acceso. Ninguna otra persona puede hacer esto por ti.
+      </p>
+    {% else %}
+      <h1 class="sr-only">Seguridad de la cuenta</h1>
     {% endif %}
     {% if error %}<Message>{{ error }}</Message>{% endif %}
     <div class="panel"
@@ -63,8 +63,13 @@
       </PanelBody>
     </Panel>
     <div class="panel" data-passkey-app data-csrf-token="{{ csrf_token }}">
-      <PanelHeader title="Claves de acceso"
-                   description="Huella, rostro o llave física de seguridad, según lo que ofrezca tu dispositivo." />
+      <PanelHeader title="Claves de acceso">
+        {% if not show_form %}
+          <ActionButton variant="secondary" href="/security?add=1">
+            Agregar clave de acceso
+          </ActionButton>
+        {% endif %}
+      </PanelHeader>
       <PanelBody>
         <List>
           {% for passkey in passkeys %}
@@ -83,17 +88,19 @@
             </ListItem>
           {% else %}
             <ListItem class="empty-state">
-              Todavía no agregaste ninguna.
+              Todavía no agregaste ninguna. Usa la huella, el rostro o una llave física de seguridad, según lo que ofrezca tu dispositivo.
             </ListItem>
           {% endfor %}
         </List>
-        <Field label="Nombre para la nueva clave (opcional)">
-          <input type="text" data-passkey-label placeholder="Ej. Laptop de trabajo">
-        </Field>
-        <Actions>
-          <button type="button" data-passkey-add>Agregar clave de acceso</button>
-        </Actions>
-        <p data-passkey-add-status class="help-text" role="status"></p>
+        {% if show_form %}
+          <Field label="Nombre para la nueva clave (opcional)">
+            <input type="text" data-passkey-label placeholder="Ej. Laptop de trabajo">
+          </Field>
+          <Actions>
+            <button type="button" data-passkey-add>Agregar clave de acceso</button>
+          </Actions>
+          <p data-passkey-add-status class="help-text" role="status"></p>
+        {% endif %}
       </PanelBody>
     </div>
   </MainContent>

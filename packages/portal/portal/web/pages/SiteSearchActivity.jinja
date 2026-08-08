@@ -3,15 +3,7 @@
         :user="user"
         :csrf_token="csrf_token">
   <TopBar title="Administración · Búsquedas">
-    <ActionButton variant="secondary" href="/admin/teams">
-      Equipos
-    </ActionButton>
-    <ActionButton variant="secondary" href="/admin/users">
-      Personas
-    </ActionButton>
-    <ActionButton variant="secondary" href="/admin/system">
-      Sistema
-    </ActionButton>
+    <AdminTabs active="search-activity" />
   </TopBar>
   <MainContent>
     <h1 class="sr-only">Actividad de búsqueda por equipo</h1>

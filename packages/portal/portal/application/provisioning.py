@@ -62,6 +62,7 @@ if TYPE_CHECKING:
     from portal.repository.teams import PostgresTeamRepository
 
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
+_SLUGIFY = re.compile(r"[^a-z0-9]+")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _MIN_PASSWORD = 12
 
@@ -178,12 +179,13 @@ class ProvisioningService(AuthorizedService):
         actor_id: UUID,
         *,
         name: str,
-        slug: str,
+        slug: str | None = None,
         trace: RequestTrace,
     ) -> Team:
+        clean_name = self._name(name)
         team = await self._teams.create_first_team(
-            self._slug(slug),
-            self._name(name),
+            self._slug(slug) if slug else await self._unique_slug(clean_name),
+            clean_name,
             actor_id,
         )
 
@@ -231,16 +233,17 @@ class ProvisioningService(AuthorizedService):
         actor_id: UUID,
         *,
         name: str,
-        slug: str,
+        slug: str | None = None,
         leader_email: str,
         mfa_verified_at: datetime | None,
         trace: RequestTrace,
     ) -> Team:
         leader = await self._user_by_email(leader_email)
+        clean_name = self._name(name)
 
         team = await self._teams.create_team(
-            self._slug(slug),
-            self._name(name),
+            self._slug(slug) if slug else await self._unique_slug(clean_name),
+            clean_name,
             actor_id,
             leader.id,
         )
@@ -524,7 +527,9 @@ class ProvisioningService(AuthorizedService):
             _PASSKEY_SETUP_TTL,
         )
 
-        return PasskeySetup(setup_token=setup_token, options_json=challenge.options_json)
+        return PasskeySetup(
+            setup_token=setup_token, options_json=challenge.options_json
+        )
 
     @public
     async def confirm_passkey_registration(
@@ -897,6 +902,30 @@ class ProvisioningService(AuthorizedService):
             raise ProvisioningError(Reason.SLUG_INVALID)
 
         return slug
+
+    @staticmethod
+    def _slugify(name: str) -> str:
+        """Derive a slug from a team name for the browser flow, where slug is
+        a DB uniqueness detail nobody should have to type in. Capped at 58
+        chars to leave room for a "-NN" disambiguator under _SLUG's 63-char
+        limit; CLI provisioning still takes an explicit slug via _slug."""
+        base = _SLUGIFY.sub("-", name.strip().lower()).strip("-")[:58]
+
+        if len(base) < 2:
+            base = f"{base}-equipo"[:58] if base else "equipo"
+
+        return base
+
+    async def _unique_slug(self, name: str) -> str:
+        base = self._slugify(name)
+        candidate = base
+        suffix = 2
+
+        while await self._teams.team_by_slug(candidate) is not None:
+            candidate = f"{base}-{suffix}"
+            suffix += 1
+
+        return candidate
 
     @staticmethod
     def _email(value: str) -> str:

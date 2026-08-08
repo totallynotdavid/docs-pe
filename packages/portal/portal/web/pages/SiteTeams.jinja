@@ -1,44 +1,15 @@
-{#def user, csrf_token, users, teams, error #}
+{#def user, csrf_token, users, teams, error, show_form #}
 <Layout title="Administración · Worker" :user="user" :csrf_token="csrf_token">
   <TopBar title="Administración · Equipos">
-    <ActionButton variant="secondary" href="/admin/users">
-      Personas
-    </ActionButton>
-    <ActionButton variant="secondary" href="/admin/search-activity">
-      Búsquedas
-    </ActionButton>
-    <ActionButton variant="secondary" href="/admin/system">
-      Sistema
-    </ActionButton>
+    <AdminTabs active="teams" />
+    {% if not show_form %}
+      <ActionButton href="/admin/teams?add=1">
+        Crear equipo
+      </ActionButton>
+    {% endif %}
   </TopBar>
   <MainContent>
     <h1 class="sr-only">Administración de equipos</h1>
-    <Panel>
-      <PanelHeader title="Crear equipo"
-                   description="Asigna una persona responsable desde el inicio." />
-      <PanelBody>
-        {% if error %}<Message>{{ error }}</Message>{% endif %}
-        <FormLayout action="/admin/teams" :csrf_token="csrf_token">
-          <Field label="Nombre">
-            <input name="name" maxlength="120" required placeholder="Ej. Equipo Lima">
-          </Field>
-          <Field label="Dirección del equipo"
-                 help_text="Solo minúsculas, números y guiones.">
-            <input name="slug"
-                   pattern="[a-z0-9][a-z0-9-]{1,62}"
-                   required
-                   placeholder="equipo-lima">
-          </Field>
-          <Field label="Persona responsable">
-            <select name="leader_email" required>
-              <option value="" selected disabled>Selecciona una persona</option>
-              {% for person in users %}<option value="{{ person.email }}">{{ person.email }}</option>{% endfor %}
-            </select>
-          </Field>
-          <button type="submit">Crear equipo</button>
-        </FormLayout>
-      </PanelBody>
-    </Panel>
     <Panel>
       <PanelHeader title="Equipos existentes" />
       <List>
@@ -61,5 +32,30 @@
         {% endfor %}
       </List>
     </Panel>
+    {% if show_form %}
+      <Panel>
+        <PanelHeader title="Crear equipo"
+                     description="Asigna una persona responsable desde el inicio." />
+        <PanelBody>
+          {% if error %}<Message>{{ error }}</Message>{% endif %}
+          <FormLayout action="/admin/teams" :csrf_token="csrf_token">
+            <Field label="Nombre">
+              <input name="name"
+                     maxlength="120"
+                     required
+                     autofocus
+                     placeholder="Ej. Equipo Lima">
+            </Field>
+            <Field label="Persona responsable">
+              <select name="leader_email" required>
+                <option value="" selected disabled>Selecciona una persona</option>
+                {% for person in users %}<option value="{{ person.email }}">{{ person.email }}</option>{% endfor %}
+              </select>
+            </Field>
+            <button type="submit">Crear equipo</button>
+          </FormLayout>
+        </PanelBody>
+      </Panel>
+    {% endif %}
   </MainContent>
 </Layout>

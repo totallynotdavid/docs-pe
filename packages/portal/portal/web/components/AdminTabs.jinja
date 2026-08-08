@@ -1,0 +1,17 @@
+{#def active #}
+<ActionButton :variant="'' if active == 'teams' else 'secondary'"
+              href="/admin/teams">
+  Equipos
+</ActionButton>
+<ActionButton :variant="'' if active == 'users' else 'secondary'"
+              href="/admin/users">
+  Personas
+</ActionButton>
+<ActionButton :variant="'' if active == 'search-activity' else 'secondary'"
+              href="/admin/search-activity">
+  Búsquedas
+</ActionButton>
+<ActionButton :variant="'' if active == 'system' else 'secondary'"
+              href="/admin/system">
+  Sistema
+</ActionButton>

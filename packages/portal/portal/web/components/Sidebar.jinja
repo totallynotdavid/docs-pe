@@ -1,10 +1,10 @@
-{#def user, csrf_token="", setup=False, minimal=False #}
+{#def user, csrf_token="", minimal=False #}
 <aside class="{{ 'sidebar sidebar--minimal' if minimal else 'sidebar' }}">
   <a class="sidebar__brand" href="/">
     <span class="sidebar__brand-mark" aria-hidden="true">W</span>
     Worker
   </a>
-  {% if not setup and not minimal %}
+  {% if not minimal %}
     <nav class="sidebar__nav" aria-label="Navegación principal">
       <p class="sidebar__nav-label">Espacio de trabajo</p>
       <a class="sidebar__nav-link" href="/">

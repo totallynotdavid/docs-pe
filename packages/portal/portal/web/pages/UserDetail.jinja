@@ -3,9 +3,7 @@
         :user="user"
         :csrf_token="csrf_token">
   <TopBar title="Persona">
-    <ActionButton variant="secondary" href="/admin/users">
-      Personas
-    </ActionButton>
+    <AdminTabs active="users" />
   </TopBar>
   <MainContent>
     <h1 class="sr-only">{{ person.email }}</h1>

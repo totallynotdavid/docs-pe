@@ -22,7 +22,6 @@ from portal.web.render import render, render_hx
 @dataclass
 class FirstTeamForm:
     name: str
-    slug: str
     csrf_token: str
 
 
@@ -96,7 +95,6 @@ async def first_team_post(
         team = await provisioning.create_first_team(
             session.user.id,
             name=data.name,
-            slug=data.slug,
             trace=trace,
         )
     except (PortalError, ValueError) as error:

@@ -9,7 +9,7 @@ from uuid import UUID
 from litestar import Request, Response, Router, get, post
 from litestar.di import NamedDependency
 from litestar.enums import RequestEncodingType
-from litestar.params import Body
+from litestar.params import Body, FromQuery
 from litestar.response import Redirect
 
 from portal.application.provisioning import ProvisioningService
@@ -26,16 +26,23 @@ async def _security_context(
     session: BrowserSession,
     provisioning: ProvisioningService,
     *,
+    add: bool = False,
     error: str = "",
     recovery_codes: tuple[str, ...] | None = None,
     totp_setup_token: str = "",
     totp_enrollment_uri: str = "",
 ) -> dict[str, object]:
+    passkeys = await provisioning.passkeys(session.user.id)
+
     return {
         "user": session.user,
         "csrf_token": session.csrf_token,
         "setup": session.user.pending_site_admin,
-        "passkeys": await provisioning.passkeys(session.user.id),
+        "passkeys": passkeys,
+        # Same progressive-disclosure idiom as proxy settings: an account
+        # with passkeys already sees the list first, an empty one goes
+        # straight to the form.
+        "show_form": add or not passkeys,
         "error": error,
         "recovery_codes": recovery_codes,
         "totp_setup_token": totp_setup_token,
@@ -47,8 +54,9 @@ async def _security_context(
 async def security_get(
     page_session: NamedDependency[BrowserSession],
     provisioning: NamedDependency[ProvisioningService],
+    add: FromQuery[bool] = False,
 ) -> Response:
-    context = await _security_context(page_session, provisioning)
+    context = await _security_context(page_session, provisioning, add=add)
     return render("Security", **context)
 
 
@@ -108,7 +116,9 @@ async def security_totp_confirm_post(
     if recovery_codes is None:
         return Redirect("/security", status_code=303)
 
-    context = await _security_context(session, provisioning, recovery_codes=recovery_codes)
+    context = await _security_context(
+        session, provisioning, recovery_codes=recovery_codes
+    )
     return render("Security", **context)
 
 
@@ -200,7 +210,9 @@ async def security_passkey_register_post(
 
     return Response(
         content={
-            "recoveryCodes": list(recovery_codes) if recovery_codes is not None else None,
+            "recoveryCodes": list(recovery_codes)
+            if recovery_codes is not None
+            else None,
         },
         media_type="application/json",
     )
@@ -217,12 +229,16 @@ async def security_passkey_remove_post(
     request: Request,
     settings: NamedDependency[PortalSettings],
     provisioning: NamedDependency[ProvisioningService],
-    data: Annotated[PasskeyRemoveForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
+    data: Annotated[
+        PasskeyRemoveForm, Body(media_type=RequestEncodingType.URL_ENCODED)
+    ],
 ) -> Response:
     session = await require_verified_session(request, settings, data.csrf_token)
 
     try:
-        await provisioning.remove_passkey(session.user.id, credential_id=data.credential_id)
+        await provisioning.remove_passkey(
+            session.user.id, credential_id=data.credential_id
+        )
     except PortalError as error:
         context = await _security_context(
             session,
