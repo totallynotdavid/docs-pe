@@ -34,7 +34,7 @@ from portal.web.assets import STATIC_DIR
 from portal.web.deps import DEPENDENCIES
 from portal.web.errors import AFTER_EXCEPTION, EXCEPTION_HANDLERS
 from portal.web.headers import HTTPSRedirect, SecurityHeaders
-from portal.web.routes import admin, auth, home, jobs, search, stepup, teams
+from portal.web.routes import admin, auth, home, jobs, search, security, stepup, teams
 
 
 if TYPE_CHECKING:
@@ -78,6 +78,8 @@ def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
             human_check,
             protector,
             audit,
+            rp_id=settings.hostname,
+            public_origin=settings.public_origin,
         )
         app.state.service = PortalService(
             PostgresTeamRepository(pool),
@@ -93,6 +95,8 @@ def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
             protector,
             audit,
             settings.hostname,
+            public_origin=settings.public_origin,
+            setup_tokens=OneTimeTokens(store),
         )
         app.state.audit = audit
         app.state.storage = FileObjectStorage(settings.object_root)
@@ -122,6 +126,7 @@ def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
             search.router,
             teams.router,
             admin.router,
+            security.router,
         ],
         dependencies=DEPENDENCIES,
         exception_handlers=EXCEPTION_HANDLERS,

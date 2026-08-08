@@ -128,3 +128,24 @@ body.signed-out .content {
     display: block;
   }
 }
+
+.totp-qr {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: inline-block;
+  padding: 12px;
+}
+
+.totp-qr svg {
+  display: block;
+}
+
+.recovery-codes {
+  columns: 2;
+  font-family: var(--font-mono, monospace);
+  gap: 8px;
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}

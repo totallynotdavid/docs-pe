@@ -1,0 +1,100 @@
+{#def user, csrf_token, setup, passkeys, error, recovery_codes=None, totp_setup_token="", totp_enrollment_uri="" #}
+<Layout title="Seguridad · Worker"
+        :user="user"
+        :csrf_token="csrf_token"
+        :setup="setup">
+  <TopBar title="Seguridad" />
+  <MainContent>
+    <h1 class="sr-only">Seguridad de la cuenta</h1>
+    {% if setup %}
+      <Panel>
+        <PanelBody>
+          <p class="subtitle">Tu cuenta será administradora del sitio en cuanto agregues un factor de seguridad: una app de autenticación o una clave de acceso. Ninguna otra persona puede hacer esto por ti.</p>
+        </PanelBody>
+      </Panel>
+    {% endif %}
+    {% if error %}<Message>{{ error }}</Message>{% endif %}
+    <div class="panel"
+         data-recovery-codes
+         {% if not recovery_codes %}hidden{% endif %}>
+      <PanelHeader title="Guarda tus códigos de recuperación"
+                   description="Se muestran una sola vez. Úsalos si pierdes acceso a tu app de autenticación o a tus claves de acceso." />
+      <PanelBody>
+        <ul class="recovery-codes" data-recovery-codes-list>
+          {% for code in recovery_codes or [] %}<li>{{ code }}</li>{% endfor %}
+        </ul>
+        <ActionButton href="/security">
+          Ya los guardé, continuar
+        </ActionButton>
+      </PanelBody>
+    </div>
+    <Panel>
+      <PanelHeader title="App de autenticación (TOTP)" />
+      <PanelBody>
+        {% if user.mfa_enabled %}
+          <p class="subtitle">Activada.</p>
+          <Actions>
+            <InlineAction action="/security/totp/disable" :csrf_token="csrf_token">
+              <button type="submit">Desactivar</button>
+            </InlineAction>
+          </Actions>
+        {% elif totp_setup_token %}
+          <div class="totp-qr">{{ totp_qr_svg(totp_enrollment_uri) |safe }}</div>
+          <p class="help-text">Escanéalo con tu app de autenticación, o ingresa este enlace manualmente: {{ totp_enrollment_uri }}</p>
+          <FormLayout action="/security/totp/confirm" :csrf_token="csrf_token">
+            <input type="hidden" name="setup_token" value="{{ totp_setup_token }}">
+            <Field label="Código de la app">
+              <input type="text"
+                     name="code"
+                     inputmode="numeric"
+                     autocomplete="one-time-code"
+                     autofocus
+                     required>
+            </Field>
+            <button type="submit">Confirmar</button>
+          </FormLayout>
+        {% else %}
+          <Actions>
+            <ActionButton href="/security/totp/setup">
+              Configurar
+            </ActionButton>
+          </Actions>
+        {% endif %}
+      </PanelBody>
+    </Panel>
+    <div class="panel" data-passkey-app data-csrf-token="{{ csrf_token }}">
+      <PanelHeader title="Claves de acceso"
+                   description="Huella, rostro o llave física de seguridad, según lo que ofrezca tu dispositivo." />
+      <PanelBody>
+        <List>
+          {% for passkey in passkeys %}
+            <ListItem>
+              {{ passkey.label }}
+              <MetaText>
+                Agregada {{ passkey.created_at.strftime("%d/%m/%Y") }}
+                {% if passkey.last_used_at %}
+                  · último uso {{ passkey.last_used_at.strftime("%d/%m %H:%M") }}
+                {% endif %}
+              </MetaText>
+              <InlineAction action="/security/passkey/remove" :csrf_token="csrf_token">
+                <input type="hidden" name="credential_id" value="{{ passkey.id }}">
+                <button type="submit">Eliminar</button>
+              </InlineAction>
+            </ListItem>
+          {% else %}
+            <ListItem class="empty-state">
+              Todavía no agregaste ninguna.
+            </ListItem>
+          {% endfor %}
+        </List>
+        <Field label="Nombre para la nueva clave (opcional)">
+          <input type="text" data-passkey-label placeholder="Ej. Laptop de trabajo">
+        </Field>
+        <Actions>
+          <button type="button" data-passkey-add>Agregar clave de acceso</button>
+        </Actions>
+        <p data-passkey-add-status class="help-text" role="status"></p>
+      </PanelBody>
+    </div>
+  </MainContent>
+</Layout>

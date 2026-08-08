@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from urllib.parse import parse_qs, urlparse
 
 import asyncpg
+import pyotp
 import pytest
 
 from portal.domain.errors import NotFound, ProvisioningError, Reason
@@ -251,32 +253,62 @@ async def test_ensure_first_team_rejects_a_mismatched_rerun(
     assert excinfo.value.reason is Reason.INITIAL_TEAM_MISMATCH
 
 
-async def test_the_first_administrator_is_enrolled_once_and_only_once(
+async def test_the_first_administrator_is_created_pending_their_own_setup(
     pool: asyncpg.Pool,
     provisioning: ProvisioningService,
 ) -> None:
     hashed = hash_password(PASSWORD)
 
-    administrator, enrollment = await provisioning.ensure_site_admin(
+    administrator, needs_setup = await provisioning.ensure_site_admin(
         "bootstrap@osiptel.test",
         hashed,
     )
 
-    assert administrator.is_site_admin is True
-    assert administrator.mfa_enabled is True
-    assert enrollment is not None
-    assert enrollment.enrollment_uri.startswith("otpauth://totp/")
-    assert len(set(enrollment.recovery_codes)) == RECOVERY_CODE_COUNT
+    # Never a site admin yet, and no secret was generated here for an
+    # operator to see: only the account exists, waiting on /security/setup.
+    assert administrator.is_site_admin is False
+    assert administrator.pending_site_admin is True
+    assert administrator.mfa_enabled is False
+    assert administrator.has_passkey is False
+    assert needs_setup is True
 
-    # Rerunning provisioning must not invalidate the authenticator the
-    # administrator is already holding.
-    again, repeated = await provisioning.ensure_site_admin(
+    # Rerunning provisioning must not disturb a pending account, and once the
+    # account completes its own enrollment, rerunning must not touch it either.
+    again, still_pending = await provisioning.ensure_site_admin(
         "bootstrap@osiptel.test",
         hashed,
     )
 
     assert again.id == administrator.id
-    assert repeated is None
+    assert still_pending is True
+
+    setup = await provisioning.begin_totp_setup(administrator.id)
+    code = pyotp.TOTP(_secret_from_uri(setup.enrollment_uri)).now()
+    recovery_codes = await provisioning.confirm_totp_setup(
+        administrator.id,
+        setup_token=setup.setup_token,
+        code=code,
+    )
+
+    assert recovery_codes is not None
+    assert len(set(recovery_codes)) == RECOVERY_CODE_COUNT
+
+    promoted = await provisioning.user_detail(administrator.id, administrator.id)
+    assert promoted.is_site_admin is True
+    assert promoted.pending_site_admin is False
+    assert promoted.mfa_enabled is True
+
+    settled, no_longer_pending = await provisioning.ensure_site_admin(
+        "bootstrap@osiptel.test",
+        hashed,
+    )
+
+    assert settled.id == administrator.id
+    assert no_longer_pending is False
+
+
+def _secret_from_uri(enrollment_uri: str) -> str:
+    return parse_qs(urlparse(enrollment_uri).query)["secret"][0]
 
 
 async def test_a_site_admin_cannot_exist_without_a_second_factor(
@@ -436,36 +468,52 @@ async def test_deleting_a_user_requires_zero_history(
         await provisioning.user_detail(admin_id, unused)
 
 
-async def test_promoting_enrolls_mfa_once_and_demoting_lowers_the_count(
+async def test_promoting_marks_pending_until_self_enrollment_completes(
     pool: asyncpg.Pool,
     provisioning: ProvisioningService,
 ) -> None:
     admin_id = await seed_site_admin(pool, "admin@osiptel.test")
     candidate_id = await seed_user(pool, email="candidata@osiptel.test")
 
-    enrollment = await provisioning.promote_to_site_admin(
+    needs_setup = await provisioning.promote_to_site_admin(
         admin_id,
         user_id=candidate_id,
         mfa_verified_at=_now(),
         trace=RequestTrace(),
     )
 
-    assert enrollment is not None
-    assert enrollment.enrollment_uri.startswith("otpauth://totp/")
-    assert len(set(enrollment.recovery_codes)) == RECOVERY_CODE_COUNT
+    assert needs_setup is True
+
+    pending = await provisioning.user_detail(admin_id, candidate_id)
+    # Not an admin yet, and the promoting admin never sees the candidate's
+    # own second factor: only the candidate can produce it, at /security/setup.
+    assert pending.is_site_admin is False
+    assert pending.pending_site_admin is True
+
+    setup = await provisioning.begin_totp_setup(candidate_id)
+    code = pyotp.TOTP(_secret_from_uri(setup.enrollment_uri)).now()
+    recovery_codes = await provisioning.confirm_totp_setup(
+        candidate_id,
+        setup_token=setup.setup_token,
+        code=code,
+    )
+
+    assert recovery_codes is not None
+    assert len(set(recovery_codes)) == RECOVERY_CODE_COUNT
 
     promoted = await provisioning.user_detail(admin_id, candidate_id)
     assert promoted.is_site_admin is True
+    assert promoted.pending_site_admin is False
     assert promoted.mfa_enabled is True
 
-    # Promoting an already-promoted account is a no-op, not a fresh enrollment.
+    # Promoting an already-promoted account is a no-op.
     again = await provisioning.promote_to_site_admin(
         admin_id,
         user_id=candidate_id,
         mfa_verified_at=_now(),
         trace=RequestTrace(),
     )
-    assert again is None
+    assert again is False
 
     # Two active admins, so demoting one is allowed; the guard that blocks
     # stripping the *last* one is covered by the deactivation test above,
@@ -477,6 +525,35 @@ async def test_promoting_enrolls_mfa_once_and_demoting_lowers_the_count(
         trace=RequestTrace(),
     )
     assert demoted.is_site_admin is False
+
+
+async def test_promoting_someone_who_already_self_enrolled_skips_the_pending_state(
+    pool: asyncpg.Pool,
+    provisioning: ProvisioningService,
+) -> None:
+    admin_id = await seed_site_admin(pool, "admin@osiptel.test")
+    candidate_id = await seed_user(pool, email="ya-configurada@osiptel.test")
+
+    setup = await provisioning.begin_totp_setup(candidate_id)
+    code = pyotp.TOTP(_secret_from_uri(setup.enrollment_uri)).now()
+    await provisioning.confirm_totp_setup(
+        candidate_id,
+        setup_token=setup.setup_token,
+        code=code,
+    )
+
+    needs_setup = await provisioning.promote_to_site_admin(
+        admin_id,
+        user_id=candidate_id,
+        mfa_verified_at=_now(),
+        trace=RequestTrace(),
+    )
+
+    assert needs_setup is False
+
+    promoted = await provisioning.user_detail(admin_id, candidate_id)
+    assert promoted.is_site_admin is True
+    assert promoted.pending_site_admin is False
 
 
 async def test_a_deactivated_persons_session_stops_working_immediately(

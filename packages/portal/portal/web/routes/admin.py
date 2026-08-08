@@ -15,7 +15,7 @@ from litestar_htmx import HTMXRequest
 from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
 from portal.domain.errors import PortalError, StepUpRequired
-from portal.domain.models import BrowserSession, MfaEnrollment, RequestTrace
+from portal.domain.models import BrowserSession, RequestTrace
 from portal.settings import PortalSettings
 from portal.web.deps import require_verified_session
 from portal.web.render import render
@@ -147,7 +147,6 @@ async def admin_user_action_post(
         settings,
         data.csrf_token,
     )
-    enrollment: MfaEnrollment | None = None
 
     try:
         if data.action == "deactivate":
@@ -173,7 +172,10 @@ async def admin_user_action_post(
             )
             return Redirect("/admin/users", status_code=303)
         elif data.action == "promote":
-            enrollment = await provisioning.promote_to_site_admin(
+            # Never generates or shows a second factor here: a target with
+            # none yet is only marked pending_site_admin and completes their
+            # own enrollment at /security/setup on next login.
+            await provisioning.promote_to_site_admin(
                 session.user.id,
                 user_id=user_id,
                 mfa_verified_at=session.mfa_verified_at,
@@ -206,17 +208,6 @@ async def admin_user_action_post(
             error=str(error),
         )
         return render("UserDetail", **context)
-
-    if enrollment is not None:
-        # Shown once, like `portal bootstrap` prints it once: neither the
-        # database nor the application can reproduce it after this response.
-        return render(
-            "UserPromoted",
-            user=session.user,
-            csrf_token=session.csrf_token,
-            person=await provisioning.user_detail(session.user.id, user_id),
-            enrollment=enrollment,
-        )
 
     return Redirect(f"/admin/users/{user_id}", status_code=303)
 

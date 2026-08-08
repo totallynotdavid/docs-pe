@@ -155,6 +155,243 @@ function setupProgressStream() {
   });
 }
 
+// --- WebAuthn/passkeys -------------------------------------------------
+//
+// navigator.credentials wants ArrayBuffers where the server's JSON carries
+// base64url text (challenge, credential ids, the public key user handle),
+// and wants the reverse on the way back. These four functions are the only
+// place that conversion happens.
+
+function base64urlToBuffer(value) {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/");
+  const withPadding = padded.padEnd(padded.length + ((4 - (padded.length % 4)) % 4), "=");
+  const binary = atob(withPadding);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return bytes.buffer;
+}
+
+function bufferToBase64url(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function decodeCredentialOptions(options, kind) {
+  const decoded = { ...options, challenge: base64urlToBuffer(options.challenge) };
+
+  if (kind === "create") {
+    decoded.user = { ...options.user, id: base64urlToBuffer(options.user.id) };
+
+    if (options.excludeCredentials) {
+      decoded.excludeCredentials = options.excludeCredentials.map((credential) => ({
+        ...credential,
+        id: base64urlToBuffer(credential.id),
+      }));
+    }
+  } else if (options.allowCredentials) {
+    decoded.allowCredentials = options.allowCredentials.map((credential) => ({
+      ...credential,
+      id: base64urlToBuffer(credential.id),
+    }));
+  }
+
+  return decoded;
+}
+
+function encodeRegistrationCredential(credential) {
+  return {
+    id: credential.id,
+    rawId: bufferToBase64url(credential.rawId),
+    type: credential.type,
+    response: {
+      clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+      attestationObject: bufferToBase64url(credential.response.attestationObject),
+      transports: credential.response.getTransports
+        ? credential.response.getTransports()
+        : [],
+    },
+    clientExtensionResults: credential.getClientExtensionResults(),
+  };
+}
+
+function encodeAuthenticationCredential(credential) {
+  return {
+    id: credential.id,
+    rawId: bufferToBase64url(credential.rawId),
+    type: credential.type,
+    response: {
+      clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+      authenticatorData: bufferToBase64url(credential.response.authenticatorData),
+      signature: bufferToBase64url(credential.response.signature),
+      userHandle: credential.response.userHandle
+        ? bufferToBase64url(credential.response.userHandle)
+        : null,
+    },
+    clientExtensionResults: credential.getClientExtensionResults(),
+  };
+}
+
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+
+  return { ok: response.ok, data: await response.json() };
+}
+
+// Shared by Login.jinja (no pending_mfa cookie: passwordless) and
+// MfaChallenge.jinja (cookie present: a passkey offered instead of a TOTP
+// code). Which case applies is decided server-side from that cookie, so the
+// client script is identical either way.
+function setupPasskeyLogin() {
+  const button = document.querySelector("[data-passkey-login]");
+  const status = document.querySelector("[data-passkey-status]");
+
+  if (!button) {
+    return;
+  }
+
+  if (!window.PublicKeyCredential) {
+    button.hidden = true;
+    return;
+  }
+
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    if (status) status.textContent = "Esperando tu dispositivo...";
+
+    try {
+      const { ok: optionsOk, data: optionsData } = await postJson(
+        "/login/passkey/options",
+      );
+
+      if (!optionsOk) {
+        throw new Error("options");
+      }
+
+      const assertion = await navigator.credentials.get({
+        publicKey: decodeCredentialOptions(optionsData.options, "get"),
+      });
+
+      const { ok, data } = await postJson("/login/passkey/verify", {
+        login_token: optionsData.loginToken,
+        response: encodeAuthenticationCredential(assertion),
+      });
+
+      if (!ok || !data.redirectTo) {
+        throw new Error("verify");
+      }
+
+      window.location.href = data.redirectTo;
+    } catch (error) {
+      if (status) {
+        status.textContent =
+          error && error.name === "NotAllowedError"
+            ? "Operación cancelada."
+            : "No se pudo verificar la clave de acceso.";
+      }
+
+      button.disabled = false;
+    }
+  });
+}
+
+// Security.jinja: add a passkey to the signed-in account.
+function setupPasskeyEnrollment() {
+  const app = document.querySelector("[data-passkey-app]");
+  const button = document.querySelector("[data-passkey-add]");
+  const status = document.querySelector("[data-passkey-add-status]");
+  const labelInput = document.querySelector("[data-passkey-label]");
+  const codesPanel = document.querySelector("[data-recovery-codes]");
+  const codesList = document.querySelector("[data-recovery-codes-list]");
+
+  if (!app || !button) {
+    return;
+  }
+
+  if (!window.PublicKeyCredential) {
+    button.disabled = true;
+    if (status) status.textContent = "Este navegador no admite claves de acceso.";
+    return;
+  }
+
+  const csrfToken = app.dataset.csrfToken;
+
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    if (status) status.textContent = "Esperando tu dispositivo...";
+
+    try {
+      const { ok: optionsOk, data: optionsData } = await postJson(
+        "/security/passkey/options",
+        { csrf_token: csrfToken },
+      );
+
+      if (!optionsOk) {
+        throw new Error("options");
+      }
+
+      const credential = await navigator.credentials.create({
+        publicKey: decodeCredentialOptions(optionsData.options, "create"),
+      });
+
+      const { ok, data } = await postJson("/security/passkey/register", {
+        csrf_token: csrfToken,
+        setup_token: optionsData.setupToken,
+        response: encodeRegistrationCredential(credential),
+        label: labelInput ? labelInput.value.trim() : "",
+      });
+
+      if (!ok) {
+        if (status) status.textContent = data.error || "No se pudo registrar la clave.";
+        button.disabled = false;
+        return;
+      }
+
+      if (data.recoveryCodes && codesPanel && codesList) {
+        codesList.innerHTML = "";
+
+        for (const code of data.recoveryCodes) {
+          const item = document.createElement("li");
+
+          item.textContent = code;
+          codesList.appendChild(item);
+        }
+
+        codesPanel.hidden = false;
+        if (status) status.textContent = "";
+        button.hidden = true;
+        return;
+      }
+
+      window.location.reload();
+    } catch (error) {
+      if (status) {
+        status.textContent =
+          error && error.name === "NotAllowedError"
+            ? "Operación cancelada."
+            : "No se pudo registrar la clave de acceso.";
+      }
+
+      button.disabled = false;
+    }
+  });
+}
+
 setupAccountMenu();
 setupCsvDropzone();
 setupProgressStream();
+setupPasskeyLogin();
+setupPasskeyEnrollment();

@@ -55,6 +55,11 @@ MESSAGES: dict[Reason, str] = {
     Reason.CSV_TOO_LARGE: "el archivo CSV no puede superar los {limit_mb} MB",
     Reason.CSV_ENCODING: "el CSV debe usar codificación UTF-8",
     Reason.CSV_UNREADABLE: "no se pudo leer el archivo CSV",
+    Reason.LAST_SECOND_FACTOR: "no puedes quitar tu único factor de seguridad",
+    Reason.SETUP_EXPIRED: "la configuración expiró; vuelve a intentarlo",
+    Reason.TOTP_CODE_INVALID: "el código no es válido",
+    Reason.WEBAUTHN_VERIFICATION_FAILED: "no se pudo verificar la clave de acceso",
+    Reason.PASSKEY_NOT_FOUND: "esa clave de acceso ya no existe",
 }
 
 FIELD_LABELS: dict[str, str] = {

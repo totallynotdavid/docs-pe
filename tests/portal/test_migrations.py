@@ -6,7 +6,7 @@ from uuid import uuid4
 import asyncpg
 import pytest
 
-from portal.migrations import apply_migrations
+from portal.migrations import MIGRATIONS_DIR, apply_migrations
 
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ async def test_applying_the_schema_twice_changes_nothing(
         "SELECT count(*) FROM portal_schema_migrations"
     )
 
-    assert applied == 1
+    assert applied == len(list(MIGRATIONS_DIR.glob("*.sql")))
 
 
 async def test_a_site_admin_cannot_exist_without_a_second_factor(
@@ -42,6 +42,44 @@ async def test_a_site_admin_cannot_exist_without_a_second_factor(
             VALUES ($1, 'admin@example.test', 'x', true)
             """,
             uuid4(),
+        )
+
+
+async def test_a_passkey_alone_satisfies_the_site_admin_invariant(
+    portal_db: PortalDatabase,
+) -> None:
+    """portal_admin_requires_second_factor accepts TOTP OR a passkey row,
+    unlike the single mfa_enabled column the old CHECK constraint read."""
+    pool = portal_db.pool
+    user_id = uuid4()
+
+    await pool.execute(
+        "INSERT INTO portal_users (id, email, password_hash) VALUES ($1, $2, 'x')",
+        user_id,
+        "passkey-admin@example.test",
+    )
+    await pool.execute(
+        """
+        INSERT INTO portal_webauthn_credentials
+            (id, user_id, credential_id, public_key, label)
+        VALUES ($1, $2, $3, $4, 'llave')
+        """,
+        uuid4(),
+        user_id,
+        b"\xde\xad\xbe\xef",
+        b"\xca\xfe\xba\xbe",
+    )
+
+    # A passkey alone is enough: promoting does not need mfa_enabled too.
+    await pool.execute(
+        "UPDATE portal_users SET is_site_admin = true WHERE id = $1", user_id
+    )
+
+    # Removing that one passkey now must be rejected: it is this admin's
+    # last factor.
+    with pytest.raises(asyncpg.exceptions.CheckViolationError):
+        await pool.execute(
+            "DELETE FROM portal_webauthn_credentials WHERE user_id = $1", user_id
         )
 
 

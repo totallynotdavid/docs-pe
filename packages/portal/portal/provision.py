@@ -11,9 +11,11 @@ import asyncpg
 from fetch.proxy.registry import PROVIDERS, spec_for
 
 from portal.application.provisioning import ProvisioningService
+from portal.application.sessions import OneTimeTokens
 from portal.credentials.masterkey import MasterKeyring
 from portal.credentials.secrets import EnvelopeProtector
-from portal.domain.models import CredentialState, MfaEnrollment, RequestTrace
+from portal.domain.models import CredentialState, RequestTrace
+from portal.ephemeral import EphemeralStore
 from portal.migrations import apply_migrations
 from portal.repository.audit import PostgresAuditLog
 from portal.repository.auth import PostgresAuthRepository
@@ -63,17 +65,16 @@ def _proxy_values(provider: str) -> dict[str, str]:
     return values
 
 
-def _print_enrollment(enrollment: MfaEnrollment | None) -> None:
-    """Print the second factor once. Nothing can reproduce it afterwards."""
-    if enrollment is None:
+def _print_setup_status(email: str, *, needs_setup: bool) -> None:
+    """Never prints a secret: nothing generated here is shown to whoever runs
+    this command, only to the account owner, in their own browser."""
+    if needs_setup:
+        print(
+            f"Second factor: pending. Sign in as {email} and open "
+            "/security/setup to finish enrollment."
+        )
+    else:
         print("Second factor: already enrolled (unchanged)")
-        return
-
-    print(f"Second factor: {enrollment.enrollment_uri}")
-    print("Recovery codes (store these now, they are shown only here):")
-
-    for code in enrollment.recovery_codes:
-        print(f"  {code}")
 
 
 async def provision(args: argparse.Namespace) -> None:
@@ -97,12 +98,25 @@ async def provision(args: argparse.Namespace) -> None:
             EnvelopeProtector(MasterKeyring.from_file(settings.master_key_file)),
             PostgresAuditLog(pool),
             settings.hostname,
+            public_origin=settings.public_origin,
+            setup_tokens=OneTimeTokens(EphemeralStore(pool)),
         )
 
-        administrator, enrollment = await service.ensure_site_admin(
+        administrator, needs_setup = await service.ensure_site_admin(
             args.admin_email,
             password_hash,
         )
+
+        print(f"Administrator: {administrator.email} (ready)")
+        _print_setup_status(administrator.email, needs_setup=needs_setup)
+
+        if needs_setup:
+            # create_first_team is @site_admin: nothing but a real admin can
+            # call it, and this account is still only pending_site_admin.
+            # Rerun `portal provision`/bootstrap after it completes
+            # /security/setup, which every `mise run dev` restart does.
+            print("Team and proxy setup deferred until enrollment completes.")
+            return
 
         first_team = await service.ensure_first_team(
             administrator.id,
@@ -114,9 +128,6 @@ async def provision(args: argparse.Namespace) -> None:
             f"Team: {first_team.team.name} · {first_team.team.slug} "
             f"({'created' if first_team.created else 'verified'})"
         )
-        print(f"Administrator: {administrator.email} (ready)")
-
-        _print_enrollment(enrollment)
 
         provider = args.proxy_provider
         if provider:

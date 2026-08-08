@@ -113,7 +113,7 @@ async def test_mfa_secrets_are_rewrapped_too(
     auth = PostgresAuthRepository(pool)
     user = await auth.create_account("admin@osiptel.test", PASSWORD)
 
-    await auth.enable_mfa(
+    await auth.enable_totp(
         user.id,
         EnvelopeProtector(KEYRING).protect(TOTP_SECRET.encode("utf-8")),
         (token_hash(RECOVERY_CODE),),

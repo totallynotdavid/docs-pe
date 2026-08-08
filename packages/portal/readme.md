@@ -42,10 +42,13 @@ mise run dev
 
 This writes a local master key if none exists, starts PostgreSQL in the
 foreground, applies the schema, provisions the admin and first team, and runs
-the app. Bootstrap prints an `otpauth://` URI and a set of recovery codes once:
-scan the URI with an authenticator before you try to sign in, because a site
-administrator cannot exist without a second factor. Ctrl+C stops everything. To
-reset local state, run `mise run reset` then `mise run dev` again.
+the app. Bootstrap never generates or prints a second factor: it creates the
+admin account pending its own enrollment, and prints where to finish that.
+Sign in with the bootstrap password and the app sends you to `/security/setup`
+to add a TOTP app or a passkey yourself, because a site administrator cannot
+exist without a second factor and only the account owner should ever see it.
+Ctrl+C stops everything. To reset local state, run `mise run reset` then
+`mise run dev` again.
 
 Leaving the Turnstile keys empty skips the human check. That is a development
 convenience and `PortalSettings.validate()` refuses it when
@@ -96,11 +99,10 @@ This reads `PORTAL_PROVISION_GEONODE_USERNAME`,
 `PORTAL_PROVISION_GEONODE_PASSWORD`, etc., and creates credentials for the team.
 
 The command applies migrations and creates or updates the admin, team,
-membership, and proxy credentials. It never prints secret values, with one
-deliberate exception: an administrator's `otpauth://` URI and recovery codes are
-printed the first time they are enrolled, because nothing can reproduce them
-afterwards. Rerunning provisioning against an installation that already has a
-second factor leaves it alone.
+membership, and proxy credentials. It never prints, generates, or sees a second
+factor: an admin created here is pending until they sign in and enroll TOTP or
+a passkey themselves at `/security/setup`. Rerunning provisioning against an
+installation that already has a second factor leaves it alone.
 
 ## Architecture
 
@@ -120,7 +122,8 @@ worker           Both sides of the fleet, and the wire between them
 
 application      Team access, job submission, cancellation, login
   ├─ service.py    : teams, credentials, jobs
-  ├─ login.py      : the login pipeline, MFA, logout
+  ├─ login.py      : the login pipeline, TOTP/passkey MFA, logout
+  ├─ provisioning.py : team/user admin, self-service second-factor enrollment
   ├─ sessions.py   : cookie sessions and one-time tokens
   └─ throttle.py   : login lockout and per-actor mutation caps
 
@@ -152,13 +155,23 @@ POST /login
   3. Two rate-limit counters read, one per account and one per source address
   4. Password verified with Argon2id, with a dummy verify on unknown accounts
      so a miss costs the same as a wrong password
-  5. With MFA: a pending token goes into a Strict, single-use cookie and the
-     browser is sent to /login/mfa
-  6. TOTP verified (RFC 6238, 30s step, 6 digits, one step of drift), or one
-     recovery code spent
+  5. With a second factor: a pending token goes into a Strict, single-use
+     cookie and the browser is sent to /login/mfa
+  6. TOTP verified (RFC 6238, 30s step, 6 digits, one step of drift), a
+     recovery code spent, or a passkey assertion verified instead
   7. Session minted in the store, keyed by the hash of the cookie value
   8. Set-Cookie: __Host-portal-id; Secure; HttpOnly; SameSite=Strict; Path=/
 ```
+
+A passkey can also skip steps 1-5 entirely: `POST /login/passkey/options` with
+no `pending_mfa` cookie issues a discoverable (usernameless) challenge, and a
+successful assertion establishes a session directly. This is deliberate, not a
+weaker path: a `userVerification: required` assertion already combines
+possession of the device with the biometric or PIN check that unlocked it, so
+it satisfies the second factor on its own (OWASP's Multifactor Authentication
+Cheat Sheet reasons about passkeys the same way), and WebAuthn's
+challenge/origin binding resists the credential-relay phishing that both a
+password and a TOTP code remain vulnerable to.
 
 Argon2id parameters are pinned in `security.py` (m=19 MiB, t=2, p=1) rather than
 taken from `PasswordHash.recommended()`, which can move with a library release.
@@ -170,7 +183,9 @@ password step. That is deliberate, not an oversight: it bounds code guesses at
 one per password verification. Both the code and the password count against the
 account's lockout, a fixed five-minute window that expires on its own; attempts
 made while it holds are refused without extending it, so nobody who knows an
-address can keep its owner locked out on a timer.
+address can keep its owner locked out on a timer. A passkey assertion is not
+throttled the same way: forging one without the private key is not a guessing
+problem, so there is nothing a rate limit would bound.
 
 Every authenticated request reloads the session from the store, refreshes its
 idle TTL, and re-reads the account from Postgres, so removing an administrator
@@ -181,8 +196,49 @@ the application enforces it.
 State-changing requests pass a same-origin check, then the synchronizer CSRF
 token held with the session, then a per-actor cap counted per route family.
 
-`security.py` contains password, session, TOTP, and token primitives shared by
-the web and provisioning code. It is the place to review auth assumptions.
+`security.py` contains password, session, TOTP, WebAuthn, and token primitives
+shared by the web and provisioning code. It is the place to review auth
+assumptions, and the only module that imports the `webauthn` package directly.
+
+## Second factors
+
+Every signed-in user has a `/security` page to add or remove their own TOTP app
+and passkeys; only site administrators are ever required to hold one
+(`portal_admin_requires_second_factor`, a deferred constraint trigger since a
+factor can now live in `portal_webauthn_credentials` as well as
+`portal_users.mfa_enabled`, which a plain `CHECK` cannot see across tables).
+
+Enrollment is always confirm-gated and always self-service: nothing generates a
+second factor on anyone's behalf, and nothing shows a fresh secret to anyone
+but the account owner, in their own browser.
+
+- **TOTP**: `/security/totp/setup` renders a QR code (inline SVG, `segno`, no
+  external image request) and asks for a live code before the secret is
+  enabled. A wrong code does not burn the setup token, unlike a wrong code at
+  login: the QR is not a guessable target, so a typo should mean "try again,"
+  not "scan a new code."
+- **Passkey**: `/security` posts to `/security/passkey/options` for a
+  registration challenge, calls `navigator.credentials.create()` client-side
+  (hand-rolled base64url glue in `static/portal.js`, no added JS dependency),
+  and confirms at `/security/passkey/register`. Multiple passkeys per account
+  are supported; `portal_webauthn_credentials.sign_count` is bumped with an
+  optimistic-concurrency `WHERE`, which is what turns a replayed or cloned
+  assertion into a rejected write.
+
+Recovery codes are issued once, the first time an account gains any second
+factor (not on every factor added afterward), and can be spent in place of a
+TOTP code at `/login/mfa`. Removing a factor is blocked if it is a site
+admin's last one (`Reason.LAST_SECOND_FACTOR`), enforced at the application
+layer and, for the concurrent-request case, by the same constraint trigger
+that enforces the invariant at promotion.
+
+Promoting someone from `/admin/users` never touches their second factor:
+`ProvisioningService.promote_to_site_admin` promotes immediately if the target
+already self-enrolled something, or marks `pending_site_admin` and waits.
+Either way the promoting admin never sees the target's TOTP secret, QR code, or
+passkey ceremony. A pending user is sent to `/security` (no skip option) the
+moment they next sign in with just their password, since there is no factor
+yet to challenge.
 
 ## Ephemeral state
 
@@ -209,6 +265,11 @@ the wrapped key stored beside the ciphertext. The keyring is versioned, so
 rotation prepends a key and `portal rewrap` moves stored data keys onto it
 without reading or rewriting a single payload. Handling and rotation procedure
 are in [docs/portal-deployment.md](../../docs/portal-deployment.md#the-master-key).
+
+A passkey's stored public key is not enveloped: it is public by definition,
+there for verifying a signature, not for producing one. Only the credential id
+and public key ever reach the database; the private key never leaves the
+authenticator.
 
 ## How jobs run
 
@@ -263,7 +324,7 @@ ray id where the request had one.
 | `ephemeral.py`  | Expiring keyed state                                 |
 | `storage/`      | File upload abstraction                              |
 | `cli.py`        | Subcommand dispatch                                  |
-| `security.py`   | Password hashing, session, TOTP, and token primitives |
+| `security.py`   | Password hashing, session, TOTP, WebAuthn, and token primitives |
 
 ## Configuration
 
@@ -283,14 +344,3 @@ ray id where the request had one.
 On a worker node, set `PORTAL_WORKER_API_URL`, `PORTAL_WORKER_CREDENTIAL`, and
 `PORTAL_WORKER_ID`. See `portal/application/provisioning.py` for provisioning
 variables (e.g. `PORTAL_PROVISION_GEONODE_USERNAME`).
-
-## Not built yet
-
-Self-service MFA enrollment. Site administrators are enrolled by provisioning,
-which is what the `site_admin_requires_mfa` constraint needs, but a signed-in
-user has no page to add or remove a second factor of their own. The schema and
-the login flow already carry the optional case, so this is a route and a
-template rather than a rework.
-
-WebAuthn and passkeys. `portal_users.mfa_enabled` and the TOTP flow are shaped
-so passkeys can be added later as an alternate factor without a schema change.

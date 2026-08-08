@@ -70,6 +70,8 @@ class AuditAction(StrEnum):
 
     MFA_ENROLLED = "mfa.enrolled"
     MFA_REMOVED = "mfa.removed"
+    PASSKEY_REGISTERED = "passkey.registered"
+    PASSKEY_REMOVED = "passkey.removed"
     STEP_UP_VERIFIED = "auth.step_up_verified"
     STEP_UP_FAILED = "auth.step_up_failed"
 
@@ -100,6 +102,7 @@ class LoginRejection(StrEnum):
     CREDENTIALS = "credentials"
     MFA_EXPIRED = "mfa_expired"
     MFA_CODE = "mfa_code"
+    PASSKEY_INVALID = "passkey_invalid"
 
 
 @dataclass(frozen=True)
@@ -135,7 +138,16 @@ class PortalUser:
     email: str
     is_site_admin: bool = False
     mfa_enabled: bool = False
+    has_passkey: bool = False
     is_active: bool = True
+
+    # Promotion is waiting on this user completing their own enrollment: see
+    # ProvisioningService.promote_to_site_admin.
+    pending_site_admin: bool = False
+
+    @property
+    def has_second_factor(self) -> bool:
+        return self.mfa_enabled or self.has_passkey
 
 
 @dataclass(frozen=True)
@@ -146,11 +158,16 @@ class BrowserSession:
 
 
 @dataclass(frozen=True)
-class MfaEnrollment:
-    """Shown once, at enrollment. The portal cannot reproduce either value."""
-
-    enrollment_uri: str
-    recovery_codes: tuple[str, ...]
+class WebAuthnCredential:
+    id: UUID
+    user_id: UUID
+    credential_id: bytes
+    public_key: bytes
+    sign_count: int
+    transports: tuple[str, ...]
+    label: str
+    created_at: datetime
+    last_used_at: datetime | None = None
 
 
 @dataclass(frozen=True)
