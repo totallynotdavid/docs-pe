@@ -18,6 +18,10 @@
   border-bottom: 0;
 }
 
+.list + .form {
+  margin-top: 17px;
+}
+
 .list li:hover {
   background: var(--background-transparent-lighter);
 }
@@ -37,27 +41,49 @@
 }
 
 .status {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
+  padding: 2px 8px;
+}
+
+.status--queued {
+  background: var(--secondary);
   color: var(--foreground-secondary);
-  font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-medium);
+}
+
+.status--running {
+  background: var(--info);
+  color: var(--info-foreground);
 }
 
 .status--completed {
-  color: var(--success);
+  background: var(--success);
+  color: var(--success-foreground);
 }
 
 .status--failed,
 .status--cancelled {
-  color: var(--destructive);
+  background: var(--destructive);
+  color: var(--destructive-foreground);
 }
 
 .status--cancelling {
-  color: var(--warning);
+  background: var(--warning);
+  color: var(--warning-foreground);
 }
 
 .empty-state {
   color: var(--foreground-secondary);
   padding: 25px 17px;
+}
+
+.checklist-item--done {
+  color: var(--foreground-tertiary);
+  text-decoration: line-through;
 }
 
 .list--plain {

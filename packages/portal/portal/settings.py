@@ -65,6 +65,8 @@ class PortalSettings:
     worker_api_host: str = "127.0.0.1"
     worker_api_port: int = DEFAULT_WORKER_API_PORT
     object_root: Path = Path(".data/objects")
+    resend_api_key: str = ""
+    mail_from: str = ""
 
     @classmethod
     def from_environment(cls) -> PortalSettings:
@@ -81,6 +83,8 @@ class PortalSettings:
                 _optional("PORTAL_WORKER_API_PORT") or DEFAULT_WORKER_API_PORT
             ),
             object_root=Path(os.environ.get("PORTAL_OBJECT_ROOT", ".data/objects")),
+            resend_api_key=_optional("PORTAL_RESEND_API_KEY"),
+            mail_from=_optional("PORTAL_MAIL_FROM"),
         )
 
     def validate(self) -> None:
@@ -104,6 +108,8 @@ class PortalSettings:
                 ("PORTAL_PUBLIC_ORIGIN must use https", self.serves_https),
                 ("PORTAL_TURNSTILE_SITE_KEY is required", self.turnstile_site_key),
                 ("PORTAL_TURNSTILE_SECRET is required", self.turnstile_secret),
+                ("PORTAL_RESEND_API_KEY is required", self.resend_api_key),
+                ("PORTAL_MAIL_FROM is required", self.mail_from),
             )
             if not satisfied
         ]
@@ -123,6 +129,10 @@ class PortalSettings:
     @property
     def pending_mfa_cookie(self) -> str:
         return self._cookie("portal-mfa")
+
+    @property
+    def last_team_cookie(self) -> str:
+        return self._cookie("portal-last-team")
 
     def _cookie(self, name: str) -> str:
         # The __Host- prefix binds a cookie to this exact origin and requires

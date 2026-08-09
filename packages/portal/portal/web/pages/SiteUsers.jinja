@@ -1,10 +1,9 @@
 {#def user, csrf_token, users, error #}
-<Layout title="Personas · Administración · Worker"
+<Layout title="Personas · Administración"
         :user="user"
-        :csrf_token="csrf_token">
-  <TopBar title="Administración · Personas">
-    <AdminTabs active="users" />
-  </TopBar>
+        :csrf_token="csrf_token"
+        active="admin-users">
+  <TopBar title="Administración · Personas" />
   <MainContent>
     <h1 class="sr-only">Administración de personas</h1>
     <Panel>

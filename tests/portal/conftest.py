@@ -29,6 +29,7 @@ from portal.domain.models import (
 )
 from portal.ephemeral import EphemeralStore
 from portal.migrations import apply_migrations
+from portal.notify.mailer import ConsoleMailer
 from portal.repository.audit import PostgresAuditLog
 from portal.repository.auth import PostgresAuthRepository
 from portal.repository.credentials import PostgresCredentialRepository
@@ -267,6 +268,7 @@ def provisioning(
         "testserver.local",
         public_origin=ORIGIN,
         setup_tokens=OneTimeTokens(store),
+        mailer=ConsoleMailer(),
     )
 
 

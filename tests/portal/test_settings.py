@@ -20,6 +20,8 @@ _PRODUCTION_ENV = {
     "PORTAL_TURNSTILE_SITE_KEY": "0x0000",
     "PORTAL_TURNSTILE_SECRET": "0x1111",
     "PORTAL_WORKER_API_HOST": "100.64.0.2",
+    "PORTAL_RESEND_API_KEY": "re_0000",
+    "PORTAL_MAIL_FROM": "worker@osiptel.test",
 }
 
 
@@ -101,7 +103,12 @@ def test_validate_rejects_an_origin_without_hostname() -> None:
 
 @pytest.mark.parametrize(
     "dropped",
-    ["PORTAL_TURNSTILE_SITE_KEY", "PORTAL_TURNSTILE_SECRET"],
+    [
+        "PORTAL_TURNSTILE_SITE_KEY",
+        "PORTAL_TURNSTILE_SECRET",
+        "PORTAL_RESEND_API_KEY",
+        "PORTAL_MAIL_FROM",
+    ],
 )
 def test_production_refuses_every_development_convenience(
     monkeypatch: pytest.MonkeyPatch,

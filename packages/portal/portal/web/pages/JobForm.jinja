@@ -1,7 +1,9 @@
 {#def user, csrf_token, team, credentials, source_options, error #}
-<Layout :title="'Nueva consulta · ' ~ team.name ~ ' · Worker'"
+<Layout :title="'Nueva consulta · ' ~ team.name"
         :user="user"
-        :csrf_token="csrf_token">
+        :csrf_token="csrf_token"
+        active="team-jobs"
+        :active_team="team">
   <TopBar title="Nueva consulta" />
   <MainContent>
     <QueryFlow title="Nueva consulta"

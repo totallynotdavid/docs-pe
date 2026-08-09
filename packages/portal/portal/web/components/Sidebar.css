@@ -1,6 +1,8 @@
+/* No fill, no border: the sidebar reads as part of the same canvas as the
+   content area (crm/twenty leave their nav drawer transparent too), and the
+   panels floating in the workspace already provide all the contrast that's
+   needed. */
 .sidebar {
-  background: var(--background);
-  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   padding: 14px 10px;
@@ -16,41 +18,27 @@
   text-decoration: none;
 }
 
-.sidebar__brand-mark {
-  align-items: center;
-  background: var(--foreground);
-  border-radius: 6px;
-  color: var(--primary-foreground);
-  display: inline-flex;
-  font-size: 12px;
-  font-weight: 700;
-  height: 23px;
-  justify-content: center;
-  width: 23px;
-}
-
 .sidebar__nav {
   display: grid;
   gap: 2px;
 }
 
 .sidebar__nav-label {
-  color: var(--foreground-tertiary);
-  font-size: 10px;
+  color: var(--foreground-light);
+  font-size: var(--font-size-label);
   font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.08em;
   margin: 0 8px 7px;
-  text-transform: uppercase;
 }
 
 .sidebar__nav-link {
   align-items: center;
-  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
   color: var(--foreground-secondary);
   display: flex;
   font-weight: var(--font-weight-medium);
   gap: 9px;
-  min-height: 31px;
+  height: var(--spacing-7);
   padding: 0 8px;
   text-decoration: none;
 }
@@ -62,6 +50,22 @@
 
 .sidebar__nav-link--admin {
   margin-top: 14px;
+}
+
+.sidebar__nav-link--active {
+  background: var(--background-transparent-light);
+  color: var(--foreground);
+}
+
+.sidebar__subnav {
+  display: grid;
+  gap: 2px;
+  margin: 2px 0 2px 20px;
+}
+
+.sidebar__subnav .sidebar__nav-link {
+  font-weight: var(--font-weight-regular);
+  height: var(--spacing-6);
 }
 
 .sidebar__account {
@@ -104,9 +108,9 @@
 
 .sidebar__avatar {
   align-items: center;
-  background: var(--color-blue-5);
+  background: var(--avatar-bg);
   border-radius: 50%;
-  color: var(--color-blue-11);
+  color: var(--avatar-fg);
   display: inline-flex;
   font-size: 10px;
   font-weight: 700;

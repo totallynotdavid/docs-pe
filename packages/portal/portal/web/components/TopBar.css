@@ -1,7 +1,7 @@
 .top-bar {
   align-items: center;
   background: var(--secondary);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-medium);
   display: flex;
   height: 48px;
   justify-content: space-between;

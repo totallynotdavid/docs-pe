@@ -1,7 +1,9 @@
 {#def user, csrf_token, users, teams, error, show_form #}
-<Layout title="Administración · Worker" :user="user" :csrf_token="csrf_token">
+<Layout title="Administración"
+        :user="user"
+        :csrf_token="csrf_token"
+        active="admin-teams">
   <TopBar title="Administración · Equipos">
-    <AdminTabs active="teams" />
     {% if not show_form %}
       <ActionButton href="/admin/teams?add=1">
         Crear equipo
@@ -21,7 +23,7 @@
                 {{ team.slug }}
               </MetaText>
             </div>
-            <ActionButton variant="secondary" :href="'/teams/' ~ team.id ~ '/settings'">
+            <ActionButton variant="secondary" :href="'/teams/' ~ team.id ~ '/settings/proxy'">
               Gestionar
             </ActionButton>
           </ListItem>

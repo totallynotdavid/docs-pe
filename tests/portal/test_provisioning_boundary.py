@@ -122,7 +122,7 @@ async def test_site_and_team_settings_use_email_selectors_and_keep_members_limit
 
         assert response.status_code == 303
 
-        team_url = response.headers["location"].removesuffix("/settings")
+        team_url = response.headers["location"].removesuffix("/settings/proxy")
 
         response = admin_client.post(
             "/admin/members",

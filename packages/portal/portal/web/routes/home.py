@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Annotated
+from uuid import UUID
 
-from litestar import Response, get, post
+from litestar import Request, Response, get, post
 from litestar.di import NamedDependency
 from litestar.enums import RequestEncodingType
 from litestar.params import Body
@@ -27,9 +28,11 @@ class FirstTeamForm:
 
 @get("/")
 async def dashboard(
+    request: Request,
     page_session: NamedDependency[BrowserSession],
     service: NamedDependency[PortalService],
     provisioning: NamedDependency[ProvisioningService],
+    settings: NamedDependency[PortalSettings],
 ) -> Response:
     if page_session.user.is_site_admin:
         status = await provisioning.installation_status(page_session.user.id)
@@ -40,10 +43,21 @@ async def dashboard(
     teams = await service.teams(page_session.user.id)
     minimal = is_search_only(page_session.user, teams)
 
-    # A search-only session has one goal. With a single team there is no
-    # choice to present, so skip straight past the team list to it.
-    if minimal and len(teams) == 1:
-        return Redirect(f"/teams/{teams[0].id}/search", status_code=303)
+    def destination(team_id: UUID) -> str:
+        return f"/teams/{team_id}/search" if minimal else f"/teams/{team_id}"
+
+    # With a single team, or a remembered one from the last visit, there is no
+    # real choice to present: skip straight past the picker. Search-only
+    # sessions have always skipped it on a single team; a remembered team
+    # removes the same hop for everyone else too.
+    if len(teams) == 1:
+        return Redirect(destination(teams[0].id), status_code=303)
+
+    remembered = request.cookies.get(settings.last_team_cookie)
+    match = next((team for team in teams if str(team.id) == remembered), None)
+
+    if match is not None:
+        return Redirect(destination(match.id), status_code=303)
 
     return render(
         "Dashboard",

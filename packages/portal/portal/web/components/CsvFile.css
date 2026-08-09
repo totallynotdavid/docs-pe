@@ -21,8 +21,8 @@
 
 .csv-file:hover,
 .csv-file--dragging {
-  background: var(--color-blue-5);
-  border-color: var(--color-blue-11);
+  background: var(--background-transparent-lighter);
+  border-color: var(--foreground-secondary);
 }
 
 .csv-file__input {

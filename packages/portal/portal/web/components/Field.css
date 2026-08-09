@@ -1,0 +1,38 @@
+.field {
+  color: var(--foreground-tertiary);
+  display: grid;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
+  gap: 6px;
+}
+
+.field input,
+.field textarea,
+.field select {
+  background: var(--background-transparent-lighter);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--foreground);
+  min-height: 32px;
+  padding: 0 9px;
+  width: 100%;
+}
+
+.field textarea {
+  min-height: 190px;
+  padding: 9px;
+  resize: vertical;
+}
+
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
+  border-color: var(--color-blue);
+}
+
+.field input:disabled,
+.field textarea:disabled,
+.field select:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

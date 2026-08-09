@@ -1,8 +1,8 @@
 {#def user, csrf_token, turnstile_site_key, error #}
-<Layout title="Ingresar · Worker" :user="user" :csrf_token="csrf_token">
+<Layout title="Ingresar" :user="user" :csrf_token="csrf_token">
   <MainContent>
     <AuthCard title="Iniciar sesión"
-              description="Accede al portal de Worker."
+              :description="'Accede al portal de ' ~ PRODUCT_NAME ~ '.'"
               title_id="login-title">
       {% if error %}<Message>No se pudo iniciar sesión.</Message>{% endif %}
       <FormLayout action="/login" :csrf_token="csrf_token">
@@ -25,8 +25,12 @@
         {% endif %}
         <button type="submit">Ingresar</button>
       </FormLayout>
-      <button type="button" class="button--secondary" data-passkey-login>Entrar con una clave de acceso</button>
-      <p data-passkey-status class="help-text" role="status"></p>
+      <form action="/login/passkey/verify" method="post">
+        <input type="hidden" name="login_token" data-passkey-login-token>
+        <input type="hidden" name="response" data-passkey-response>
+        <button type="submit" class="button--secondary" data-passkey-login>Entrar con una clave de acceso</button>
+        <p data-passkey-status class="help-text" role="status"></p>
+      </form>
     </AuthCard>
   </MainContent>
 </Layout>
