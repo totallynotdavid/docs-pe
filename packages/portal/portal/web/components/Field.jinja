@@ -1,5 +1,5 @@
 {#def label, help_text="" #}
-<label>
+<label {{ attrs.render(class="field") }}>
   {{ label }}
   {{ content }}
   {% if help_text %}<span class="help-text">{{ help_text }}</span>{% endif %}

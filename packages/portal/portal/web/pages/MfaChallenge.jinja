@@ -3,7 +3,7 @@
    pending-login cookie is SameSite=Strict and single-use, and the handler
    carries the same-origin guard, so a cross-site post cannot reach this
    form's state. #}
-<Layout title="Verificación · Worker" :user="user" csrf_token="">
+<Layout title="Verificación" :user="user" csrf_token="">
   <MainContent>
     <AuthCard title="Verificación en dos pasos"
               description="Ingresa el código de tu aplicación de autenticación."
@@ -21,8 +21,12 @@
         </Field>
         <button type="submit">Verificar</button>
       </form>
-      <button type="button" class="button--secondary" data-passkey-login>Usar una clave de acceso</button>
-      <p data-passkey-status class="help-text" role="status"></p>
+      <form action="/login/passkey/verify" method="post">
+        <input type="hidden" name="login_token" data-passkey-login-token>
+        <input type="hidden" name="response" data-passkey-response>
+        <button type="submit" class="button--secondary" data-passkey-login>Usar una clave de acceso</button>
+        <p data-passkey-status class="help-text" role="status"></p>
+      </form>
     </AuthCard>
   </MainContent>
 </Layout>

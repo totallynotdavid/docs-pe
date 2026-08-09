@@ -1,0 +1,24 @@
+{#def token, email, error #}
+<Layout title="Únete a tu equipo">
+  <MainContent>
+    <AuthCard title="Únete a tu equipo"
+              :description="'Crea una contraseña para ' ~ email ~ ' y continúa.'"
+              title_id="invite-title">
+      {% if error %}<Message>{{ error }}</Message>{% endif %}
+      <FormLayout :action="'/invite/' ~ token" csrf_token="">
+        <Field label="Correo electrónico">
+          <input type="email" value="{{ email }}" disabled>
+        </Field>
+        <Field label="Contraseña">
+          <input type="password"
+                 name="password"
+                 autocomplete="new-password"
+                 minlength="12"
+                 required
+                 autofocus>
+        </Field>
+        <button type="submit">Crear cuenta</button>
+      </FormLayout>
+    </AuthCard>
+  </MainContent>
+</Layout>

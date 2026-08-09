@@ -20,6 +20,8 @@ from portal.application.throttle import LoginThrottle, MutationThrottle
 from portal.credentials.masterkey import MasterKeyring
 from portal.credentials.secrets import EnvelopeProtector
 from portal.ephemeral import EphemeralStore, sweeping
+from portal.notify.dispatch import dispatching
+from portal.notify.mailer import open_mailer
 from portal.repository.audit import PostgresAuditLog
 from portal.repository.auth import PostgresAuthRepository
 from portal.repository.credentials import PostgresCredentialRepository
@@ -33,8 +35,18 @@ from portal.turnstile import open_human_check
 from portal.web.assets import STATIC_DIR
 from portal.web.deps import DEPENDENCIES
 from portal.web.errors import AFTER_EXCEPTION, EXCEPTION_HANDLERS
-from portal.web.headers import HTTPSRedirect, SecurityHeaders
-from portal.web.routes import admin, auth, home, jobs, search, security, stepup, teams
+from portal.web.headers import HTTPSRedirect, RememberLastTeam, SecurityHeaders
+from portal.web.routes import (
+    admin,
+    auth,
+    home,
+    invite,
+    jobs,
+    search,
+    security,
+    stepup,
+    teams,
+)
 
 
 if TYPE_CHECKING:
@@ -66,9 +78,11 @@ def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
         protector = EnvelopeProtector(keyring)
         sessions = BrowserSessions(store, auth_repo)
         human_check = open_human_check(settings)
+        mailer = open_mailer(settings)
 
         app.state.pool = pool
         app.state.sessions = sessions
+        app.state.mailer = mailer
         app.state.mutation_throttle = MutationThrottle(store)
         app.state.login = LoginService(
             auth_repo,
@@ -97,18 +111,20 @@ def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
             settings.hostname,
             public_origin=settings.public_origin,
             setup_tokens=OneTimeTokens(store),
+            mailer=mailer,
         )
         app.state.audit = audit
         app.state.storage = FileObjectStorage(settings.object_root)
 
         try:
-            async with sweeping(store):
+            async with sweeping(store), dispatching(pool, mailer):
                 yield
         finally:
             await human_check.aclose()
+            await mailer.aclose()
             await pool.close()
 
-    middleware: list[Middleware] = [SecurityHeaders]
+    middleware: list[Middleware] = [SecurityHeaders, RememberLastTeam]
 
     # Not gated on PORTAL_ENVIRONMENT: a deployment that declares an https
     # origin gets the redirect, and one that terminates TLS upstream would
@@ -122,6 +138,7 @@ def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
             *auth.handlers,
             *home.handlers,
             *stepup.handlers,
+            *invite.handlers,
             jobs.router,
             search.router,
             teams.router,

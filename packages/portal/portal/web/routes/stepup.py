@@ -47,7 +47,10 @@ async def step_up_get(
 ) -> Response:
     return render(
         "StepUp",
-        user=page_session.user,
+        # None, not page_session.user: Layout renders the app shell (sidebar,
+        # wide workspace) for any truthy user, but StepUp is an AuthCard page
+        # meant for the centered signed-out shell, like Login and MfaChallenge.
+        user=None,
         csrf_token=page_session.csrf_token,
         next_path=_safe_next(next_path),
         error=error,

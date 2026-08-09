@@ -5,7 +5,7 @@ import re
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -19,6 +19,7 @@ from portal.application.access import (
     site_admin_or_leader,
     site_admin_step_up,
 )
+from portal.branding import PRODUCT_NAME
 from portal.credentials.secrets import EnvelopeProtector, encode_config
 from portal.domain.errors import (
     CredentialConfigurationError,
@@ -35,12 +36,14 @@ from portal.domain.models import (
     PortalUser,
     RequestTrace,
     Team,
+    TeamInvite,
     TeamRole,
     WebAuthnCredential,
 )
 from portal.security import (
     hash_password,
     new_recovery_codes,
+    new_session_token,
     new_totp_secret,
     new_webauthn_registration_options,
     token_hash,
@@ -56,6 +59,7 @@ if TYPE_CHECKING:
     from fetch.proxy.base import Field
 
     from portal.application.sessions import OneTimeTokens
+    from portal.notify.mailer import Mailer
     from portal.repository.audit import PostgresAuditLog
     from portal.repository.auth import PostgresAuthRepository
     from portal.repository.credentials import PostgresCredentialRepository
@@ -74,6 +78,8 @@ _TOTP_SETUP_TTL = timedelta(minutes=10)
 _PASSKEY_SETUP = "passkey_setup"
 _PASSKEY_SETUP_TTL = timedelta(minutes=5)
 
+_INVITE_TTL = timedelta(days=7)
+
 
 @dataclass(frozen=True)
 class InstallationStatus:
@@ -86,6 +92,7 @@ class InstallationStatus:
 @dataclass(frozen=True)
 class TeamReadiness:
     has_active_credential: bool
+    has_members_beyond_creator: bool
     next_step: str
 
 
@@ -123,6 +130,7 @@ class ProvisioningService(AuthorizedService):
         *,
         public_origin: str,
         setup_tokens: OneTimeTokens,
+        mailer: Mailer,
     ) -> None:
         self._auth = auth
         self._teams = teams
@@ -134,6 +142,7 @@ class ProvisioningService(AuthorizedService):
         self._issuer = issuer
         self._public_origin = public_origin
         self._setup_tokens = setup_tokens
+        self._mailer = mailer
 
     @public
     async def require_site_admin(self, actor_id: UUID) -> None:
@@ -600,21 +609,159 @@ class ProvisioningService(AuthorizedService):
         role: TeamRole,
         trace: RequestTrace,
     ) -> None:
+        """Add directly when the email already has an account; otherwise
+        invite it. A team leader can only add someone who already has a
+        platform account through /admin/users, which they cannot reach:
+        inviting by email is the only door available to them.
+        """
         if role not in {TeamRole.TEAM_LEADER, TeamRole.TEAM_MEMBER}:
             raise ProvisioningError(Reason.ROLE_INVALID)
 
-        member = await self._user_by_email(email)
+        clean_email = self._email(email)
+        found = await self._auth.user_by_email(clean_email)
 
-        await self._teams.add_member(team_id, member.id, role)
+        if found is not None:
+            member = found[0]
+            await self._teams.add_member(team_id, member.id, role)
+
+            await self._record(
+                AuditAction.MEMBER_ADDED,
+                actor_id,
+                trace,
+                team=team_id,
+                user=member.id,
+                role=role.value,
+            )
+            return
+
+        await self._send_invite(
+            actor_id,
+            team_id=team_id,
+            email=clean_email,
+            role=role,
+            trace=trace,
+        )
+
+    async def _send_invite(
+        self,
+        actor_id: UUID,
+        *,
+        team_id: UUID,
+        email: str,
+        role: TeamRole,
+        trace: RequestTrace,
+    ) -> None:
+        token = new_session_token()
+
+        await self._teams.create_invite(
+            team_id,
+            email,
+            role,
+            token_hash=token_hash(token),
+            invited_by=actor_id,
+            expires_at=datetime.now(UTC) + _INVITE_TTL,
+        )
+
+        await self._mailer.send(
+            to=email,
+            subject=f"Te invitaron a un equipo en {PRODUCT_NAME}",
+            body=(
+                f"Te invitaron a un equipo en {PRODUCT_NAME}. Para unirte, abre este "
+                f"enlace y crea tu contraseña: {self._public_origin}/invite/{token}"
+            ),
+        )
 
         await self._record(
-            AuditAction.MEMBER_ADDED,
+            AuditAction.INVITE_SENT,
             actor_id,
             trace,
             team=team_id,
-            user=member.id,
+            email=email,
             role=role.value,
         )
+
+    @site_admin_or_leader()
+    async def resend_invite(
+        self,
+        actor_id: UUID,
+        *,
+        team_id: UUID,
+        invite_id: UUID,
+        trace: RequestTrace,
+    ) -> None:
+        invites = await self._teams.pending_invites_for_team(team_id)
+        invite = next((each for each in invites if each.id == invite_id), None)
+
+        if invite is None:
+            raise NotFound(Reason.INVITE_INVALID)
+
+        await self._send_invite(
+            actor_id,
+            team_id=team_id,
+            email=invite.email,
+            role=invite.role,
+            trace=trace,
+        )
+
+    @site_admin_or_leader()
+    async def cancel_invite(
+        self,
+        actor_id: UUID,
+        *,
+        team_id: UUID,
+        invite_id: UUID,
+    ) -> None:
+        await self._teams.delete_invite(team_id, invite_id)
+
+    @site_admin_or_leader()
+    async def pending_invites(
+        self,
+        actor_id: UUID,
+        team_id: UUID,
+    ) -> tuple[TeamInvite, ...]:
+        return await self._teams.pending_invites_for_team(team_id)
+
+    @public
+    async def invite_preview(self, *, token: str) -> TeamInvite:
+        return await self._valid_invite(token)
+
+    @public
+    async def redeem_invite(self, *, token: str, password: str) -> PortalUser:
+        invite = await self._valid_invite(token)
+
+        if len(password) < _MIN_PASSWORD:
+            raise ProvisioningError(Reason.PASSWORD_TOO_SHORT, minimum=_MIN_PASSWORD)
+
+        found = await self._auth.user_by_email(invite.email)
+        user = (
+            found[0]
+            if found is not None
+            else await self._auth.create_user(invite.email, hash_password(password))
+        )
+
+        await self._teams.add_member(invite.team_id, user.id, invite.role)
+        await self._teams.mark_invite_accepted(invite.id)
+
+        await self._record(
+            AuditAction.INVITE_ACCEPTED,
+            user.id,
+            RequestTrace(),
+            team=invite.team_id,
+        )
+
+        return user
+
+    async def _valid_invite(self, token: str) -> TeamInvite:
+        invite = await self._teams.invite_by_token_hash(token_hash(token))
+
+        if (
+            invite is None
+            or not invite.is_pending
+            or invite.expires_at <= datetime.now(UTC)
+        ):
+            raise NotFound(Reason.INVITE_INVALID)
+
+        return invite
 
     @site_admin_or_leader()
     async def remove_member(
@@ -646,14 +793,6 @@ class ProvisioningService(AuthorizedService):
         return await self._teams.members_for_team(team_id)
 
     @site_admin_or_leader()
-    async def member_candidates(
-        self,
-        actor_id: UUID,
-        team_id: UUID,
-    ) -> tuple[PortalUser, ...]:
-        return await self._teams.users()
-
-    @site_admin_or_leader()
     async def team_readiness(
         self,
         actor_id: UUID,
@@ -664,9 +803,11 @@ class ProvisioningService(AuthorizedService):
             credential.is_active and credential.state is CredentialState.ACTIVE
             for credential in credentials
         )
+        members = await self._teams.members_for_team(team_id)
 
         return TeamReadiness(
             has_active_credential=has_active_credential,
+            has_members_beyond_creator=len(members) > 1,
             next_step=("submit_job" if has_active_credential else "configure_proxy"),
         )
 

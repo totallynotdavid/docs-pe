@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from dataclasses import dataclass
-from typing import Annotated, Any
+from typing import Annotated
 
 from litestar import Request, Response, get, post
 from litestar.di import NamedDependency
@@ -41,7 +41,7 @@ class MfaForm:
 @dataclass
 class PasskeyLoginForm:
     login_token: str
-    response: dict[str, Any]
+    response: str
 
 
 @dataclass
@@ -165,26 +165,24 @@ async def login_passkey_verify_post(
     login: NamedDependency[LoginService],
     settings: NamedDependency[PortalSettings],
     trace: NamedDependency[RequestTrace],
-    data: PasskeyLoginForm,
+    data: Annotated[PasskeyLoginForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
 ) -> Response:
     outcome = await login.complete_passkey_login(
         PasskeyLoginAttempt(
             login_token=data.login_token,
-            response_json=json.dumps(data.response),
+            response_json=data.response,
             trace=trace,
         )
     )
 
+    # Same bound as login_mfa_post: a failed guess costs the whole pending
+    # state, not just this one attempt.
     if not isinstance(outcome, SessionIssued):
-        return Response(
-            content={"error": True},
-            status_code=401,
-            media_type="application/json",
-        )
+        return _signed_out("/login?error=1", settings)
 
     await login.logout(request.cookies.get(settings.session_cookie), trace)
 
-    return _signed_in(outcome, settings, body={"redirectTo": _next(outcome)})
+    return _signed_in(outcome, settings)
 
 
 @post("/logout", status_code=200)
@@ -208,26 +206,13 @@ def _challenge(pending_token: str, settings: PortalSettings) -> Response:
     return response
 
 
-def _signed_in(
-    outcome: SessionIssued,
-    settings: PortalSettings,
-    *,
-    body: dict[str, object] | None = None,
-) -> Response:
-    destination = _next(outcome)
-    response: Response = (
-        Response(content=body, media_type="application/json")
-        if body is not None
-        else Redirect(destination, status_code=303)
-    )
+def _signed_in(outcome: SessionIssued, settings: PortalSettings) -> Response:
+    destination = "/security" if outcome.needs_setup else "/"
+    response = Redirect(destination, status_code=303)
     _set_cookie(response, settings.session_cookie, outcome.cookie_token, settings)
     _clear_cookie(response, settings.pending_mfa_cookie, settings)
 
     return response
-
-
-def _next(outcome: SessionIssued) -> str:
-    return "/security" if outcome.needs_setup else "/"
 
 
 def _signed_out(location: str, settings: PortalSettings) -> Response:

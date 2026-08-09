@@ -85,6 +85,8 @@ class AuditAction(StrEnum):
     TEAM_CREATED = "admin.team_created"
     MEMBER_ADDED = "team.member_added"
     MEMBER_REMOVED = "team.member_removed"
+    INVITE_SENT = "team.invite_sent"
+    INVITE_ACCEPTED = "team.invite_accepted"
 
     CREDENTIAL_CONFIGURED = "credential.configured"
     CREDENTIAL_REVEALED = "credential.revealed"
@@ -183,6 +185,22 @@ class Team:
     slug: str
     name: str
     role: TeamRole | None = None
+
+
+@dataclass(frozen=True)
+class TeamInvite:
+    id: UUID
+    team_id: UUID
+    email: str
+    role: TeamRole
+    invited_by: UUID
+    created_at: datetime
+    expires_at: datetime
+    accepted_at: datetime | None = None
+
+    @property
+    def is_pending(self) -> bool:
+        return self.accepted_at is None
 
 
 @dataclass(frozen=True)

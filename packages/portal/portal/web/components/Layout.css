@@ -131,21 +131,14 @@ p {
   text-decoration: none;
 }
 
-.onboarding-topbar__mark {
-  align-items: center;
-  background: var(--foreground);
-  border-radius: 6px;
-  color: var(--primary-foreground);
-  display: inline-flex;
-  font-size: 12px;
-  font-weight: 700;
-  height: 23px;
-  justify-content: center;
-  width: 23px;
+.onboarding-topbar__step {
+  color: var(--foreground-tertiary);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-medium);
 }
 
 body.onboarding {
-  background: var(--background-app);
+  background: var(--tertiary);
 }
 
 body.onboarding .content {
@@ -163,7 +156,7 @@ body.onboarding .subtitle {
   margin-bottom: 24px;
 }
 
-/* The signed-out pages drop the shell and centre a single card instead. */
+/* The signed-out pages drop the shell and centre the content instead. */
 body.signed-out {
   align-items: center;
   background: var(--secondary);

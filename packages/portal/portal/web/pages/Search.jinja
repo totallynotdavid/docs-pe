@@ -1,8 +1,10 @@
 {#def user, csrf_token, team, query, results, page, has_more, minimal=False #}
-<Layout :title="'Buscar · ' ~ team.name ~ ' · Worker'"
+<Layout :title="'Buscar · ' ~ team.name"
         :user="user"
         :csrf_token="csrf_token"
-        :minimal="minimal">
+        :minimal="minimal"
+        active="team-search"
+        :active_team="team">
   <TopBar title="Buscar documentos" />
   <MainContent>
     <h1 class="sr-only">Buscar documentos en {{ team.name }}</h1>

@@ -24,10 +24,18 @@ from portal.web.render import render
 @get("")
 async def admin_home(
     page_session: NamedDependency[BrowserSession],
+    service: NamedDependency[PortalService],
     provisioning: NamedDependency[ProvisioningService],
 ) -> Response:
     await provisioning.require_site_admin(page_session.user.id)
-    return Redirect("/admin/teams", status_code=303)
+
+    return render(
+        "AdminHome",
+        user=page_session.user,
+        csrf_token=page_session.csrf_token,
+        health=await service.system_health(page_session.user.id),
+        notifications=await service.notifications(page_session.user.id),
+    )
 
 
 async def _users_context(
@@ -286,7 +294,7 @@ async def admin_teams_post(
         )
         return render("SiteTeams", **context)
 
-    return Redirect(f"/teams/{team.id}/settings", status_code=303)
+    return Redirect(f"/teams/{team.id}/settings/proxy", status_code=303)
 
 
 @get("/search-activity")

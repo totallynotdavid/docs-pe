@@ -41,6 +41,7 @@ class Reason(StrEnum):
     PASSWORD_TOO_SHORT = "password_too_short"
     ROLE_INVALID = "role_invalid"
     LAST_LEADER = "last_leader"
+    INVITE_INVALID = "invite_invalid"
 
     USER_LAST_LEADER = "user_last_leader"
     LAST_SITE_ADMIN = "last_site_admin"

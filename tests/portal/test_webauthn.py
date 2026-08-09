@@ -308,12 +308,15 @@ async def test_passkey_login_as_second_factor(
         assertion = authenticator.authenticate(payload["options"], sign_count=1)
         verify_response = client.post(
             "/login/passkey/verify",
-            json={"login_token": payload["loginToken"], "response": assertion},
+            data={
+                "login_token": payload["loginToken"],
+                "response": json.dumps(assertion),
+            },
             headers={"Origin": ORIGIN},
+            follow_redirects=False,
         )
 
-        assert verify_response.status_code == 200
-        assert verify_response.json()["redirectTo"] == "/"
+        assert verify_response.headers["location"] == "/"
         assert "__Host-portal-id" in client.cookies or "portal-id" in client.cookies
 
 
@@ -349,12 +352,15 @@ async def test_discoverable_passkey_login_needs_no_password(
         assertion = authenticator.authenticate(payload["options"], sign_count=1)
         verify_response = client.post(
             "/login/passkey/verify",
-            json={"login_token": payload["loginToken"], "response": assertion},
+            data={
+                "login_token": payload["loginToken"],
+                "response": json.dumps(assertion),
+            },
             headers={"Origin": ORIGIN},
+            follow_redirects=False,
         )
 
-        assert verify_response.status_code == 200
-        assert verify_response.json()["redirectTo"] == "/"
+        assert verify_response.headers["location"] == "/"
 
     # Replaying the same assertion (same sign_count) must not authenticate a
     # second time: this is exactly the signal a cloned authenticator gives.
@@ -366,10 +372,14 @@ async def test_discoverable_passkey_login_needs_no_password(
         replayed = authenticator.authenticate(payload_2["options"], sign_count=1)
         replay_response = client2.post(
             "/login/passkey/verify",
-            json={"login_token": payload_2["loginToken"], "response": replayed},
+            data={
+                "login_token": payload_2["loginToken"],
+                "response": json.dumps(replayed),
+            },
             headers={"Origin": ORIGIN},
+            follow_redirects=False,
         )
-        assert replay_response.status_code == 401
+        assert replay_response.headers["location"] == "/login?error=1"
 
 
 async def test_admin_promotion_completes_via_self_service_totp(

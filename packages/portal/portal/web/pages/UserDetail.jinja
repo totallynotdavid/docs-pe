@@ -1,10 +1,9 @@
 {#def user, csrf_token, person, teams, is_sole_active_admin, error #}
-<Layout :title="person.email ~ ' · Administración · Worker'"
+<Layout :title="person.email ~ ' · Administración'"
         :user="user"
-        :csrf_token="csrf_token">
-  <TopBar title="Persona">
-    <AdminTabs active="users" />
-  </TopBar>
+        :csrf_token="csrf_token"
+        active="admin-users">
+  <TopBar title="Persona" />
   <MainContent>
     <h1 class="sr-only">{{ person.email }}</h1>
     <Panel>

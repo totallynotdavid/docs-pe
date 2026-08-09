@@ -17,6 +17,7 @@ from portal.credentials.secrets import EnvelopeProtector
 from portal.domain.models import CredentialState, RequestTrace
 from portal.ephemeral import EphemeralStore
 from portal.migrations import apply_migrations
+from portal.notify.mailer import open_mailer
 from portal.repository.audit import PostgresAuditLog
 from portal.repository.auth import PostgresAuthRepository
 from portal.repository.credentials import PostgresCredentialRepository
@@ -85,6 +86,7 @@ async def provision(args: argparse.Namespace) -> None:
     password_hash = hash_password(password)
 
     pool = await asyncpg.create_pool(settings.database_dsn)
+    mailer = open_mailer(settings)
 
     try:
         await apply_migrations(pool)
@@ -100,6 +102,7 @@ async def provision(args: argparse.Namespace) -> None:
             settings.hostname,
             public_origin=settings.public_origin,
             setup_tokens=OneTimeTokens(EphemeralStore(pool)),
+            mailer=mailer,
         )
 
         administrator, needs_setup = await service.ensure_site_admin(
@@ -158,6 +161,7 @@ async def provision(args: argparse.Namespace) -> None:
             else:
                 print(f"Proxy: {credential.label} · {provider} (verified)")
     finally:
+        await mailer.aclose()
         await pool.close()
 
 

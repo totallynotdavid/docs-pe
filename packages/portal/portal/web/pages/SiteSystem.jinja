@@ -1,10 +1,9 @@
 {#def user, csrf_token, health #}
-<Layout title="Sistema · Administración · Worker"
+<Layout title="Sistema · Administración"
         :user="user"
-        :csrf_token="csrf_token">
-  <TopBar title="Administración · Sistema">
-    <AdminTabs active="system" />
-  </TopBar>
+        :csrf_token="csrf_token"
+        active="admin-system">
+  <TopBar title="Administración · Sistema" />
   <MainContent>
     <h1 class="sr-only">Salud del sistema</h1>
     <Panel>

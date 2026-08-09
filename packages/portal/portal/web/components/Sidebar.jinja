@@ -1,30 +1,57 @@
-{#def user, csrf_token="", minimal=False #}
+{#def user, csrf_token="", minimal=False, active="", active_team=None #}
 <aside class="{{ 'sidebar sidebar--minimal' if minimal else 'sidebar' }}">
   <a class="sidebar__brand" href="/">
-    <span class="sidebar__brand-mark" aria-hidden="true">W</span>
-    Worker
+    <Brand />
+    {{ PRODUCT_NAME }}
   </a>
   {% if not minimal %}
     <nav class="sidebar__nav" aria-label="Navegación principal">
       <p class="sidebar__nav-label">Espacio de trabajo</p>
-      <a class="sidebar__nav-link" href="/">
+      <a class="{{ 'sidebar__nav-link sidebar__nav-link--active' if active == 'teams' else 'sidebar__nav-link' }}"
+         href="/">
         <Icon name="teams" />
         Equipos
       </a>
-      <a class="sidebar__nav-link" href="/notifications">
+      {% if active_team %}
+        <div class="sidebar__subnav">
+          <a class="{{ 'sidebar__nav-link sidebar__nav-link--active' if active == 'team-jobs' else 'sidebar__nav-link' }}"
+             href="/teams/{{ active_team.id }}">Tareas</a>
+          <a class="{{ 'sidebar__nav-link sidebar__nav-link--active' if active == 'team-search' else 'sidebar__nav-link' }}"
+             href="/teams/{{ active_team.id }}/search">Buscar</a>
+          {% if (active_team.role and active_team.role.value == 'team_leader') or user.is_site_admin %}
+            <a class="{{ 'sidebar__nav-link sidebar__nav-link--active' if active == 'team-settings' else 'sidebar__nav-link' }}"
+               href="/teams/{{ active_team.id }}/settings/proxy">Configuración</a>
+          {% endif %}
+        </div>
+      {% endif %}
+      <a class="{{ 'sidebar__nav-link sidebar__nav-link--active' if active == 'activity' else 'sidebar__nav-link' }}"
+         href="/notifications">
         <Icon name="activity" />
         Actividad
       </a>
-      <a class="sidebar__nav-link" href="/security">
+      <a class="{{ 'sidebar__nav-link sidebar__nav-link--active' if active == 'security' else 'sidebar__nav-link' }}"
+         href="/security">
         <Icon name="shield" />
         Seguridad
       </a>
       {% if user.is_site_admin %}
-        <a class="sidebar__nav-link sidebar__nav-link--admin"
-           href="/admin/teams">
+        <a class="{{ 'sidebar__nav-link sidebar__nav-link--admin sidebar__nav-link--active' if active.startswith('admin') else 'sidebar__nav-link sidebar__nav-link--admin' }}"
+           href="/admin">
           <Icon name="admin" />
           Administración
         </a>
+        {% if active.startswith('admin') %}
+          <div class="sidebar__subnav">
+            <a class="{{ 'sidebar__nav-link sidebar__nav-link--active' if active == 'admin-teams' else 'sidebar__nav-link' }}"
+               href="/admin/teams">Equipos</a>
+            <a class="{{ 'sidebar__nav-link sidebar__nav-link--active' if active == 'admin-users' else 'sidebar__nav-link' }}"
+               href="/admin/users">Personas</a>
+            <a class="{{ 'sidebar__nav-link sidebar__nav-link--active' if active == 'admin-search-activity' else 'sidebar__nav-link' }}"
+               href="/admin/search-activity">Búsquedas</a>
+            <a class="{{ 'sidebar__nav-link sidebar__nav-link--active' if active == 'admin-system' else 'sidebar__nav-link' }}"
+               href="/admin/system">Sistema</a>
+          </div>
+        {% endif %}
       {% endif %}
     </nav>
   {% endif %}

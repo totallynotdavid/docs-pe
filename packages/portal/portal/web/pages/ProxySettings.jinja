@@ -1,7 +1,9 @@
 {#def user, csrf_token, team, connections, readiness, provider, providers, fields, show_form, error #}
-<Layout :title="'Conexión proxy · ' ~ team.name ~ ' · Worker'"
+<Layout :title="'Conexión proxy · ' ~ team.name"
         :user="user"
-        :csrf_token="csrf_token">
+        :csrf_token="csrf_token"
+        active="team-settings"
+        :active_team="team">
   <TopBar title="Conexión proxy">
     {% if connections and not show_form %}
       <ActionButton :href="'/teams/' ~ team.id ~ '/settings/proxy?add=1'">

@@ -30,6 +30,7 @@ async def team_page(
     request: HTMXRequest,
     page_session: NamedDependency[BrowserSession],
     service: NamedDependency[PortalService],
+    provisioning: NamedDependency[ProvisioningService],
     team_id: FromPath[UUID],
     page: FromQuery[int] = 1,
 ) -> Response:
@@ -45,6 +46,15 @@ async def team_page(
         await service.teams(page_session.user.id),
     )
 
+    # team_readiness is leader/admin-gated: a plain reader sees the jobs
+    # list only, so there is nothing to check readiness for on their behalf.
+    can_manage = team.role is TeamRole.TEAM_LEADER or page_session.user.is_site_admin
+    readiness = (
+        await provisioning.team_readiness(page_session.user.id, team_id)
+        if can_manage
+        else None
+    )
+
     return render_hx(
         request,
         "Team",
@@ -56,26 +66,20 @@ async def team_page(
         total=total,
         page=current_page,
         minimal=minimal,
+        readiness=readiness,
     )
 
 
 @get("/settings")
 async def team_settings_overview(
     page_session: NamedDependency[BrowserSession],
-    service: NamedDependency[PortalService],
-    provisioning: NamedDependency[ProvisioningService],
     team_id: FromPath[UUID],
 ) -> Response:
-    team = await service.team(page_session.user.id, team_id)
-    readiness = await provisioning.team_readiness(page_session.user.id, team_id)
-
-    return render(
-        "TeamSettings",
-        user=page_session.user,
-        csrf_token=page_session.csrf_token,
-        team=team,
-        readiness=readiness,
-    )
+    del page_session
+    # The sidebar's Configuración item now expands to the three settings
+    # sub-pages directly (see Sidebar.jinja); this bare path just lands
+    # somewhere concrete instead of listing them again.
+    return Redirect(f"/teams/{team_id}/settings/proxy", status_code=303)
 
 
 @get("/settings/search-activity")
@@ -103,14 +107,14 @@ async def _members_context(
 ) -> dict[str, object]:
     team = await service.team(session.user.id, team_id)
     members = await provisioning.members(session.user.id, team_id)
-    candidates = await provisioning.member_candidates(session.user.id, team_id)
+    invites = await provisioning.pending_invites(session.user.id, team_id)
 
     return {
         "user": session.user,
         "csrf_token": session.csrf_token,
         "team": team,
         "members": members,
-        "candidates": candidates,
+        "invites": invites,
         "error": error,
     }
 
@@ -204,6 +208,53 @@ async def team_members_remove(
         team_id=team_id,
         email=data.email,
         trace=trace,
+    )
+
+    return Redirect(f"/teams/{team_id}/settings/members", status_code=303)
+
+
+@dataclass
+class InviteActionForm:
+    csrf_token: str
+
+
+@post("/settings/invites/{invite_id:uuid}/resend", status_code=200)
+async def team_invite_resend(
+    request: HTMXRequest,
+    settings: NamedDependency[PortalSettings],
+    provisioning: NamedDependency[ProvisioningService],
+    trace: NamedDependency[RequestTrace],
+    team_id: FromPath[UUID],
+    invite_id: FromPath[UUID],
+    data: Annotated[InviteActionForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
+) -> Response:
+    session = await require_verified_session(request, settings, data.csrf_token)
+
+    await provisioning.resend_invite(
+        session.user.id,
+        team_id=team_id,
+        invite_id=invite_id,
+        trace=trace,
+    )
+
+    return Redirect(f"/teams/{team_id}/settings/members", status_code=303)
+
+
+@post("/settings/invites/{invite_id:uuid}/cancel", status_code=200)
+async def team_invite_cancel(
+    request: HTMXRequest,
+    settings: NamedDependency[PortalSettings],
+    provisioning: NamedDependency[ProvisioningService],
+    team_id: FromPath[UUID],
+    invite_id: FromPath[UUID],
+    data: Annotated[InviteActionForm, Body(media_type=RequestEncodingType.URL_ENCODED)],
+) -> Response:
+    session = await require_verified_session(request, settings, data.csrf_token)
+
+    await provisioning.cancel_invite(
+        session.user.id,
+        team_id=team_id,
+        invite_id=invite_id,
     )
 
     return Redirect(f"/teams/{team_id}/settings/members", status_code=303)
@@ -383,6 +434,8 @@ router = Router(
         team_members_get,
         team_members_post,
         team_members_remove,
+        team_invite_resend,
+        team_invite_cancel,
         proxy_settings_get,
         proxy_settings_post,
         proxy_credential_rename,

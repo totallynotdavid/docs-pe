@@ -6,15 +6,15 @@
 }
 
 .search-form label {
-  color: var(--foreground-secondary);
+  color: var(--foreground-tertiary);
   font-size: var(--font-size-label);
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-semibold);
   grid-column: 1 / -1;
 }
 
 .search-form input {
-  background: var(--background);
-  border: 1px solid var(--border-strong);
+  background: var(--background-transparent-lighter);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--foreground);
   min-height: 32px;
@@ -23,7 +23,7 @@
 }
 
 .search-form input:focus {
-  border-color: var(--foreground-tertiary);
+  border-color: var(--color-blue);
 }
 
 @media (max-width: 720px) {

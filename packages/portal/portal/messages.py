@@ -44,6 +44,7 @@ MESSAGES: dict[Reason, str] = {
     Reason.PASSWORD_TOO_SHORT: "la contraseña debe tener al menos {minimum} caracteres",
     Reason.ROLE_INVALID: "el rol seleccionado no es válido",
     Reason.LAST_LEADER: "el equipo debe conservar al menos una persona líder",
+    Reason.INVITE_INVALID: "esta invitación no es válida o ya expiró",
     Reason.USER_LAST_LEADER: "es la única persona líder en: {teams}. Asigna otra persona líder en ese equipo antes de continuar",
     Reason.LAST_SITE_ADMIN: "la instalación debe conservar al menos una persona administradora activa",
     Reason.USER_CANNOT_DEACTIVATE_SELF: "no puedes desactivar ni eliminar tu propia cuenta",

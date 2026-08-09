@@ -1,10 +1,9 @@
 {#def user, csrf_token, activity #}
-<Layout title="Búsquedas · Administración · Worker"
+<Layout title="Búsquedas · Administración"
         :user="user"
-        :csrf_token="csrf_token">
-  <TopBar title="Administración · Búsquedas">
-    <AdminTabs active="search-activity" />
-  </TopBar>
+        :csrf_token="csrf_token"
+        active="admin-search-activity">
+  <TopBar title="Administración · Búsquedas" />
   <MainContent>
     <h1 class="sr-only">Actividad de búsqueda por equipo</h1>
     <Panel>

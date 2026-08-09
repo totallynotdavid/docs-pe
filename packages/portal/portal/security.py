@@ -158,9 +158,7 @@ def _totp(secret: str) -> pyotp.TOTP:
 # --- WebAuthn/passkeys -------------------------------------------------------
 #
 # Thin wrappers around the `webauthn` package: callers never import it
-# directly, the same way pyotp stays behind the TOTP functions above. Function
-# names/signatures were read from the installed package (not in Context7's
-# index at the time this was written) rather than assumed from training data.
+# directly, the same way pyotp stays behind the TOTP functions above.
 
 
 @dataclass(frozen=True)

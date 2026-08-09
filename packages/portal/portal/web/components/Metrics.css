@@ -1,12 +1,12 @@
+/* Only the inter-cell hairlines (the 1px gap showing the background through)
+   frame this: it's always inside a Panel already, so its own outer border
+   would just be a box drawn inside a box. */
 .metrics {
+  background: var(--border);
   display: grid;
   gap: 1px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 18px 0;
-  overflow: hidden;
-  background: var(--border);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
 }
 
 .metrics div {

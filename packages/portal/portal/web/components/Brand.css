@@ -1,0 +1,23 @@
+.brand-mark {
+  align-items: center;
+  background: var(--foreground);
+  border-radius: 6px;
+  color: var(--primary-foreground);
+  display: inline-flex;
+  justify-content: center;
+}
+
+.brand-mark--sm {
+  font-size: 12px;
+  font-weight: 700;
+  height: 23px;
+  width: 23px;
+}
+
+.brand-mark--lg {
+  font-size: var(--font-size-heading-sm);
+  font-weight: var(--font-weight-semibold);
+  height: 48px;
+  margin: 16px auto;
+  width: 48px;
+}

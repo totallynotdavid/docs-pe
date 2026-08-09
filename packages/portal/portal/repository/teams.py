@@ -4,16 +4,31 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from portal.domain.errors import ProvisioningError, Reason
-from portal.domain.models import PortalUser, Team, TeamRole
+from portal.domain.models import PortalUser, Team, TeamInvite, TeamRole
 from portal.repository.shared import has_passkey_sql, lock_team_row, user_row
 
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from asyncpg import Connection, Pool, Record
 
 
 def team_row(row: Record) -> Team:
     return Team(row["id"], row["slug"], row["name"])
+
+
+def _invite_row(row: Record) -> TeamInvite:
+    return TeamInvite(
+        id=row["id"],
+        team_id=row["team_id"],
+        email=row["email"],
+        role=TeamRole(row["role"]),
+        invited_by=row["invited_by"],
+        created_at=row["created_at"],
+        expires_at=row["expires_at"],
+        accepted_at=row["accepted_at"],
+    )
 
 
 class PostgresTeamRepository:
@@ -341,6 +356,90 @@ class PostgresTeamRepository:
             )
 
         return tuple((user_row(row), TeamRole(row["role"])) for row in rows)
+
+    async def create_invite(
+        self,
+        team_id: UUID,
+        email: str,
+        role: TeamRole,
+        *,
+        token_hash: str,
+        invited_by: UUID,
+        expires_at: datetime,
+    ) -> TeamInvite:
+        async with self._pool.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                INSERT INTO portal_team_invites (
+                    id, team_id, email, role, token_hash, invited_by, expires_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT (team_id, email) DO UPDATE
+                    SET id = EXCLUDED.id,
+                        role = EXCLUDED.role,
+                        token_hash = EXCLUDED.token_hash,
+                        invited_by = EXCLUDED.invited_by,
+                        created_at = now(),
+                        expires_at = EXCLUDED.expires_at,
+                        accepted_at = NULL
+                RETURNING id, team_id, email, role, invited_by, created_at,
+                          expires_at, accepted_at
+                """,
+                uuid4(),
+                team_id,
+                email,
+                role.value,
+                token_hash,
+                invited_by,
+                expires_at,
+            )
+
+        return _invite_row(row)
+
+    async def invite_by_token_hash(self, token_hash: str) -> TeamInvite | None:
+        async with self._pool.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                SELECT id, team_id, email, role, invited_by, created_at,
+                       expires_at, accepted_at
+                  FROM portal_team_invites
+                 WHERE token_hash = $1
+                """,
+                token_hash,
+            )
+
+        return _invite_row(row) if row is not None else None
+
+    async def pending_invites_for_team(self, team_id: UUID) -> tuple[TeamInvite, ...]:
+        async with self._pool.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT id, team_id, email, role, invited_by, created_at,
+                       expires_at, accepted_at
+                  FROM portal_team_invites
+                 WHERE team_id = $1
+                   AND accepted_at IS NULL
+                 ORDER BY created_at
+                """,
+                team_id,
+            )
+
+        return tuple(_invite_row(row) for row in rows)
+
+    async def delete_invite(self, team_id: UUID, invite_id: UUID) -> None:
+        async with self._pool.acquire() as connection:
+            await connection.execute(
+                "DELETE FROM portal_team_invites WHERE id = $1 AND team_id = $2",
+                invite_id,
+                team_id,
+            )
+
+    async def mark_invite_accepted(self, invite_id: UUID) -> None:
+        async with self._pool.acquire() as connection:
+            await connection.execute(
+                "UPDATE portal_team_invites SET accepted_at = now() WHERE id = $1",
+                invite_id,
+            )
 
     async def _check_not_last_leader(
         self,

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import re
+
+from http.cookies import SimpleCookie
 from typing import TYPE_CHECKING
 
 from litestar.datastructures.headers import MutableScopeHeaders
@@ -17,6 +20,8 @@ if TYPE_CHECKING:
         Scope,
         Send,
     )
+
+    from portal.settings import PortalSettings
 
 
 # default-src 'self' would block the Turnstile widget, and a login page whose
@@ -109,3 +114,61 @@ class HTTPSRedirect:
 
         await send(start)
         await send(body)
+
+
+_TEAM_PATH = re.compile(r"^/teams/([0-9a-fA-F-]{36})(?:/|$)")
+
+LAST_TEAM_COOKIE_MAX_AGE = 180 * 24 * 60 * 60
+
+
+class RememberLastTeam:
+    """Sets a last-visited-team cookie on every successful /teams/{id}/...
+    response, so dashboard() can skip the team picker next visit the same way
+    it already does when there is only one team. Read-only convenience, never
+    a source of authorization: every team route still checks membership on
+    its own.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        match = _TEAM_PATH.match(scope["path"])
+
+        if match is None:
+            await self._app(scope, receive, send)
+            return
+
+        team_id = match.group(1)
+
+        async def send_with_cookie(message: Message) -> None:
+            if message["type"] == "http.response.start" and message["status"] < 400:
+                settings: PortalSettings = scope["app"].state.settings
+                headers = MutableScopeHeaders.from_message(message)
+                headers.add(
+                    "set-cookie",
+                    _last_team_cookie_header(team_id, settings),
+                )
+
+            await send(message)
+
+        await self._app(scope, receive, send_with_cookie)
+
+
+def _last_team_cookie_header(team_id: str, settings: PortalSettings) -> str:
+    cookie: SimpleCookie = SimpleCookie()
+    name = settings.last_team_cookie
+    cookie[name] = team_id
+    cookie[name]["path"] = "/"
+    cookie[name]["max-age"] = LAST_TEAM_COOKIE_MAX_AGE
+    cookie[name]["httponly"] = True
+    cookie[name]["samesite"] = "Strict"
+
+    if settings.serves_https:
+        cookie[name]["secure"] = True
+
+    return cookie[name].OutputString()

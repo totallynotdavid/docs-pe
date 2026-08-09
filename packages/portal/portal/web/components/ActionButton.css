@@ -2,19 +2,21 @@ button,
 .button {
   align-items: center;
   background: var(--primary);
-  border: 1px solid var(--primary);
-  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-elevation-1);
   color: var(--primary-foreground);
   cursor: pointer;
   display: inline-flex;
   font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-medium);
-  height: 31px;
+  font-weight: var(--font-weight-semibold);
+  height: 32px;
   justify-content: center;
   padding: 0 11px;
   text-decoration: none;
   transition:
     background var(--motion-fast),
+    box-shadow var(--motion-fast),
     transform 100ms;
 }
 
@@ -26,7 +28,18 @@ button:hover,
 
 button:active,
 .button:active {
-  transform: scale(0.98);
+  transform: scale(0.97);
+}
+
+button:disabled,
+.button:disabled,
+.button[aria-disabled="true"] {
+  background: var(--secondary);
+  border-color: var(--background-transparent-lighter);
+  box-shadow: none;
+  color: var(--foreground-tertiary);
+  cursor: not-allowed;
+  opacity: 1;
 }
 
 .button--secondary {
@@ -36,17 +49,17 @@ button:active,
 }
 
 .button--secondary:hover {
-  background: var(--secondary);
+  background: var(--tertiary);
   color: var(--foreground);
 }
 
 .button--danger {
-  background: transparent;
-  border-color: color-mix(in oklab, var(--destructive) 35%, var(--border));
-  color: var(--destructive);
+  background: var(--destructive);
+  border-color: var(--destructive);
+  color: var(--destructive-foreground);
 }
 
 .button--danger:hover {
-  background: var(--color-red-5);
-  color: var(--red-11, var(--destructive));
+  background: color-mix(in oklab, var(--destructive) 92%, white 8%);
+  color: var(--destructive-foreground);
 }

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from dataclasses import dataclass
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import UUID
 
 from litestar import Request, Response, Router, get, post
@@ -177,7 +177,7 @@ async def security_passkey_options_post(
 class PasskeyRegisterForm:
     csrf_token: str
     setup_token: str
-    response: dict[str, Any]
+    response: str
     label: str = ""
 
 
@@ -187,7 +187,9 @@ async def security_passkey_register_post(
     settings: NamedDependency[PortalSettings],
     provisioning: NamedDependency[ProvisioningService],
     sessions: NamedDependency[BrowserSessions],
-    data: PasskeyRegisterForm,
+    data: Annotated[
+        PasskeyRegisterForm, Body(media_type=RequestEncodingType.URL_ENCODED)
+    ],
 ) -> Response:
     session = await require_verified_session(request, settings, data.csrf_token)
 
@@ -195,27 +197,30 @@ async def security_passkey_register_post(
         recovery_codes = await provisioning.confirm_passkey_registration(
             session.user.id,
             setup_token=data.setup_token,
-            response_json=json.dumps(data.response),
+            response_json=data.response,
             label=data.label,
         )
     except PortalError as error:
-        return Response(
-            content={"error": message_for(error)},
-            status_code=400,
-            media_type="application/json",
+        context = await _security_context(
+            session,
+            provisioning,
+            error=message_for(error),
         )
+        return render("Security", **context)
 
     # The registration ceremony itself is fresh second-factor proof.
     await sessions.mark_step_up_verified(request.cookies.get(settings.session_cookie))
 
-    return Response(
-        content={
-            "recoveryCodes": list(recovery_codes)
-            if recovery_codes is not None
-            else None,
-        },
-        media_type="application/json",
+    # Mirrors /totp/confirm: recovery codes exist only in this response
+    # (never persisted), so a first factor renders them now; a later one has
+    # nothing new to show and settles back on the plain page.
+    if recovery_codes is None:
+        return Redirect("/security", status_code=303)
+
+    context = await _security_context(
+        session, provisioning, recovery_codes=recovery_codes
     )
+    return render("Security", **context)
 
 
 @dataclass

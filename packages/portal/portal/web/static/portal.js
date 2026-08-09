@@ -256,19 +256,24 @@ async function postJson(url, body) {
 // code). Which case applies is decided server-side from that cookie, so the
 // client script is identical either way.
 function setupPasskeyLogin() {
-  const button = document.querySelector("[data-passkey-login]");
-  const status = document.querySelector("[data-passkey-status]");
+  const form = document.querySelector('form[action="/login/passkey/verify"]');
 
-  if (!button) {
+  if (!form) {
     return;
   }
+
+  const button = form.querySelector("[data-passkey-login]");
+  const status = form.querySelector("[data-passkey-status]");
+  const loginTokenInput = form.querySelector("[data-passkey-login-token]");
+  const responseInput = form.querySelector("[data-passkey-response]");
 
   if (!window.PublicKeyCredential) {
     button.hidden = true;
     return;
   }
 
-  button.addEventListener("click", async () => {
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
     button.disabled = true;
     if (status) status.textContent = "Esperando tu dispositivo...";
 
@@ -285,16 +290,9 @@ function setupPasskeyLogin() {
         publicKey: decodeCredentialOptions(optionsData.options, "get"),
       });
 
-      const { ok, data } = await postJson("/login/passkey/verify", {
-        login_token: optionsData.loginToken,
-        response: encodeAuthenticationCredential(assertion),
-      });
-
-      if (!ok || !data.redirectTo) {
-        throw new Error("verify");
-      }
-
-      window.location.href = data.redirectTo;
+      loginTokenInput.value = optionsData.loginToken;
+      responseInput.value = JSON.stringify(encodeAuthenticationCredential(assertion));
+      form.submit();
     } catch (error) {
       if (status) {
         status.textContent =
@@ -308,18 +306,20 @@ function setupPasskeyLogin() {
   });
 }
 
-// Security.jinja: add a passkey to the signed-in account.
+// Security.jinja: add a passkey to the signed-in account. Same shape as
+// setupPasskeyLogin above: the WebAuthn ceremony is async client code, but
+// fills a real form and submits it for real once it resolves.
 function setupPasskeyEnrollment() {
-  const app = document.querySelector("[data-passkey-app]");
-  const button = document.querySelector("[data-passkey-add]");
-  const status = document.querySelector("[data-passkey-add-status]");
-  const labelInput = document.querySelector("[data-passkey-label]");
-  const codesPanel = document.querySelector("[data-recovery-codes]");
-  const codesList = document.querySelector("[data-recovery-codes-list]");
+  const form = document.querySelector('form[action="/security/passkey/register"]');
 
-  if (!app || !button) {
+  if (!form) {
     return;
   }
+
+  const button = form.querySelector("[data-passkey-add]");
+  const status = form.querySelector("[data-passkey-add-status]");
+  const setupTokenInput = form.querySelector("[data-passkey-setup-token]");
+  const responseInput = form.querySelector("[data-passkey-response]");
 
   if (!window.PublicKeyCredential) {
     button.disabled = true;
@@ -327,16 +327,15 @@ function setupPasskeyEnrollment() {
     return;
   }
 
-  const csrfToken = app.dataset.csrfToken;
-
-  button.addEventListener("click", async () => {
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
     button.disabled = true;
     if (status) status.textContent = "Esperando tu dispositivo...";
 
     try {
       const { ok: optionsOk, data: optionsData } = await postJson(
         "/security/passkey/options",
-        { csrf_token: csrfToken },
+        { csrf_token: form.elements.csrf_token.value },
       );
 
       if (!optionsOk) {
@@ -347,38 +346,10 @@ function setupPasskeyEnrollment() {
         publicKey: decodeCredentialOptions(optionsData.options, "create"),
       });
 
-      const { ok, data } = await postJson("/security/passkey/register", {
-        csrf_token: csrfToken,
-        setup_token: optionsData.setupToken,
-        response: encodeRegistrationCredential(credential),
-        label: labelInput ? labelInput.value.trim() : "",
-      });
-
-      if (!ok) {
-        if (status) status.textContent = data.error || "No se pudo registrar la clave.";
-        button.disabled = false;
-        return;
-      }
-
-      if (data.recoveryCodes && codesPanel && codesList) {
-        codesList.innerHTML = "";
-
-        for (const code of data.recoveryCodes) {
-          const item = document.createElement("li");
-
-          item.textContent = code;
-          codesList.appendChild(item);
-        }
-
-        codesPanel.hidden = false;
-        if (status) status.textContent = "";
-        button.hidden = true;
-        return;
-      }
-
-      // Not reload(): the add form was opened via ?add=1, and a completed
-      // add should settle back to the plain list, not reopen itself.
-      window.location.href = "/security";
+      setupTokenInput.value = optionsData.setupToken;
+      responseInput.value = JSON.stringify(encodeRegistrationCredential(credential));
+      // Not requestSubmit(): that re-fires this same "submit" listener.
+      form.submit();
     } catch (error) {
       if (status) {
         status.textContent =

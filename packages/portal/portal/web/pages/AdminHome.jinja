@@ -1,0 +1,48 @@
+{#def user, csrf_token, health, notifications #}
+<Layout title="Administración"
+        :user="user"
+        :csrf_token="csrf_token"
+        active="admin">
+  <TopBar title="Administración" />
+  <MainContent>
+    <h1 class="sr-only">Panel de administración</h1>
+    <Panel>
+      <PanelHeader title="Cola de trabajo"
+                   description="Procesos activos frente al límite fijo del sistema.">
+        <ActionButton variant="secondary" href="/admin/system">
+          Ver detalle
+        </ActionButton>
+      </PanelHeader>
+      <PanelBody>
+        <Metrics>
+          <Metric label="Procesos activos">
+            {{ health.queue.active_jobs }} / {{ health.queue.max_active_jobs }}
+          </Metric>
+          <Metric label="En espera">
+            {{ health.queue.queued_jobs }}
+          </Metric>
+          <Metric label="Trabajadores en línea">
+            {{ health.workers|selectattr("online") |list|length }} / {{ health.workers|length }}
+          </Metric>
+        </Metrics>
+      </PanelBody>
+    </Panel>
+    <Panel>
+      <PanelHeader title="Actividad reciente"
+                   description="Últimas tareas completadas en todos los equipos." />
+      {% if notifications %}
+        <List>
+          {% for notification in notifications[:10] %}
+            <ListItem>
+              <span>{{ notification.event_type|notification }}</span>
+            </ListItem>
+          {% endfor %}
+        </List>
+      {% else %}
+        <EmptyState>
+          Aún no hay actividad.
+        </EmptyState>
+      {% endif %}
+    </Panel>
+  </MainContent>
+</Layout>

@@ -1,22 +1,21 @@
-{#def user, csrf_token, team, members, candidates, error #}
-<Layout :title="'Personas · ' ~ team.name ~ ' · Worker'"
+{#def user, csrf_token, team, members, invites, error #}
+<Layout :title="'Personas · ' ~ team.name"
         :user="user"
-        :csrf_token="csrf_token">
+        :csrf_token="csrf_token"
+        active="team-settings"
+        :active_team="team">
   <TopBar title="Personas del equipo" />
   <MainContent>
     <h1 class="sr-only">Personas de {{ team.name }}</h1>
     <Panel>
-      <PanelHeader title="Añadir persona"
-                   description="Las personas deben tener una cuenta creada en la plataforma." />
+      <PanelHeader title="Invitar a una persona"
+                   description="Si todavía no tiene cuenta, le enviamos un enlace para crearla." />
       <PanelBody>
         {% if error %}<Message>{{ error }}</Message>{% endif %}
         <FormLayout :action="'/teams/' ~ team.id ~ '/settings/members'"
                     :csrf_token="csrf_token">
-          <Field label="Persona">
-            <select name="email" required>
-              <option value="" selected disabled>Selecciona una persona</option>
-              {% for candidate in candidates %}<option value="{{ candidate.email }}">{{ candidate.email }}</option>{% endfor %}
-            </select>
+          <Field label="Correo electrónico">
+            <input type="email" name="email" required autofocus>
           </Field>
           <Field label="Nivel de acceso">
             <select name="role">
@@ -24,7 +23,7 @@
               <option value="team_leader">Puede administrar</option>
             </select>
           </Field>
-          <button type="submit">Guardar acceso</button>
+          <button type="submit">Enviar invitación</button>
         </FormLayout>
       </PanelBody>
     </Panel>
@@ -51,5 +50,32 @@
         {% endfor %}
       </List>
     </Panel>
+    {% if invites %}
+      <Panel>
+        <PanelHeader title="Invitaciones pendientes" />
+        <List>
+          {% for invite in invites %}
+            <ListItem>
+              <div>
+                <span>{{ invite.email }}</span>
+                <MetaText>
+                  {{ invite.role|role_name }}
+                </MetaText>
+              </div>
+              <Actions>
+                <InlineAction :action="'/teams/' ~ team.id ~ '/settings/invites/' ~ invite.id ~ '/resend'"
+                              :csrf_token="csrf_token">
+                  <button type="submit">Reenviar</button>
+                </InlineAction>
+                <InlineAction :action="'/teams/' ~ team.id ~ '/settings/invites/' ~ invite.id ~ '/cancel'"
+                              :csrf_token="csrf_token">
+                  <button type="submit">Cancelar</button>
+                </InlineAction>
+              </Actions>
+            </ListItem>
+          {% endfor %}
+        </List>
+      </Panel>
+    {% endif %}
   </MainContent>
 </Layout>

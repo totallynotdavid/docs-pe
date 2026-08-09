@@ -1,26 +1,9 @@
-/* The signed-out card is not a panel: it keeps the rounded clip and nothing else. */
 .auth-card {
-  border-radius: var(--radius-md);
-  overflow: hidden;
   text-align: center;
 }
 
-.auth-card__brand {
-  align-items: center;
-  background: var(--foreground);
-  border-radius: 6px;
-  color: var(--primary-foreground);
-  display: inline-flex;
-  font-size: var(--font-size-heading-sm);
-  font-weight: var(--font-weight-semibold);
-  height: 48px;
-  justify-content: center;
-  margin: 16px auto;
-  width: 48px;
-}
-
 .auth-card h1 {
-  font-size: 24px;
+  font-size: var(--font-size-heading-lg);
   margin: 16px 0 7px;
 }
 
