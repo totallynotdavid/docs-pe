@@ -7,7 +7,7 @@ name = "browser"
 version = "0.1.0"
 requires-python = ">=3.11"
 description = "Browser-driven site lookup using Chrome over CDP, multi-site."
-dependencies = ["pyautogui>=0.9.54", "seleniumbase>=4.51.9"]
+dependencies = ["pyautogui>=0.9.54", "seleniumbase>=4.51.11"]
 
 [project.scripts]
 browser = "browser.cli.direct:main"
