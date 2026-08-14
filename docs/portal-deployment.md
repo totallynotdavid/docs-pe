@@ -53,46 +53,35 @@ plain-http origin and a missing Turnstile configuration.
 
 ## Dokploy services
 
-Deploy as a Docker Compose application, not a Swarm service: the worker API has
-to be published on one specific host address, and Swarm's ingress mesh publishes
-on every interface.
+`web` is a plain Dokploy Application: git-connected, built from
+[packages/portal/Dockerfile](../packages/portal/Dockerfile), the image's own
+`CMD` runs unmodified (`portal migrate && portal provision ... && exec portal
+web`). Nothing about it is compose-specific.
 
-```yaml
-services:
-  web:
-    image: portal
-    command: ["sh", "-ec", "portal migrate && exec portal web"]
-    env_file: [stack.env]
-    volumes:
-      - /etc/portal/master.key:/run/secrets/portal-master-key:ro
-    networks: [dokploy-network]
-    labels:
-      - traefik.enable=true
-
-  worker-api:
-    image: portal
-    command: ["portal", "worker-api"]
-    env_file: [stack.env]
-    environment:
-      # The container's own interface. What keeps this off the internet is the
-      # host binding below, not this value.
-      PORTAL_WORKER_API_HOST: 0.0.0.0
-    volumes:
-      - /etc/portal/master.key:/run/secrets/portal-master-key:ro
-    ports:
-      - "100.x.y.z:8443:8443" # the host's tailnet address, never 0.0.0.0
-    networks: [dokploy-network]
-
-networks:
-  dokploy-network:
-    external: true
-```
+`worker-api` has to be published on one specific host address, and Swarm's
+ingress mesh publishes on every interface, so it cannot be a Dokploy
+Application; it deploys from the checked-in
+[docker-compose.worker-api.yml](../docker-compose.worker-api.yml) as a plain
+Docker Compose service instead. The compose file builds from the same
+Dockerfile as `web` (so the two are never out of sync) and reads its
+host-specific values (`PORTAL_OBJECT_ROOT_HOST`, `PORTAL_MASTER_KEY_HOST_PATH`,
+`PORTAL_WORKER_API_BIND_IP`) from Dokploy's env rather than hardcoding them, so
+the file itself stays portable across installations.
 
 Only `web` carries a Traefik label, so only `web` is reachable through the
 tunnel. Docker Compose respects the host IP in a `ports` entry, which is what
 confines the worker API to the tailnet. Domains for Compose applications are
 configured through Traefik labels and are read at deploy time, so a domain
 change needs a redeploy rather than a reload.
+
+Each worker node is a third kind of deployment, and it needs neither of the
+above: a plain Dokploy Application (a Swarm service, same as `web`), git-
+connected to the same repository, `command: ["portal", "worker"]`, no domain
+and no port. It doesn't need the Compose exception `worker-api` needs because
+it never listens on anything, only makes outbound calls to `worker-api` over
+Tailscale. Being an ordinary Application means a worker node gets what `web`
+already gets for free: redeploy on push and restart on crash, with nothing
+per-node to maintain by hand.
 
 Run `portal migrate` before the web process rather than as a separate step: it
 is idempotent and the ledger makes a second run a no-op.
@@ -192,25 +181,40 @@ to the one port they need:
 Docs: ACLs https://tailscale.com/kb/1018/acls, tags
 https://tailscale.com/kb/1068/acl-tags
 
-Worker nodes are ephemeral. Provision them with a short-lived, single-use auth
-key (https://tailscale.com/kb/1085/auth-keys) and the ephemeral node flag
-(https://tailscale.com/kb/1111/ephemeral-nodes), so a node that disconnects
-leaves the tailnet on its own and no long-lived worker machines accumulate.
+This installation's worker fleet is a fixed, small set of named nodes, not
+autoscaled, so there is no ephemeral-node machinery here. Join each node to
+the tailnet once, tag it `tag:worker`
+(https://tailscale.com/kb/1068/acl-tags), and leave it joined for the life of
+the box. Adding a node later means enrolling one more named machine the same
+way, not building a provisioning pipeline for a fleet whose size changes.
 
 Tailnet membership is necessary but not sufficient. Every claim and publish also
 carries a per-worker bearer credential checked against `portal_workers`, so
 revoking one compromised node takes effect on its next request instead of
-waiting for ACL propagation:
+waiting for ACL propagation.
+
+A node gets that credential by self-enrolling. `portal worker` calls
+`POST /enroll` on `worker-api` with `PORTAL_WORKER_BOOTSTRAP_TOKEN` as its
+bearer token and gets back a credential minted for its `PORTAL_WORKER_ID`. This
+runs on every start, not only the first: issuing is idempotent by worker_id
+(`portal_workers` upserts on conflict), so a restarted or redeployed node
+re-mints its own credential instead of a human running `portal enroll-worker`
+and copying a value that is shown once. `PORTAL_WORKER_BOOTSTRAP_TOKEN` is one
+shared secret across the fleet, configured identically on `worker-api` and on
+every node; it only ever mints a worker-scoped credential, nothing else.
+
+A node's environment needs `PORTAL_WORKER_ID`, `PORTAL_WORKER_API_URL`,
+`PORTAL_WORKER_BOOTSTRAP_TOKEN`, and `PORTAL_WORKER_TAILSCALE_HOSTNAME`;
+nothing on that node has to be provisioned by hand.
+
+`portal enroll-worker` still exists for what self-enrollment does not cover:
+issuing a fixed `PORTAL_WORKER_CREDENTIAL` for a node that should not hold the
+bootstrap token, and revoking a node immediately rather than waiting for it to
+restart:
 
 ```sh
-uv run --env-file .env portal enroll-worker \
-  --worker-id poseidon-1 --tailscale-hostname poseidon-1.tailnet.ts.net
-
-uv run --env-file .env portal enroll-worker --worker-id poseidon-1 --revoke
+uv run --env-file .env portal enroll-worker --worker-id aws-1 --revoke
 ```
-
-The credential is printed once. Put it in `PORTAL_WORKER_CREDENTIAL` on that
-node, alongside `PORTAL_WORKER_API_URL` and `PORTAL_WORKER_ID`.
 
 Run the browser automation for each job in a locked-down container: non-root
 user, read-only root filesystem outside a scoped tmp dir, no listening ports,

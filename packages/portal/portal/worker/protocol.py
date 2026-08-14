@@ -56,3 +56,12 @@ class HeartbeatRequest(msgspec.Struct, frozen=True):
     cpu_percent: float | None = None
     memory_mb: float | None = None
     current_job_id: UUID | None = None
+
+
+class EnrollRequest(msgspec.Struct, frozen=True):
+    worker_id: str
+    tailscale_hostname: str
+
+
+class EnrollResponse(msgspec.Struct, frozen=True):
+    credential: str
