@@ -21,7 +21,13 @@ from fetch.pipeline.session import WorkerConfig, WorkerState, close_session
 from fetch.proxy.registry import provider_from_values
 from fetch.sites.registry import SITES
 
-from portal.worker.protocol import HeartbeatRequest, PublishRequest, WorkLease
+from portal.worker.protocol import (
+    EnrollRequest,
+    EnrollResponse,
+    HeartbeatRequest,
+    PublishRequest,
+    WorkLease,
+)
 
 
 if TYPE_CHECKING:
@@ -198,6 +204,37 @@ class WorkerAgent:
                 await close_session(state, provider=provider)
 
 
+async def self_enroll(
+    worker_api_url: str,
+    bootstrap_token: str,
+    worker_id: str,
+    tailscale_hostname: str,
+) -> str:
+    """Mint a fresh credential from portal-worker-api's /enroll endpoint.
+
+    Called on every start, not just the first: issuing is idempotent by
+    worker_id, so this replaces `portal enroll-worker` and a copy-pasted,
+    shown-once credential with a value that never has to be persisted on the
+    node at all.
+    """
+    async with httpx.AsyncClient(base_url=worker_api_url, timeout=30) as client:
+        response = await client.post(
+            "/enroll",
+            content=msgspec.json.encode(
+                EnrollRequest(
+                    worker_id=worker_id, tailscale_hostname=tailscale_hostname
+                )
+            ),
+            headers={
+                "Authorization": f"Bearer {bootstrap_token}",
+                "Content-Type": "application/json",
+            },
+        )
+        response.raise_for_status()
+
+        return msgspec.json.decode(response.content, type=EnrollResponse).credential
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="portal worker",
@@ -211,6 +248,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--worker-id",
         default=os.environ.get("PORTAL_WORKER_ID", "poseidon-1"),
     )
+    parser.add_argument(
+        "--bootstrap-token",
+        default=os.environ.get("PORTAL_WORKER_BOOTSTRAP_TOKEN", ""),
+        help="Self-enroll on every start instead of using a fixed credential.",
+    )
+    parser.add_argument(
+        "--tailscale-hostname",
+        default=os.environ.get("PORTAL_WORKER_TAILSCALE_HOSTNAME", ""),
+        help="This node's tailnet hostname. Required to self-enroll.",
+    )
     parser.add_argument("--sources", default="sunat,osiptel,sunat_reps")
     parser.add_argument(
         "--concurrency",
@@ -223,12 +270,31 @@ def build_parser() -> argparse.ArgumentParser:
 def run(argv: Sequence[str]) -> None:
     args = build_parser().parse_args(argv)
 
-    credential = os.environ.get("PORTAL_WORKER_CREDENTIAL", "")
-    if not args.worker_api_url or not credential:
-        raise SystemExit(
-            "PORTAL_WORKER_API_URL and PORTAL_WORKER_CREDENTIAL are required. "
-            "Issue a credential with `portal enroll-worker`."
+    if not args.worker_api_url:
+        raise SystemExit("PORTAL_WORKER_API_URL is required.")
+
+    if args.bootstrap_token:
+        if not args.tailscale_hostname:
+            raise SystemExit(
+                "PORTAL_WORKER_TAILSCALE_HOSTNAME is required to self-enroll."
+            )
+
+        credential = asyncio.run(
+            self_enroll(
+                args.worker_api_url.rstrip("/"),
+                args.bootstrap_token,
+                args.worker_id,
+                args.tailscale_hostname,
+            )
         )
+    else:
+        credential = os.environ.get("PORTAL_WORKER_CREDENTIAL", "")
+        if not credential:
+            raise SystemExit(
+                "PORTAL_WORKER_BOOTSTRAP_TOKEN (to self-enroll) or "
+                "PORTAL_WORKER_CREDENTIAL (issued with `portal enroll-worker`) "
+                "is required."
+            )
 
     sources = tuple(value.strip() for value in args.sources.split(",") if value.strip())
     if not sources:

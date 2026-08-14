@@ -20,6 +20,7 @@ _PRODUCTION_ENV = {
     "PORTAL_TURNSTILE_SITE_KEY": "0x0000",
     "PORTAL_TURNSTILE_SECRET": "0x1111",
     "PORTAL_WORKER_API_HOST": "100.64.0.2",
+    "PORTAL_WORKER_BOOTSTRAP_TOKEN": "bootstrap-secret",
     "PORTAL_RESEND_API_KEY": "re_0000",
     "PORTAL_MAIL_FROM": "worker@osiptel.test",
 }
@@ -73,6 +74,7 @@ def test_fully_specified_environment_is_never_silently_defaulted(
     assert settings.session_cookie == "__Host-portal-id"
     assert settings.master_key_file == Path("/run/secrets/portal-master-key")
     assert settings.worker_api_host == "100.64.0.2"
+    assert settings.worker_bootstrap_token == "bootstrap-secret"
 
 
 def test_https_and_secure_cookies_follow_the_origin_not_the_environment() -> None:
@@ -106,6 +108,7 @@ def test_validate_rejects_an_origin_without_hostname() -> None:
     [
         "PORTAL_TURNSTILE_SITE_KEY",
         "PORTAL_TURNSTILE_SECRET",
+        "PORTAL_WORKER_BOOTSTRAP_TOKEN",
         "PORTAL_RESEND_API_KEY",
         "PORTAL_MAIL_FROM",
     ],

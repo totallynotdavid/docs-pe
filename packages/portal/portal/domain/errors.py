@@ -21,6 +21,7 @@ class Reason(StrEnum):
     SECRET_UNREADABLE = "secret_unreadable"
     WORKER_NOT_AUTHORIZED = "worker_not_authorized"
     WORKER_ID_INVALID = "worker_id_invalid"
+    WORKER_BOOTSTRAP_INVALID = "worker_bootstrap_invalid"
 
     CREDENTIAL_REQUIRED = "credential_required"
     CREDENTIAL_WRONG_TEAM = "credential_wrong_team"

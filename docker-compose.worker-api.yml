@@ -1,0 +1,23 @@
+services:
+  worker-api:
+    build:
+      context: .
+      dockerfile: packages/portal/Dockerfile
+    command: ["portal", "worker-api"]
+    env_file: [.env]
+    environment:
+      # The container's own interface. What keeps this off the internet is the
+      # host binding in `ports:` below, not this value.
+      PORTAL_WORKER_API_HOST: "0.0.0.0"
+    volumes:
+      - ${PORTAL_OBJECT_ROOT_HOST}:/app/.data/objects
+      - ${PORTAL_MASTER_KEY_HOST_PATH}:/run/secrets/portal-master-key:ro
+    ports:
+      # The host's tailnet address, never 0.0.0.0: see docs/portal-deployment.md.
+      - "${PORTAL_WORKER_API_BIND_IP}:8443:8443"
+    networks: [dokploy-network]
+    restart: unless-stopped
+
+networks:
+  dokploy-network:
+    external: true

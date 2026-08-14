@@ -64,6 +64,7 @@ class PortalSettings:
     turnstile_secret: str = ""
     worker_api_host: str = "127.0.0.1"
     worker_api_port: int = DEFAULT_WORKER_API_PORT
+    worker_bootstrap_token: str = ""
     object_root: Path = Path(".data/objects")
     resend_api_key: str = ""
     mail_from: str = ""
@@ -82,6 +83,7 @@ class PortalSettings:
             worker_api_port=int(
                 _optional("PORTAL_WORKER_API_PORT") or DEFAULT_WORKER_API_PORT
             ),
+            worker_bootstrap_token=_optional("PORTAL_WORKER_BOOTSTRAP_TOKEN"),
             object_root=Path(os.environ.get("PORTAL_OBJECT_ROOT", ".data/objects")),
             resend_api_key=_optional("PORTAL_RESEND_API_KEY"),
             mail_from=_optional("PORTAL_MAIL_FROM"),
@@ -108,6 +110,10 @@ class PortalSettings:
                 ("PORTAL_PUBLIC_ORIGIN must use https", self.serves_https),
                 ("PORTAL_TURNSTILE_SITE_KEY is required", self.turnstile_site_key),
                 ("PORTAL_TURNSTILE_SECRET is required", self.turnstile_secret),
+                (
+                    "PORTAL_WORKER_BOOTSTRAP_TOKEN is required",
+                    self.worker_bootstrap_token,
+                ),
                 ("PORTAL_RESEND_API_KEY is required", self.resend_api_key),
                 ("PORTAL_MAIL_FROM is required", self.mail_from),
             )

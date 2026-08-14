@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import hmac
 
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -23,10 +24,13 @@ from portal.domain.models import AuditAction, AuditEvent, WorkerIdentity
 from portal.repository.audit import PostgresAuditLog
 from portal.repository.jobs import PostgresJobRepository
 from portal.repository.workers import PostgresWorkerRegistry
+from portal.security import new_worker_credential
 from portal.storage.port import ObjectReference, ObjectStorage
 from portal.worker.protocol import (
     ClaimRequest,
     CredentialLease,
+    EnrollRequest,
+    EnrollResponse,
     HeartbeatRequest,
     PublishRequest,
     PublishResult,
@@ -75,6 +79,60 @@ def provide_audit(state: State) -> PostgresAuditLog:
 
 def provide_storage(state: State) -> ObjectStorage:
     return state.storage
+
+
+@post("/enroll", status_code=200)
+async def worker_enroll(
+    data: EnrollRequest,
+    request: Request,
+    state: State,
+    workers: NamedDependency[PostgresWorkerRegistry],
+    audit: NamedDependency[PostgresAuditLog],
+) -> EnrollResponse:
+    """Self-service credential issuance for the fixed set of worker nodes.
+
+    Reaching this handler already proves the connection came from the tailnet
+    (see provide_worker). The bootstrap token is a second, shared secret every
+    enrolled node holds, and it authorizes minting a worker-scoped credential
+    only. Issuing is idempotent by worker_id (PostgresWorkerRegistry.issue), so
+    a restarted node just re-mints its own credential on every start instead of
+    a human running `portal enroll-worker` and copying a value that is shown
+    once.
+    """
+    authorization = request.headers.get("authorization", "")
+    presented = (
+        authorization.removeprefix("Bearer ")
+        if authorization.startswith("Bearer ")
+        else ""
+    )
+
+    if not state.settings.worker_bootstrap_token or not hmac.compare_digest(
+        presented,
+        state.settings.worker_bootstrap_token,
+    ):
+        raise PermissionDenied(Reason.WORKER_BOOTSTRAP_INVALID)
+
+    credential = new_worker_credential()
+    identity_id = await workers.issue(
+        data.worker_id,
+        credential,
+        data.tailscale_hostname,
+    )
+
+    await audit.record(
+        AuditEvent(
+            action=AuditAction.WORKER_ISSUED,
+            target_type="worker",
+            target_id=identity_id,
+            metadata={
+                "worker_id": data.worker_id,
+                "tailscale_hostname": data.tailscale_hostname,
+                "method": "self-enroll",
+            },
+        )
+    )
+
+    return EnrollResponse(credential=credential)
 
 
 @post("/claim", status_code=200)
@@ -195,7 +253,7 @@ def _unusable_credential(
     return _reason_response(error, status_code=409)
 
 
-handlers = (worker_claim, worker_publish, worker_heartbeat)
+handlers = (worker_enroll, worker_claim, worker_publish, worker_heartbeat)
 
 EXCEPTION_HANDLERS: ExceptionHandlersMap = {
     CredentialConfigurationError: _unusable_credential,
