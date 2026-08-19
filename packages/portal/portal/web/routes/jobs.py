@@ -24,7 +24,7 @@ from portal.settings import PortalSettings
 from portal.storage.port import ObjectStorage
 from portal.web.deps import require_verified_session
 from portal.web.render import render, render_fragment
-from portal.web.uploads import csv_input_lines, read_csv_upload
+from portal.web.uploads import MAX_REQUEST_BODY_BYTES, csv_input_lines, read_csv_upload
 
 
 SOURCE_OPTIONS = (
@@ -107,7 +107,7 @@ class JobSubmissionForm:
     input_file: UploadFile | None = None
 
 
-@post("", status_code=200)
+@post("", status_code=200, request_max_body_size=MAX_REQUEST_BODY_BYTES)
 async def new_job_post(
     request: HTMXRequest,
     service: NamedDependency[PortalService],

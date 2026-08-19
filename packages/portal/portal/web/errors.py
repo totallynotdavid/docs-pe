@@ -4,13 +4,22 @@ from typing import TYPE_CHECKING
 from urllib.parse import quote
 
 from litestar import Request
+from litestar.exceptions.http_exceptions import RequestEntityTooLarge
 from litestar.response import Redirect
 
-from portal.domain.errors import NotFound, PermissionDenied, PortalError, StepUpRequired
+from portal.domain.errors import (
+    InputValidationError,
+    NotFound,
+    PermissionDenied,
+    PortalError,
+    Reason,
+    StepUpRequired,
+)
 from portal.domain.models import AuditAction, AuditEvent
 from portal.messages import message_for
 from portal.web.render import render
 from portal.web.trace import client_trace
+from portal.web.uploads import MAX_CSV_UPLOAD_MB
 
 
 if TYPE_CHECKING:
@@ -83,11 +92,27 @@ def _problem(request: Request, error: Exception, *, status_code: int) -> Respons
     return response
 
 
+def _too_large(request: Request, error: Exception) -> Response:
+    """The multipart body exceeded new_job_post's request_max_body_size.
+
+    Litestar rejects this while streaming the request, ahead of read_csv_upload,
+    so there is no InputValidationError to catch here: build one to reuse the
+    same CSV_TOO_LARGE message instead of duplicating its text.
+    """
+    del error
+    return _problem(
+        request,
+        InputValidationError(Reason.CSV_TOO_LARGE, limit_mb=MAX_CSV_UPLOAD_MB),
+        status_code=413,
+    )
+
+
 EXCEPTION_HANDLERS: ExceptionHandlersMap = {
     LoginRequired: _to_login,
     StepUpRequired: _to_step_up,
     NotFound: _not_found,
     PortalError: _denied,
+    RequestEntityTooLarge: _too_large,
 }
 
 AFTER_EXCEPTION = (record_permission_denied,)
