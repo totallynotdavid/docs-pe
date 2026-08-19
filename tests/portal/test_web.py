@@ -91,7 +91,7 @@ async def test_csv_upload_accepts_valid_file_and_strips_directories() -> None:
         (
             _upload("enorme.csv", b"0" * (MAX_CSV_UPLOAD_BYTES + 1)),
             Reason.CSV_TOO_LARGE,
-            "el archivo CSV no puede superar los 10 MB",
+            "el archivo CSV no puede superar los 15 MB",
         ),
     ],
 )

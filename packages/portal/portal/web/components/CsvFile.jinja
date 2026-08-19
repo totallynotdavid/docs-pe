@@ -1,15 +1,18 @@
+{#def max_mb, max_bytes #}
 <label class="csv-file" data-csv-dropzone>
   <input class="csv-file__input"
          name="input_file"
          type="file"
          accept=".csv,text/csv"
          required
-         data-csv-input>
+         data-csv-input
+         data-csv-max-bytes="{{ max_bytes }}"
+         data-csv-max-mb="{{ max_mb }}">
   <span class="csv-file__icon">
     <Icon name="upload" :size="22" />
   </span>
   <span class="csv-file__title" data-csv-title>Elige un archivo CSV</span>
-  <span class="csv-file__help" data-csv-status>o arrástralo aquí · máximo 10 MB</span>
+  <span class="csv-file__help" data-csv-status>o arrástralo aquí · máximo {{ max_mb }} MB</span>
 </label>
 <p class="csv-file__detection"
    data-csv-detection

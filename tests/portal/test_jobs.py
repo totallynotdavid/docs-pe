@@ -5,9 +5,13 @@ import re
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from portal.web.uploads import MAX_REQUEST_BODY_BYTES
+
 from tests.portal.conftest import (
+    ORIGIN,
     build_experience,
     login,
+    session_csrf,
     submit_csv,
     submit_job,
     sync_client,
@@ -225,3 +229,39 @@ async def test_csv_upload_uses_the_file_name_and_first_column(
         "10412345678",
         "10412345679",
     ]
+
+
+async def test_csv_upload_over_the_body_limit_gets_the_friendly_message(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    app: Litestar,
+) -> None:
+    """Litestar's request_max_body_size rejects this before new_job_post runs,
+    ahead of read_csv_upload's own checks: the app must still render its own
+    CSV_TOO_LARGE message rather than Litestar's generic 413 body.
+    """
+    people = await build_experience(pool, team_repository)
+
+    with sync_client(app) as client:
+        assert login(client, "lider@osiptel.test").status_code == 303
+
+        response = client.post(
+            f"/teams/{people.team_id}/jobs",
+            data={
+                "credential_version_id": str(people.credential_id),
+                "sources": "osiptel",
+                "csrf_token": session_csrf(client),
+            },
+            files={
+                "input_file": (
+                    "enorme.csv",
+                    b"0" * (MAX_REQUEST_BODY_BYTES + 1),
+                    "text/csv",
+                )
+            },
+            headers={"Origin": ORIGIN},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 413
+    assert "el archivo CSV no puede superar los 15 MB" in response.text
