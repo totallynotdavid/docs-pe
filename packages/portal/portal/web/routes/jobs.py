@@ -24,7 +24,13 @@ from portal.settings import PortalSettings
 from portal.storage.port import ObjectStorage
 from portal.web.deps import require_verified_session
 from portal.web.render import render, render_fragment
-from portal.web.uploads import MAX_REQUEST_BODY_BYTES, csv_input_lines, read_csv_upload
+from portal.web.uploads import (
+    MAX_CSV_UPLOAD_BYTES,
+    MAX_CSV_UPLOAD_MB,
+    MAX_REQUEST_BODY_BYTES,
+    csv_input_lines,
+    read_csv_upload,
+)
 
 
 SOURCE_OPTIONS = (
@@ -84,6 +90,8 @@ async def _form_context(
         "credentials": active_credentials,
         "source_options": SOURCE_OPTIONS,
         "error": error,
+        "max_upload_mb": MAX_CSV_UPLOAD_MB,
+        "max_upload_bytes": MAX_CSV_UPLOAD_BYTES,
     }
 
 

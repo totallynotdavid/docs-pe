@@ -11,7 +11,7 @@ from portal.domain.errors import InputValidationError, Reason
 from portal.domain.models import InputLine
 
 
-MAX_CSV_UPLOAD_MB = 10
+MAX_CSV_UPLOAD_MB = 15
 MAX_CSV_UPLOAD_BYTES = MAX_CSV_UPLOAD_MB * 1024 * 1024
 
 # request_max_body_size caps the whole multipart body, not just the file: the

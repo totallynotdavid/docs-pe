@@ -264,4 +264,4 @@ async def test_csv_upload_over_the_body_limit_gets_the_friendly_message(
         )
 
     assert response.status_code == 413
-    assert "el archivo CSV no puede superar los 10 MB" in response.text
+    assert "el archivo CSV no puede superar los 15 MB" in response.text

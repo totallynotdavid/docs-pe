@@ -1,4 +1,4 @@
-{#def user, csrf_token, team, credentials, source_options, error #}
+{#def user, csrf_token, team, credentials, source_options, error, max_upload_mb, max_upload_bytes #}
 <Layout :title="'Nueva consulta · ' ~ team.name"
         :user="user"
         :csrf_token="csrf_token"
@@ -18,7 +18,7 @@
                      title="Sube tu archivo"
                      description="CSV con un documento en la primera columna de cada fila."
                      title_id="upload-step-title">
-            <CsvFile />
+            <CsvFile :max_mb="max_upload_mb" :max_bytes="max_upload_bytes" />
           </QueryStep>
           <QueryStep number="2"
                      title="¿Qué quieres obtener?"

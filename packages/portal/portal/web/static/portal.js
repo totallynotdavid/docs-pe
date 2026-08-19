@@ -51,6 +51,26 @@ function setupCsvDropzone() {
     status.textContent = `${(file.size / 1024).toFixed(1)} KB · listo para consultar`;
   }
 
+  // A file over the limit still uploads and hangs the tab instead of
+  // failing fast: the server rejects it by Content-Length before reading
+  // the body, and the ASGI server closes the connection mid-upload rather
+  // than draining it, which browsers don't surface as a clean error.
+  // Blocking submission here means those bytes never go over the wire.
+  function validateSize(file) {
+    const maxBytes = Number(input.dataset.csvMaxBytes);
+
+    if (!maxBytes || file.size <= maxBytes) {
+      input.setCustomValidity("");
+      return true;
+    }
+
+    const message = `el archivo CSV no puede superar los ${input.dataset.csvMaxMb} MB`;
+
+    input.setCustomValidity(message);
+    status.textContent = message;
+    return false;
+  }
+
   function detectDocuments(file) {
     if (!detection) {
       return;
@@ -94,7 +114,12 @@ function setupCsvDropzone() {
 
   function updateSelectedFile(file) {
     describe(file);
-    detectDocuments(file);
+
+    if (validateSize(file)) {
+      detectDocuments(file);
+    } else if (detection) {
+      detection.hidden = true;
+    }
   }
 
   function selectFile(file) {
