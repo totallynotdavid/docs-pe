@@ -3,7 +3,7 @@
         :user="user"
         :csrf_token="csrf_token"
         active="admin-users">
-  <TopBar title="Persona" />
+  <TopBar title="Persona" icon="user" />
   <MainContent>
     <h1 class="sr-only">{{ person.email }}</h1>
     <Panel>
@@ -94,16 +94,32 @@
       <PanelHeader title="Equipos"
                    description="Equipos a los que pertenece esta persona." />
       {% if teams %}
-        <List>
-          {% for team in teams %}
-            <ListItem>
-              <a href="/teams/{{ team.id }}/settings/members">{{ team.name }}</a>
-              <MetaText>
-                {{ team.role|role_name }}
-              </MetaText>
-            </ListItem>
-          {% endfor %}
-        </List>
+        <DataTable>
+          <TableHeader>
+            <TableRow>
+              <TableHead>
+                Equipo
+              </TableHead>
+              <TableHead align="right">
+                Acceso
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {% for team in teams %}
+              <TableRow>
+                <TableCell ellipsis>
+                  <a href="/teams/{{ team.id }}/settings/members">{{ team.name }}</a>
+                </TableCell>
+                <TableCell align="right">
+                  <MetaText>
+                    {{ team.role|role_name }}
+                  </MetaText>
+                </TableCell>
+              </TableRow>
+            {% endfor %}
+          </TableBody>
+        </DataTable>
       {% else %}
         <EmptyState icon="users"
                     title="Sin equipos"

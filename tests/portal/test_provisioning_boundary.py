@@ -188,7 +188,8 @@ async def test_a_search_only_member_lands_on_search_with_no_management_nav(
         page = member_client.get(landing.headers["location"])
         assert "Equipos" not in page.text
         assert "Actividad" not in page.text
-        assert 'class="sidebar sidebar--minimal"' in page.text
+        assert 'class="drawer drawer--minimal"' in page.text
+        assert 'class="nav-item' not in page.text
 
     with sync_client(app) as leader_client:
         assert login(leader_client, leader_email).status_code == 303

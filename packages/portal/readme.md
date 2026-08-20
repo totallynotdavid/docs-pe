@@ -327,6 +327,39 @@ ray id where the request had one.
 | `cli.py`        | Subcommand dispatch                                  |
 | `security.py`   | Password hashing, session, TOTP, WebAuthn, and token primitives |
 
+## Web UI
+
+The design tokens in `web/static/tokens.css` are a subset of the shared brand
+sheet (`crm/apps/web/src/app.css`), copied name for name and value for value.
+A token that exists there keeps its name and its number here; the portal never
+redefines one to a different value, and adds its own only for something the
+shared sheet has no name for. The reset and base layers live in that file
+inside `@layer reset, base`, so unlayered component CSS always outranks them
+without needing `!important`.
+
+Every component is `Name.jinja` plus `Name.css`, and its stylesheet may only
+style what that template renders. `List.css` used to own the badge, the meta
+text, the empty state and the pagination as well; each of those is now its own
+component. `assets.py` concatenates `components/*.css` into one content-hashed
+bundle, so the split costs nothing at request time.
+
+The shell mirrors the shared app frame: a fixed `100dvh` grid that never
+scrolls, a transparent drawer sitting on `--background-app`, and a `page-card`
+rounded into the drawer's corner only. Only `MainContent` scrolls, so the
+drawer and page header stay put.
+
+Names collide with HTML. djlint lowercases any component tag that matches a
+real element, which silently turned `<Table>` into a bare `<table>` and
+`<MenuItem>` into `<menuitem>`. Hence `DataTable` and `Dropdown`. Check a new
+component's name against the HTML element list before adding it.
+
+`Icon.jinja` holds the whole icon set, lifted from the shared set at a 24px
+grid and `stroke-width: 2`. Add a name to it rather than inlining an `svg` in
+a page.
+
+Use the scale. Raw pixels are for what the scale has no name for: a dropzone's
+minimum height, a status dot, a hairline.
+
 ## Configuration
 
 | Variable                       | Meaning                                                          |

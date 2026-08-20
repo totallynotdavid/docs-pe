@@ -1,0 +1,7 @@
+{#def href="", tone="" #}
+{% set classes = "dropdown__item dropdown__item--danger" if tone == "danger" else "dropdown__item" %}
+{% if href %}
+  <a {{ attrs.render(class=classes, href=href) }} role="menuitem">{{ content }}</a>
+{% else %}
+  <button {{ attrs.render(class=classes, type="submit") }} role="menuitem">{{ content }}</button>
+{% endif %}

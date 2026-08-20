@@ -4,28 +4,53 @@
         :csrf_token="csrf_token"
         active="team-settings"
         :active_team="team">
-  <TopBar title="Actividad de búsqueda" />
+  <TopBar title="Actividad de búsqueda" icon="search" />
   <MainContent>
     <h1 class="sr-only">Actividad de búsqueda de {{ team.name }}</h1>
     <Panel>
       <PanelHeader title="Búsquedas recientes"
                    description="Quién buscó qué y cuántos resultados encontró." />
       {% if entries %}
-        <List>
-          {% for entry in entries %}
-            <ListItem>
-              <Stack>
-                <span>{{ entry.query }}</span>
-                <MetaText>
-                  {{ entry.actor_email }} · {{ entry.created_at.strftime("%d/%m %H:%M") }}
-                </MetaText>
-              </Stack>
-              <MetaText>
-                {{ entry.result_count }} resultado{{ 's' if entry.result_count != 1 else '' }}
-              </MetaText>
-            </ListItem>
-          {% endfor %}
-        </List>
+        <DataTable>
+          <TableHeader>
+            <TableRow>
+              <TableHead>
+                Búsqueda
+              </TableHead>
+              <TableHead>
+                Quién
+              </TableHead>
+              <TableHead>
+                Cuándo
+              </TableHead>
+              <TableHead align="right">
+                Resultados
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {% for entry in entries %}
+              <TableRow>
+                <TableCell ellipsis>
+                  {{ entry.query }}
+                </TableCell>
+                <TableCell ellipsis>
+                  <MetaText>
+                    {{ entry.actor_email }}
+                  </MetaText>
+                </TableCell>
+                <TableCell>
+                  <MetaText>
+                    {{ entry.created_at.strftime("%d/%m %H:%M") }}
+                  </MetaText>
+                </TableCell>
+                <TableCell align="right">
+                  {{ entry.result_count }}
+                </TableCell>
+              </TableRow>
+            {% endfor %}
+          </TableBody>
+        </DataTable>
       {% else %}
         <EmptyState icon="search"
                     title="Sin búsquedas todavía"

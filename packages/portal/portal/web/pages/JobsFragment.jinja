@@ -1,15 +1,31 @@
 {#def team, jobs, page, total #}
 {% if jobs %}
-  <List>
-    {% for job in jobs %}
-      <ListItem>
-        <a href="/teams/{{ team.id }}/jobs/{{ job.id }}">{{ job.filename }}</a>
-        <Status :value="job.state">
-          {{ job.state|job_state }}
-        </Status>
-      </ListItem>
-    {% endfor %}
-  </List>
+  <DataTable>
+    <TableHeader>
+      <TableRow>
+        <TableHead>
+          Archivo
+        </TableHead>
+        <TableHead align="right">
+          Estado
+        </TableHead>
+      </TableRow>
+    </TableHeader>
+    <TableBody>
+      {% for job in jobs %}
+        <TableRow>
+          <TableCell ellipsis>
+            <a href="/teams/{{ team.id }}/jobs/{{ job.id }}">{{ job.filename }}</a>
+          </TableCell>
+          <TableCell align="right">
+            <Status :value="job.state">
+              {{ job.state|job_state }}
+            </Status>
+          </TableCell>
+        </TableRow>
+      {% endfor %}
+    </TableBody>
+  </DataTable>
 {% else %}
   <EmptyState icon="list"
               title="No hay tareas todavía"

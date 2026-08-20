@@ -1,0 +1,28 @@
+{#def user, csrf_token="", placement="below" #}
+<div class="account" data-account>
+  <button class="account__trigger"
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded="false"
+          aria-controls="account-menu"
+          data-account-trigger>
+    <Avatar :label="user.email" />
+    <span class="account__label">{{ user.email.split("@")[0] }}</span>
+    <Icon name="chevron-down" :size="16" class="account__chevron" />
+  </button>
+  <Dropdown id="account-menu" :placement="placement" hidden data-account-menu>
+    <span class="dropdown__label">{{ user.email }}</span>
+    <DropdownItem href="/security">
+      <Icon name="shield" />
+      Seguridad
+    </DropdownItem>
+    <DropdownSeparator />
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <DropdownItem tone="danger">
+        <Icon name="logout" />
+        Cerrar sesión
+      </DropdownItem>
+    </form>
+  </Dropdown>
+</div>

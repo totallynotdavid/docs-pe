@@ -3,7 +3,7 @@
         :user="user"
         :csrf_token="csrf_token"
         active="admin-system">
-  <TopBar title="Administración · Sistema" />
+  <TopBar title="Administración · Sistema" icon="settings" />
   <MainContent>
     <h1 class="sr-only">Salud del sistema</h1>
     <Panel>
@@ -24,40 +24,73 @@
       <PanelHeader title="Trabajadores"
                    description="Estado y consumo de recursos de cada nodo del clúster." />
       {% if health.workers %}
-        <List>
-          {% for worker in health.workers %}
-            <ListItem>
-              <Stack>
-                <span>{{ worker.worker_id }}</span>
-                <MetaText>
-                  {{ worker.tailscale_hostname }}
+        <DataTable>
+          <TableHeader>
+            <TableRow>
+              <TableHead>
+                Nodo
+              </TableHead>
+              <TableHead>
+                Proceso
+              </TableHead>
+              <TableHead align="right">
+                CPU
+              </TableHead>
+              <TableHead align="right">
+                Memoria
+              </TableHead>
+              <TableHead align="right">
+                Estado
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {% for worker in health.workers %}
+              <TableRow>
+                <TableCell ellipsis>
+                  <Stack>
+                    <span>{{ worker.worker_id }}</span>
+                    <MetaText>
+                      {{ worker.tailscale_hostname }}
+                    </MetaText>
+                  </Stack>
+                </TableCell>
+                <TableCell>
                   {% if worker.current_job_id %}
-                    · proceso {{ worker.current_job_id|string|truncate(8, true, '') }}
+                    <MetaText>
+                      {{ worker.current_job_id|string|truncate(8, true, '') }}
+                    </MetaText>
+                  {% else %}
+                    <MetaText>
+                      Libre
+                    </MetaText>
                   {% endif %}
-                </MetaText>
-              </Stack>
-              <Actions>
-                {% if worker.online %}
-                  <MetaText>
-                    {% if worker.cpu_percent is not none %}
-                      CPU {{ '%.0f'|format(worker.cpu_percent) }}%
-                    {% endif %}
-                    {% if worker.memory_mb is not none %}
-                      · {{ '%.0f'|format(worker.memory_mb) }} MB
-                    {% endif %}
-                  </MetaText>
-                  <Status value="online">
-                    En línea
-                  </Status>
-                {% else %}
-                  <Status value="offline">
-                    Sin conexión
-                  </Status>
-                {% endif %}
-              </Actions>
-            </ListItem>
-          {% endfor %}
-        </List>
+                </TableCell>
+                <TableCell align="right">
+                  {% if worker.cpu_percent is not none %}
+                    {{ '%.0f'|format(worker.cpu_percent) }}%
+                  {% endif %}
+                </TableCell>
+                <TableCell align="right">
+                  {% if worker.memory_mb is not none %}
+                    {{ '%.0f'|format(worker.memory_mb) }} MB
+                  {% endif %}
+                </TableCell>
+                <TableCell align="right">
+                  {% if worker.online %}
+                    <Status value="online">
+                      En línea
+                    </Status>
+                  {% else %}
+                    <Status value="offline">
+                      Sin conexión
+                    </Status>
+                  {% endif %}
+                </TableCell>
+              </TableRow>
+            {% endfor %}
+          </TableBody>
+        </DataTable>
       {% else %}
         <EmptyState icon="package"
                     title="Aún no hay trabajadores"

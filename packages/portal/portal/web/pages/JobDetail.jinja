@@ -4,7 +4,7 @@
         :csrf_token="csrf_token"
         active="team-jobs"
         :active_team="team">
-  <TopBar :title="job.filename">
+  <TopBar :title="job.filename" icon="list">
     {% if team.role.value == 'team_leader' and not is_terminal(job) %}
       <Submission :action="'/teams/' ~ team.id ~ '/jobs/' ~ job.id ~ '/cancel'"
                   :csrf_token="csrf_token">

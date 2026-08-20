@@ -27,4 +27,11 @@ def build_component_stylesheet(
         static_dir.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
 
+    # Bundles from earlier content hashes are never requested again, and a
+    # stale one left in the tree reads like current CSS to anyone grepping it:
+    # a rule deleted from a component still turns up in the build output.
+    for old_bundle in static_dir.glob("components.*.css"):
+        if old_bundle != path:
+            old_bundle.unlink()
+
     return f"/static/{filename}"

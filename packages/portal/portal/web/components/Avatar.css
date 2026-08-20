@@ -1,0 +1,19 @@
+/* Squared, not a circle: the shared avatar defaults to a 2px corner and only
+   opts into a round one, so a round avatar here would read as a different
+   product. */
+.avatar {
+  align-items: center;
+  background: var(--avatar-bg);
+  border-radius: 2px;
+  color: var(--avatar-fg);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: var(--font-size-tiny);
+  font-weight: var(--font-weight-semibold);
+  height: var(--spacing-4);
+  justify-content: center;
+  overflow: hidden;
+  text-transform: uppercase;
+  user-select: none;
+  width: var(--spacing-4);
+}

@@ -1,0 +1,98 @@
+.table-wrap {
+  overflow: auto;
+  width: 100%;
+}
+
+.table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--font-size-body);
+  width: 100%;
+}
+
+.table__row {
+  transition: background-color var(--motion-fast) var(--ease-standard);
+}
+
+.table__row:hover {
+  background: var(--background-transparent-light);
+}
+
+.table__head {
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  color: var(--foreground-secondary);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
+  height: var(--spacing-12);
+  padding: 0 var(--spacing-4);
+  text-align: left;
+  vertical-align: middle;
+}
+
+/* Cells size to their content and the ellipsis column takes whatever is
+   left. Without this every column gets an equal share, so a two-column table
+   puts its rule down the middle no matter what is in it. */
+.table__cell {
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  color: var(--foreground);
+  font-size: var(--font-size-body);
+  height: var(--spacing-12);
+  padding: 0 var(--spacing-4);
+  vertical-align: middle;
+  white-space: nowrap;
+  width: 1%;
+}
+
+.table th:last-child,
+.table td:last-child {
+  border-right: 0;
+}
+
+/* A table is always the full width of the panel it sits in, so the last row's
+   rule would land on top of the panel's own bottom edge and read as 2px. */
+.table tbody tr:last-child .table__cell {
+  border-bottom: 0;
+}
+
+.table__head[data-align="right"],
+.table__cell[data-align="right"] {
+  text-align: right;
+}
+
+.table__head[data-align="center"],
+.table__cell[data-align="center"] {
+  text-align: center;
+}
+
+.table__cell--ellipsis {
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.table__cell a {
+  font-weight: var(--font-weight-medium);
+}
+
+.table__cell a:hover {
+  text-decoration: underline;
+}
+
+
+/* A right-aligned cell holding controls rather than text: text-align does
+   nothing to a flex row, so the row has to be told which end to sit at. */
+.table__cell[data-align="right"] .actions,
+.table__cell[data-align="right"] .inline-action {
+  justify-content: flex-end;
+}
+
+/* Takes the slack like the ellipsis column, but keeps its content intact:
+   for a cell holding a control rather than a value to truncate. */
+.table__cell--grow {
+  white-space: normal;
+  width: 100%;
+}

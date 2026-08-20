@@ -37,12 +37,6 @@
   pointer-events: none;
 }
 
-.button--compact {
-  font-size: var(--font-size-caption);
-  height: var(--spacing-6);
-  padding: 0 var(--spacing-2);
-}
-
 .button--sm {
   font-size: var(--font-size-caption);
   height: var(--spacing-7);
@@ -57,12 +51,6 @@
 .button--lg {
   height: var(--spacing-10);
   padding: 0 var(--spacing-4);
-}
-
-.button--icon {
-  height: var(--spacing-7);
-  padding: 0;
-  width: var(--spacing-7);
 }
 
 .button--primary {
@@ -148,3 +136,5 @@
 .button--link-danger:hover {
   color: var(--destructive);
 }
+
+

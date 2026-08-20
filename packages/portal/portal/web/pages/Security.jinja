@@ -4,7 +4,7 @@
         :csrf_token="csrf_token"
         :setup="setup"
         active="security">
-  {% if not setup %}<TopBar title="Seguridad" />{% endif %}
+  {% if not setup %}<TopBar title="Seguridad" icon="shield" />{% endif %}
   <MainContent>
     {% if setup and not recovery_codes %}
       <PageIntro title="Protege tu cuenta"
@@ -110,27 +110,55 @@
           {% endif %}
         </PanelHeader>
         {% if passkeys %}
-          <List>
-            {% for passkey in passkeys %}
-              <ListItem>
-                <Stack>
-                  <span>{{ passkey.label }}</span>
-                  <MetaText>
-                    Agregada {{ passkey.created_at.strftime("%d/%m/%Y") }}
-                    {% if passkey.last_used_at %}
-                      · último uso {{ passkey.last_used_at.strftime("%d/%m %H:%M") }}
-                    {% endif %}
-                  </MetaText>
-                </Stack>
-                <InlineAction action="/security/passkey/remove" :csrf_token="csrf_token">
-                  <input type="hidden" name="credential_id" value="{{ passkey.id }}">
-                  <ActionButton variant="link-danger" type="submit">
-                    Eliminar
-                  </ActionButton>
-                </InlineAction>
-              </ListItem>
-            {% endfor %}
-          </List>
+          <DataTable>
+            <TableHeader>
+              <TableRow>
+                <TableHead>
+                  Clave
+                </TableHead>
+                <TableHead>
+                  Agregada
+                </TableHead>
+                <TableHead>
+                  Último uso
+                </TableHead>
+                <TableHead align="right">
+                  Acciones
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {% for passkey in passkeys %}
+                <TableRow>
+                  <TableCell ellipsis>
+                    {{ passkey.label }}
+                  </TableCell>
+                  <TableCell>
+                    <MetaText>
+                      {{ passkey.created_at.strftime("%d/%m/%Y") }}
+                    </MetaText>
+                  </TableCell>
+                  <TableCell>
+                    <MetaText>
+                      {% if passkey.last_used_at %}
+                        {{ passkey.last_used_at.strftime("%d/%m %H:%M") }}
+                      {% else %}
+                        Nunca
+                      {% endif %}
+                    </MetaText>
+                  </TableCell>
+                  <TableCell align="right">
+                    <InlineAction action="/security/passkey/remove" :csrf_token="csrf_token">
+                      <input type="hidden" name="credential_id" value="{{ passkey.id }}">
+                      <ActionButton variant="link-danger" type="submit">
+                        Eliminar
+                      </ActionButton>
+                    </InlineAction>
+                  </TableCell>
+                </TableRow>
+              {% endfor %}
+            </TableBody>
+          </DataTable>
         {% elif not show_form %}
           <EmptyState icon="lock"
                       title="Todavía no agregaste ninguna"
