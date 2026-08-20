@@ -9,24 +9,26 @@
     <Panel>
       <PanelHeader title="Uso de búsqueda por equipo"
                    description="Últimos 14 días, equipos más activos primero. Los términos de búsqueda quedan dentro de cada equipo." />
-      <List>
-        {% for row in activity %}
-          <ListItem>
-            <a href="/teams/{{ row.team_id }}/settings/search-activity">{{ row.team_name }}</a>
-            <MetaText>
-              {% if row.search_count %}
-                {{ row.search_count }} búsqueda{{ 's' if row.search_count != 1 else '' }}
-              {% else %}
-                Sin búsquedas recientes
-              {% endif %}
-            </MetaText>
-          </ListItem>
-        {% else %}
-          <ListItem class="empty-state">
-            Aún no hay equipos.
-          </ListItem>
-        {% endfor %}
-      </List>
+      {% if activity %}
+        <List>
+          {% for row in activity %}
+            <ListItem>
+              <a href="/teams/{{ row.team_id }}/settings/search-activity">{{ row.team_name }}</a>
+              <MetaText>
+                {% if row.search_count %}
+                  {{ row.search_count }} búsqueda{{ 's' if row.search_count != 1 else '' }}
+                {% else %}
+                  Sin búsquedas recientes
+                {% endif %}
+              </MetaText>
+            </ListItem>
+          {% endfor %}
+        </List>
+      {% else %}
+        <EmptyState icon="users"
+                    title="Aún no hay equipos"
+                    description="Crea un equipo para empezar a registrar actividad." />
+      {% endif %}
     </Panel>
   </MainContent>
 </Layout>

@@ -23,38 +23,46 @@
     <Panel>
       <PanelHeader title="Trabajadores"
                    description="Estado y consumo de recursos de cada nodo del clúster." />
-      <List>
-        {% for worker in health.workers %}
-          <ListItem>
-            <div>
-              <span>{{ worker.worker_id }}</span>
-              <MetaText>
-                {{ worker.tailscale_hostname }}
-                {% if worker.current_job_id %}
-                  · proceso {{ worker.current_job_id|string|truncate(8, true, '') }}
+      {% if health.workers %}
+        <List>
+          {% for worker in health.workers %}
+            <ListItem>
+              <Stack>
+                <span>{{ worker.worker_id }}</span>
+                <MetaText>
+                  {{ worker.tailscale_hostname }}
+                  {% if worker.current_job_id %}
+                    · proceso {{ worker.current_job_id|string|truncate(8, true, '') }}
+                  {% endif %}
+                </MetaText>
+              </Stack>
+              <Actions>
+                {% if worker.online %}
+                  <MetaText>
+                    {% if worker.cpu_percent is not none %}
+                      CPU {{ '%.0f'|format(worker.cpu_percent) }}%
+                    {% endif %}
+                    {% if worker.memory_mb is not none %}
+                      · {{ '%.0f'|format(worker.memory_mb) }} MB
+                    {% endif %}
+                  </MetaText>
+                  <Status value="online">
+                    En línea
+                  </Status>
+                {% else %}
+                  <Status value="offline">
+                    Sin conexión
+                  </Status>
                 {% endif %}
-              </MetaText>
-            </div>
-            <MetaText>
-              {% if worker.online %}
-                En línea
-                {% if worker.cpu_percent is not none %}
-                  · CPU {{ '%.0f'|format(worker.cpu_percent) }}%
-                {% endif %}
-                {% if worker.memory_mb is not none %}
-                  · {{ '%.0f'|format(worker.memory_mb) }} MB
-                {% endif %}
-              {% else %}
-                Sin conexión
-              {% endif %}
-            </MetaText>
-          </ListItem>
-        {% else %}
-          <ListItem class="empty-state">
-            Aún no hay trabajadores registrados.
-          </ListItem>
-        {% endfor %}
-      </List>
+              </Actions>
+            </ListItem>
+          {% endfor %}
+        </List>
+      {% else %}
+        <EmptyState icon="package"
+                    title="Aún no hay trabajadores"
+                    description="Los nodos aparecen aquí en cuanto se registran con su token de arranque." />
+      {% endif %}
     </Panel>
   </MainContent>
 </Layout>

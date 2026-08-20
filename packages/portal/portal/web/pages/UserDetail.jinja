@@ -23,48 +23,66 @@
       <PanelBody>
         {% if error %}<Message>{{ error }}</Message>{% endif %}
         {% if person.id == user.id %}
-          <p class="subtitle">Esta es tu propia cuenta: las acciones de esta página no aplican sobre ti mismo.</p>
+          <Message tone="info">
+            Esta es tu propia cuenta: las acciones de esta página no aplican sobre ti mismo.
+          </Message>
         {% else %}
           {% if is_sole_active_admin %}
-            <p class="subtitle">Es la única persona administradora activa. Asigna otra administradora antes de desactivarla, eliminarla o quitarle la administración del sitio.</p>
+            <Message tone="warning">
+              Es la única persona administradora activa. Asigna otra administradora antes de desactivarla, eliminarla o quitarle la administración del sitio.
+            </Message>
           {% endif %}
           {% if person.pending_site_admin %}
-            <p class="subtitle">La promoción quedará pendiente hasta que esta persona configure su propio factor de seguridad en /security al iniciar sesión. No verás ni podrás generar ese factor por ella.</p>
+            <Message tone="info">
+              La promoción quedará pendiente hasta que esta persona configure su propio factor de seguridad en /security al iniciar sesión. No verás ni podrás generar ese factor por ella.
+            </Message>
           {% endif %}
           <Actions position="above">
             {% if not is_sole_active_admin %}
               {% if person.is_active %}
                 <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
                   <input type="hidden" name="action" value="deactivate">
-                  <button type="submit">Desactivar</button>
+                  <ActionButton variant="link-danger" type="submit">
+                    Desactivar
+                  </ActionButton>
                 </InlineAction>
               {% endif %}
             {% endif %}
             {% if not person.is_active %}
               <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
                 <input type="hidden" name="action" value="reactivate">
-                <button type="submit">Reactivar</button>
+                <ActionButton variant="link" type="submit">
+                  Reactivar
+                </ActionButton>
               </InlineAction>
               <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
                 <input type="hidden" name="action" value="delete">
-                <button type="submit">Eliminar</button>
+                <ActionButton variant="link-danger" type="submit">
+                  Eliminar
+                </ActionButton>
               </InlineAction>
             {% endif %}
             {% if not is_sole_active_admin %}
               {% if person.is_site_admin %}
                 <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
                   <input type="hidden" name="action" value="demote">
-                  <button type="submit">Quitar administración del sitio</button>
+                  <ActionButton variant="link-danger" type="submit">
+                    Quitar administración del sitio
+                  </ActionButton>
                 </InlineAction>
               {% elif person.pending_site_admin %}
                 <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
                   <input type="hidden" name="action" value="demote">
-                  <button type="submit">Cancelar promoción pendiente</button>
+                  <ActionButton variant="link-danger" type="submit">
+                    Cancelar promoción pendiente
+                  </ActionButton>
                 </InlineAction>
               {% else %}
                 <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
                   <input type="hidden" name="action" value="promote">
-                  <button type="submit">Hacer administradora del sitio</button>
+                  <ActionButton variant="link" type="submit">
+                    Hacer administradora del sitio
+                  </ActionButton>
                 </InlineAction>
               {% endif %}
             {% endif %}
@@ -75,20 +93,22 @@
     <Panel>
       <PanelHeader title="Equipos"
                    description="Equipos a los que pertenece esta persona." />
-      <List>
-        {% for team in teams %}
-          <ListItem>
-            <a href="/teams/{{ team.id }}/settings/members">{{ team.name }}</a>
-            <MetaText>
-              {{ team.role|role_name }}
-            </MetaText>
-          </ListItem>
-        {% else %}
-          <ListItem class="empty-state">
-            No pertenece a ningún equipo todavía.
-          </ListItem>
-        {% endfor %}
-      </List>
+      {% if teams %}
+        <List>
+          {% for team in teams %}
+            <ListItem>
+              <a href="/teams/{{ team.id }}/settings/members">{{ team.name }}</a>
+              <MetaText>
+                {{ team.role|role_name }}
+              </MetaText>
+            </ListItem>
+          {% endfor %}
+        </List>
+      {% else %}
+        <EmptyState icon="users"
+                    title="Sin equipos"
+                    description="Esta persona no pertenece a ningún equipo todavía." />
+      {% endif %}
     </Panel>
     {% if person.id != user.id %}
       <Panel>
@@ -100,7 +120,9 @@
             <Field label="Contraseña temporal">
               <input type="password" name="password" minlength="12" required>
             </Field>
-            <button type="submit">Restablecer contraseña</button>
+            <ActionButton type="submit">
+              Restablecer contraseña
+            </ActionButton>
           </FormLayout>
         </PanelBody>
       </Panel>

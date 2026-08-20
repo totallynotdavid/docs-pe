@@ -5,10 +5,8 @@
         :setup="setup"
         :onboarding_step="2">
   <MainContent>
-    <h1>Crea tu primer equipo</h1>
-    <p class="subtitle">
-      Así organizas el trabajo: quién sube documentos, qué conexión usa y quién ve los resultados. Puedes invitar a más personas después.
-    </p>
+    <PageIntro title="Crea tu primer equipo"
+               description="Así organizas el trabajo: quién sube documentos, qué conexión usa y quién ve los resultados. Puedes invitar a más personas después." />
     <Panel>
       <PanelBody>
         {% if error %}<Message>{{ error }}</Message>{% endif %}
@@ -20,7 +18,9 @@
                    autofocus
                    placeholder="Ej. Equipo Lima">
           </Field>
-          <button type="submit">Crear equipo</button>
+          <ActionButton type="submit">
+            Crear equipo
+          </ActionButton>
         </FormLayout>
       </PanelBody>
     </Panel>

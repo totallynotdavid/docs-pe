@@ -57,6 +57,11 @@ depends = ["db:init", "portal:key"]
 run = """
 data_dir="$PWD/.data/postgres"
 
+# `db:start`, which `test` depends on, leaves a cluster running with durability
+# on. Take it down rather than talking to it: dev owns its postmaster, and a
+# second one only fails on the pid file while pg_isready reports the first.
+mise x postgres -- pg_ctl -D "$data_dir" stop -m fast -w 2>/dev/null || true
+
 # The local cluster is disposable, so durability is disabled for faster writes.
 mise x postgres -- postgres -D "$data_dir" -h 127.0.0.1 -p 5432 \\
   -c fsync=off -c synchronous_commit=off -c full_page_writes=off &

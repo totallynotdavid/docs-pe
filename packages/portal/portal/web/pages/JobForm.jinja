@@ -41,26 +41,26 @@
               {% else %}
                 <label class="query-action__select">
                   Conexión
-                  <select name="credential_version_id" required>
+                  <select class="control" name="credential_version_id" required>
                     {% for credential in credentials %}<option value="{{ credential.id }}">{{ credential.label }}</option>{% endfor %}
                   </select>
                 </label>
               {% endif %}
             </div>
-            <button type="submit">Iniciar consulta</button>
+            <ActionButton type="submit">
+              Iniciar consulta
+            </ActionButton>
           </QueryAction>
         </FormLayout>
       {% else %}
         <Panel>
-          <PanelBody>
-            <h2>Configura una conexión para comenzar</h2>
-            <p class="subtitle">Este equipo necesita una conexión proxy activa para ejecutar consultas.</p>
-            <Actions position="below">
-              <ActionButton :href="'/teams/' ~ team.id ~ '/settings/proxy'">
-                Configurar conexión
-              </ActionButton>
-            </Actions>
-          </PanelBody>
+          <EmptyState icon="link"
+                      title="Configura una conexión para comenzar"
+                      description="Este equipo necesita una conexión proxy activa para ejecutar consultas.">
+            <ActionButton :href="'/teams/' ~ team.id ~ '/settings/proxy'">
+              Configurar conexión
+            </ActionButton>
+          </EmptyState>
         </Panel>
       {% endif %}
     </QueryFlow>

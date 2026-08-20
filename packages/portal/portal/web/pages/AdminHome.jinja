@@ -39,9 +39,9 @@
           {% endfor %}
         </List>
       {% else %}
-        <EmptyState>
-          Aún no hay actividad.
-        </EmptyState>
+        <EmptyState icon="activity"
+                    title="Aún no hay actividad"
+                    description="Las tareas terminadas de todos los equipos aparecerán aquí." />
       {% endif %}
     </Panel>
   </MainContent>

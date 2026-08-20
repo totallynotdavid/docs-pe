@@ -1,37 +1,32 @@
-button,
+/* Class-only, never a bare `button` selector: styling the element made every
+   button in the app a solid primary one, and the sidebar, inline actions and
+   search form each carried a rule to undo it. */
 .button {
   align-items: center;
-  background: var(--primary);
-  border: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-elevation-1);
-  color: var(--primary-foreground);
-  cursor: pointer;
   display: inline-flex;
-  font-size: var(--font-size-caption);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body);
   font-weight: var(--font-weight-semibold);
-  height: 32px;
+  gap: var(--spacing-2);
   justify-content: center;
-  padding: 0 11px;
+  line-height: 1;
   text-decoration: none;
+  white-space: nowrap;
   transition:
-    background var(--motion-fast),
-    box-shadow var(--motion-fast),
-    transform 100ms;
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    transform var(--motion-instant) var(--ease-standard);
 }
 
-button:hover,
-.button:hover {
-  background: color-mix(in oklab, var(--primary) 88%, white);
-  color: var(--primary-foreground);
-}
-
-button:active,
 .button:active {
   transform: scale(0.97);
 }
 
-button:disabled,
 .button:disabled,
 .button[aria-disabled="true"] {
   background: var(--secondary);
@@ -39,7 +34,45 @@ button:disabled,
   box-shadow: none;
   color: var(--foreground-tertiary);
   cursor: not-allowed;
-  opacity: 1;
+  pointer-events: none;
+}
+
+.button--compact {
+  font-size: var(--font-size-caption);
+  height: var(--spacing-6);
+  padding: 0 var(--spacing-2);
+}
+
+.button--sm {
+  font-size: var(--font-size-caption);
+  height: var(--spacing-7);
+  padding: 0 var(--spacing-3);
+}
+
+.button--md {
+  height: var(--spacing-8);
+  padding: 0 var(--spacing-3);
+}
+
+.button--lg {
+  height: var(--spacing-10);
+  padding: 0 var(--spacing-4);
+}
+
+.button--icon {
+  height: var(--spacing-7);
+  padding: 0;
+  width: var(--spacing-7);
+}
+
+.button--primary {
+  background: var(--primary);
+  border-color: color-mix(in oklab, var(--foreground) 12%, transparent);
+  color: var(--primary-foreground);
+}
+
+.button--primary:hover {
+  background: color-mix(in oklab, var(--primary) 92%, white 8%);
 }
 
 .button--secondary {
@@ -49,17 +82,69 @@ button:disabled,
 }
 
 .button--secondary:hover {
-  background: var(--tertiary);
+  background: var(--background-transparent-light);
+}
+
+.button--outline {
+  background: var(--background);
+  border-color: var(--border-medium);
   color: var(--foreground);
 }
 
-.button--danger {
+.button--outline:hover {
+  background: var(--tertiary);
+}
+
+.button--ghost {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--muted-foreground);
+}
+
+.button--ghost:hover {
+  background: var(--background-transparent-light);
+  color: var(--foreground);
+}
+
+.button--destructive {
   background: var(--destructive);
   border-color: var(--destructive);
   color: var(--destructive-foreground);
 }
 
-.button--danger:hover {
+.button--destructive:hover {
   background: color-mix(in oklab, var(--destructive) 92%, white 8%);
-  color: var(--destructive-foreground);
+}
+
+/* Reads as prose, not as a control: used where an action sits inline in a
+   sentence or a list row and a filled button would shout. */
+.button--link {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--foreground-secondary);
+  height: auto;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.button--link:hover {
+  color: var(--foreground);
+}
+
+.button--link-danger {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--color-red-11);
+  height: auto;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.button--link-danger:hover {
+  color: var(--destructive);
 }

@@ -23,7 +23,9 @@
               <option value="team_leader">Puede administrar</option>
             </select>
           </Field>
-          <button type="submit">Enviar invitación</button>
+          <ActionButton type="submit">
+            Enviar invitación
+          </ActionButton>
         </FormLayout>
       </PanelBody>
     </Panel>
@@ -42,7 +44,9 @@
                 <InlineAction :action="'/teams/' ~ team.id ~ '/settings/members/remove'"
                               :csrf_token="csrf_token">
                   <input type="hidden" name="email" value="{{ member.email }}">
-                  <button type="submit">Quitar</button>
+                  <ActionButton variant="link-danger" type="submit">
+                    Quitar
+                  </ActionButton>
                 </InlineAction>
               {% endif %}
             </Actions>
@@ -56,20 +60,24 @@
         <List>
           {% for invite in invites %}
             <ListItem>
-              <div>
+              <Stack>
                 <span>{{ invite.email }}</span>
                 <MetaText>
                   {{ invite.role|role_name }}
                 </MetaText>
-              </div>
+              </Stack>
               <Actions>
                 <InlineAction :action="'/teams/' ~ team.id ~ '/settings/invites/' ~ invite.id ~ '/resend'"
                               :csrf_token="csrf_token">
-                  <button type="submit">Reenviar</button>
+                  <ActionButton variant="link" type="submit">
+                    Reenviar
+                  </ActionButton>
                 </InlineAction>
                 <InlineAction :action="'/teams/' ~ team.id ~ '/settings/invites/' ~ invite.id ~ '/cancel'"
                               :csrf_token="csrf_token">
-                  <button type="submit">Cancelar</button>
+                  <ActionButton variant="link-danger" type="submit">
+                    Cancelar
+                  </ActionButton>
                 </InlineAction>
               </Actions>
             </ListItem>

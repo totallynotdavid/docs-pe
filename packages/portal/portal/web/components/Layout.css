@@ -1,75 +1,3 @@
-* {
-  box-sizing: border-box;
-}
-
-html {
-  font-size: 13px;
-}
-
-body {
-  margin: 0;
-  min-height: 100dvh;
-  background: var(--background-app);
-  color: var(--foreground);
-  font-family: var(--font-sans);
-  font-size: var(--font-size-body);
-  line-height: 1.45;
-  -webkit-font-smoothing: antialiased;
-}
-
-a {
-  color: inherit;
-  text-underline-offset: 3px;
-}
-
-button,
-input,
-textarea,
-select {
-  font: inherit;
-}
-
-button {
-  cursor: pointer;
-}
-
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring-shadow);
-}
-
-h2 {
-  font-size: var(--font-size-heading-sm);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: -0.015em;
-  margin: 0;
-}
-
-p {
-  margin: 0;
-}
-
-.subtitle {
-  color: var(--foreground-secondary);
-  margin: 6px 0 0;
-  max-width: 640px;
-}
-
-/* Visible to a screen reader, never to the eye. */
-.sr-only {
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  height: 1px;
-  overflow: hidden;
-  position: absolute;
-  white-space: nowrap;
-  width: 1px;
-}
-
 .skip-link {
   clip: rect(0 0 0 0);
   height: 1px;
@@ -79,17 +7,17 @@ p {
 }
 
 .skip-link:focus {
+  background: var(--background);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
   clip: auto;
   height: auto;
-  left: 16px;
-  padding: 8px 12px;
+  left: var(--spacing-4);
+  padding: var(--spacing-2) var(--spacing-3);
   position: fixed;
-  top: 16px;
+  top: var(--spacing-4);
   width: auto;
-  z-index: 10;
-  background: var(--background);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  z-index: 30;
 }
 
 .app-shell {
@@ -110,24 +38,25 @@ p {
 }
 
 /* Onboarding: no nav to show mid-setup, so there's no sidebar column, just a
-   bare brand/logout strip above a narrower centered column. A dashboard's
-   1120px working width would leave a single form looking lost. */
+   bare brand/logout strip above a narrower centred column. A dashboard's
+   full working width would leave a single form looking lost. */
 .onboarding-topbar {
   align-items: center;
   border-bottom: 1px solid var(--border);
   display: flex;
-  height: 48px;
+  gap: var(--spacing-4);
+  height: var(--page-bar-height);
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 var(--spacing-5);
 }
 
 .onboarding-topbar__brand {
   align-items: center;
-  color: inherit;
   display: flex;
-  font-size: 15px;
+  font-size: var(--font-size-heading-sm);
   font-weight: var(--font-weight-semibold);
-  gap: 9px;
+  gap: var(--spacing-2);
+  letter-spacing: -0.015em;
   text-decoration: none;
 }
 
@@ -143,17 +72,7 @@ body.onboarding {
 
 body.onboarding .content {
   max-width: 560px;
-  padding: 48px 20px 72px;
-}
-
-body.onboarding h1 {
-  font-size: var(--font-size-heading-md);
-  letter-spacing: -0.015em;
-  margin: 0 0 6px;
-}
-
-body.onboarding .subtitle {
-  margin-bottom: 24px;
+  padding: var(--spacing-12) var(--spacing-5) var(--spacing-16);
 }
 
 /* The signed-out pages drop the shell and centre the content instead. */
@@ -162,7 +81,7 @@ body.signed-out {
   background: var(--secondary);
   display: flex;
   justify-content: center;
-  padding: 16px;
+  padding: var(--spacing-4);
 }
 
 body.signed-out .content {
@@ -174,25 +93,4 @@ body.signed-out .content {
   .app-shell {
     display: block;
   }
-}
-
-.totp-qr {
-  background: var(--background);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  display: inline-block;
-  padding: 12px;
-}
-
-.totp-qr svg {
-  display: block;
-}
-
-.recovery-codes {
-  columns: 2;
-  font-family: var(--font-mono, monospace);
-  gap: 8px;
-  list-style: none;
-  margin: 0 0 12px;
-  padding: 0;
 }

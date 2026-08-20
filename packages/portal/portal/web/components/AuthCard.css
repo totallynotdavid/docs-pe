@@ -1,22 +1,42 @@
 .auth-card {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
   text-align: center;
 }
 
 .auth-card h1 {
   font-size: var(--font-size-heading-lg);
-  margin: 16px 0 7px;
+  margin-top: var(--spacing-5);
 }
 
 .auth-card__description {
   color: var(--foreground-secondary);
   font-size: var(--font-size-caption);
-  margin-bottom: 24px;
+  line-height: var(--line-height-lg);
+  margin-top: var(--spacing-2);
 }
 
-.auth-card .form {
+.auth-card__body {
+  margin-top: var(--spacing-6);
   text-align: left;
+  width: 100%;
 }
 
-.auth-card .form button {
-  margin-top: 4px;
+.auth-card__body > * + * {
+  margin-top: var(--spacing-4);
+}
+
+/* A single control stack, so the submit spans the card rather than sitting
+   at whatever width its label happens to be. */
+.auth-card .form > .button {
+  justify-self: stretch;
+}
+
+.auth-card__alt {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: var(--spacing-2);
+  justify-items: stretch;
+  padding-top: var(--spacing-4);
 }

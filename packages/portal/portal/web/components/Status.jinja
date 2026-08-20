@@ -1,2 +1,5 @@
 {#def value #}
-<p {{ attrs.render(class=("status status--" ~ value)) }}>{{ content }}</p>
+<span {{ attrs.render(class=("status status--" ~ value)) }}>
+  <span class="status__dot" aria-hidden="true"></span>
+  {{ content }}
+</span>

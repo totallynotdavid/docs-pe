@@ -1,4 +1,4 @@
 {#def variant="" #}
-<ul class="{{ 'list--plain' if variant == 'plain' else 'list' }}">
+<ul {{ attrs.render(class=("list--plain" if variant == "plain" else "list")) }}>
   {{ content }}
 </ul>

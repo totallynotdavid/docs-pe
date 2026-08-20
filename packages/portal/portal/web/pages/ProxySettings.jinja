@@ -6,7 +6,8 @@
         :active_team="team">
   <TopBar title="Conexión proxy">
     {% if connections and not show_form %}
-      <ActionButton :href="'/teams/' ~ team.id ~ '/settings/proxy?add=1'">
+      <ActionButton size="sm" :href="'/teams/' ~ team.id ~ '/settings/proxy?add=1'">
+        <Icon name="plus" />
         Añadir conexión
       </ActionButton>
     {% endif %}
@@ -23,12 +24,24 @@
             <ListItem>
               <InlineAction :action="'/teams/' ~ team.id ~ '/settings/proxy/' ~ connection.credential_id ~ '/rename'"
                             :csrf_token="csrf_token">
-                <input name="label" value="{{ connection.label }}" maxlength="120" required>
-                <button type="submit">Guardar</button>
+                <input class="control"
+                       name="label"
+                       value="{{ connection.label }}"
+                       maxlength="120"
+                       aria-label="Nombre de la conexión"
+                       required>
+                <ActionButton variant="secondary" size="sm" type="submit">
+                  Guardar
+                </ActionButton>
               </InlineAction>
-              <MetaText>
-                {{ provider_label(connection.provider) }} · {{ connection.state.value|credential_state }}
-              </MetaText>
+              <Actions>
+                <MetaText>
+                  {{ provider_label(connection.provider) }}
+                </MetaText>
+                <Status :value="connection.state.value">
+                  {{ connection.state.value|credential_state }}
+                </Status>
+              </Actions>
             </ListItem>
           {% endfor %}
         </List>
@@ -41,7 +54,8 @@
         <PanelBody>
           <Actions position="above">
             {% for name in providers %}
-              <ActionButton :variant="'' if provider == name else 'secondary'"
+              <ActionButton :variant="'primary' if provider == name else 'outline'"
+                            size="sm"
                             :href="'/teams/' ~ team.id ~ '/settings/proxy?add=1&provider=' ~ name">
                 {{ provider_label(name) }}
               </ActionButton>
@@ -74,7 +88,9 @@
                 {% endif %}
               </Field>
             {% endfor %}
-            <button type="submit">Validar y guardar</button>
+            <ActionButton type="submit">
+              Validar y guardar
+            </ActionButton>
           </FormLayout>
         </PanelBody>
       </Panel>

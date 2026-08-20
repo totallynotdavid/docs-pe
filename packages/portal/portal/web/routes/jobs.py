@@ -262,7 +262,7 @@ async def _progress_events(
             yield ServerSentEventMessage(
                 id=event.sequence,
                 event="progress",
-                data=render_fragment("JobProgressFragment", job=job),
+                data=render_fragment("JobProgress", job=job),
             )
 
             if job.state in TERMINAL_JOB_STATES:

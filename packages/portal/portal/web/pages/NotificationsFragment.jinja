@@ -8,7 +8,7 @@
     {% endfor %}
   </List>
 {% else %}
-  <EmptyState>
-    No hay notificaciones.
-  </EmptyState>
+  <EmptyState icon="activity"
+              title="No hay notificaciones"
+              description="Aquí verás cuándo termina cada tarea de tus equipos." />
 {% endif %}

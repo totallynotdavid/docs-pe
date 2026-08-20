@@ -1,0 +1,8 @@
+/* A list row's name-over-detail pair. These used to be a bare div, so the
+   name and its meta text ran together on one line. */
+.stack {
+  display: grid;
+  gap: var(--spacing-1);
+  justify-items: start;
+  min-width: 0;
+}

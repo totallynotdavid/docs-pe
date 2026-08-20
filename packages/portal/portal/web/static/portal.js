@@ -41,6 +41,9 @@ function setupCsvDropzone() {
   const status = document.querySelector("[data-csv-status]");
   const title = document.querySelector("[data-csv-title]");
   const detection = document.querySelector("[data-csv-detection]");
+  // The banner keeps a static icon beside the text, so the copy goes into an
+  // inner span rather than replacing the banner's children.
+  const detectionText = document.querySelector("[data-csv-detection-text]");
 
   if (!dropzone || !input || !status || !title) {
     return;
@@ -72,11 +75,16 @@ function setupCsvDropzone() {
   }
 
   function detectDocuments(file) {
-    if (!detection) {
+    if (!detection || !detectionText) {
       return;
     }
 
     const reader = new FileReader();
+
+    function announce(message) {
+      detection.hidden = false;
+      detectionText.textContent = message;
+    }
 
     reader.onload = () => {
       const firstDocument = String(reader.result)
@@ -87,22 +95,17 @@ function setupCsvDropzone() {
         ?.trim();
 
       if (/^10\d{9}$/.test(firstDocument)) {
-        detection.hidden = false;
-        detection.textContent =
-          "Detectamos RUC de personas naturales. “DNI y nombre” ya está seleccionado.";
+        announce("Detectamos RUC de personas naturales. “DNI y nombre” ya está seleccionado.");
         return;
       }
 
       if (/^20\d{9}$/.test(firstDocument)) {
-        detection.hidden = false;
-        detection.textContent =
-          "Detectamos RUC de empresa. Puedes elegir “Representantes legales”.";
+        announce("Detectamos RUC de empresa. Puedes elegir “Representantes legales”.");
         return;
       }
 
       if (/^\d{8}$/.test(firstDocument)) {
-        detection.hidden = false;
-        detection.textContent = "Detectamos DNI. Puedes elegir “Líneas móviles”.";
+        announce("Detectamos DNI. Puedes elegir “Líneas móviles”.");
         return;
       }
 

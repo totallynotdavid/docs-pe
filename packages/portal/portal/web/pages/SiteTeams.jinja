@@ -14,25 +14,34 @@
     <h1 class="sr-only">Administración de equipos</h1>
     <Panel>
       <PanelHeader title="Equipos existentes" />
-      <List>
-        {% for team in teams %}
-          <ListItem>
-            <div>
-              <a href="/teams/{{ team.id }}">{{ team.name }}</a>
-              <MetaText>
-                {{ team.slug }}
-              </MetaText>
-            </div>
-            <ActionButton variant="secondary" :href="'/teams/' ~ team.id ~ '/settings/proxy'">
-              Gestionar
-            </ActionButton>
-          </ListItem>
-        {% else %}
-          <ListItem class="empty-state">
-            Aún no hay equipos.
-          </ListItem>
-        {% endfor %}
-      </List>
+      {% if teams %}
+        <List>
+          {% for team in teams %}
+            <ListItem>
+              <Stack>
+                <a href="/teams/{{ team.id }}">{{ team.name }}</a>
+                <MetaText>
+                  {{ team.slug }}
+                </MetaText>
+              </Stack>
+              <ActionButton variant="secondary"
+                            size="sm"
+                            :href="'/teams/' ~ team.id ~ '/settings/proxy'">
+                Gestionar
+              </ActionButton>
+            </ListItem>
+          {% endfor %}
+        </List>
+      {% else %}
+        <EmptyState icon="users"
+                    title="Aún no hay equipos"
+                    description="Crea el primero y asígnale una persona responsable.">
+          <ActionButton href="/admin/teams?add=1">
+            <Icon name="plus" />
+            Crear equipo
+          </ActionButton>
+        </EmptyState>
+      {% endif %}
     </Panel>
     {% if show_form %}
       <Panel>
@@ -54,7 +63,9 @@
                 {% for person in users %}<option value="{{ person.email }}">{{ person.email }}</option>{% endfor %}
               </select>
             </Field>
-            <button type="submit">Crear equipo</button>
+            <ActionButton type="submit">
+              Crear equipo
+            </ActionButton>
           </FormLayout>
         </PanelBody>
       </Panel>

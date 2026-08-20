@@ -7,7 +7,8 @@
         :active_team="team">
   <TopBar :title="team.name">
     {% if team.role and team.role.value == 'team_leader' %}
-      <ActionButton :href="'/teams/' ~ team.id ~ '/jobs/new'">
+      <ActionButton size="sm" :href="'/teams/' ~ team.id ~ '/jobs/new'">
+        <Icon name="plus" />
         Nueva consulta
       </ActionButton>
     {% endif %}
@@ -18,24 +19,23 @@
       <Panel>
         <PanelHeader title="Antes de empezar"
                      description="Dos pasos para que el equipo esté listo." />
-        <List>
-          <ListItem>
-            <span class="{{ 'checklist-item--done' if readiness.has_active_credential }}">Conecta un proxy</span>
-            {% if not readiness.has_active_credential %}
-              <ActionButton variant="secondary" :href="'/teams/' ~ team.id ~ '/settings/proxy'">
-                Conectar
-              </ActionButton>
-            {% endif %}
-          </ListItem>
-          <ListItem>
-            <span class="{{ 'checklist-item--done' if readiness.has_members_beyond_creator }}">Invita a tu equipo</span>
-            {% if not readiness.has_members_beyond_creator %}
-              <ActionButton variant="secondary" :href="'/teams/' ~ team.id ~ '/settings/members'">
-                Invitar
-              </ActionButton>
-            {% endif %}
-          </ListItem>
-        </List>
+        <Checklist>
+          <ChecklistItem label="Conecta un proxy" :done="readiness.has_active_credential">
+            <ActionButton variant="secondary"
+                          size="sm"
+                          :href="'/teams/' ~ team.id ~ '/settings/proxy'">
+              Conectar
+            </ActionButton>
+          </ChecklistItem>
+          <ChecklistItem label="Invita a tu equipo"
+                         :done="readiness.has_members_beyond_creator">
+            <ActionButton variant="secondary"
+                          size="sm"
+                          :href="'/teams/' ~ team.id ~ '/settings/members'">
+              Invitar
+            </ActionButton>
+          </ChecklistItem>
+        </Checklist>
       </Panel>
     {% endif %}
     {% if (team.role and team.role.value == 'team_leader') or user.is_site_admin %}
@@ -49,8 +49,13 @@
       </Panel>
     {% else %}
       <Panel>
-        <EmptyState>
-          Puedes buscar documentos en este equipo.
+        <EmptyState icon="search"
+                    title="Busca documentos de este equipo"
+                    description="Consulta cualquier DNI o RUC que el equipo ya haya procesado.">
+          <ActionButton :href="'/teams/' ~ team.id ~ '/search'">
+            <Icon name="search" />
+            Ir a buscar
+          </ActionButton>
         </EmptyState>
       </Panel>
     {% endif %}
