@@ -5,29 +5,37 @@
       {% for result in results %}
         <ListItem>
           <a href="/teams/{{ team.id }}/jobs/{{ result.job_id }}">{{ result.document }}</a>
-          <span>{{ result.filename }}</span>
+          <MetaText>
+            {{ result.filename }}
+          </MetaText>
         </ListItem>
       {% endfor %}
     </List>
   {% else %}
-    <EmptyState>
-      No hay resultados.
-    </EmptyState>
+    <EmptyState icon="search"
+                title="Sin resultados"
+                :description="'Ningún documento de este equipo coincide con “' ~ query ~ '”.'" />
   {% endif %}
 {% else %}
-  <EmptyState>
-    Ingresa un documento para buscar.
-  </EmptyState>
+  <EmptyState icon="search"
+              title="Busca un documento"
+              description="Escribe un DNI o RUC para ver en qué tareas aparece." />
 {% endif %}
 {% if page > 1 or has_more %}
   <Pagination label="Paginación de búsqueda">
     {% if page > 1 %}
       <a hx-get="/teams/{{ team.id }}/search?q={{ query }}&page={{ page - 1 }}"
-         hx-target="#search-results">Anterior</a>
+         hx-target="#search-results">
+        <Icon name="chevron-left" :size="14" />
+        Anterior
+      </a>
     {% endif %}
     {% if has_more %}
       <a hx-get="/teams/{{ team.id }}/search?q={{ query }}&page={{ page + 1 }}"
-         hx-target="#search-results">Siguiente</a>
+         hx-target="#search-results">
+        Siguiente
+        <Icon name="chevron-right" :size="14" />
+      </a>
     {% endif %}
   </Pagination>
 {% endif %}

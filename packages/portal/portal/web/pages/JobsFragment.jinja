@@ -4,24 +4,32 @@
     {% for job in jobs %}
       <ListItem>
         <a href="/teams/{{ team.id }}/jobs/{{ job.id }}">{{ job.filename }}</a>
-        <span>{{ job.state|job_state }}</span>
+        <Status :value="job.state">
+          {{ job.state|job_state }}
+        </Status>
       </ListItem>
     {% endfor %}
   </List>
 {% else %}
-  <EmptyState>
-    No hay tareas todavía.
-  </EmptyState>
+  <EmptyState icon="list"
+              title="No hay tareas todavía"
+              description="Sube un CSV para lanzar la primera consulta del equipo." />
 {% endif %}
 {% if page > 1 or page * 20 < total %}
   <Pagination label="Paginación de tareas">
     {% if page > 1 %}
       <a hx-get="/teams/{{ team.id }}?page={{ page - 1 }}"
-         hx-target="#jobs-list">Anterior</a>
+         hx-target="#jobs-list">
+        <Icon name="chevron-left" :size="14" />
+        Anterior
+      </a>
     {% endif %}
     {% if page * 20 < total %}
       <a hx-get="/teams/{{ team.id }}?page={{ page + 1 }}"
-         hx-target="#jobs-list">Siguiente</a>
+         hx-target="#jobs-list">
+        Siguiente
+        <Icon name="chevron-right" :size="14" />
+      </a>
     {% endif %}
   </Pagination>
 {% endif %}

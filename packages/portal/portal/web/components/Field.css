@@ -3,36 +3,73 @@
   display: grid;
   font-size: var(--font-size-label);
   font-weight: var(--font-weight-semibold);
-  gap: 6px;
+  gap: var(--spacing-1);
 }
 
+/* One definition for every text control in the portal. The search form and
+   the connection picker used to carry their own near-copies of this block. */
+.control,
 .field input,
-.field textarea,
-.field select {
+.field select,
+.field textarea {
   background: var(--background-transparent-lighter);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-medium);
   border-radius: var(--radius-sm);
   color: var(--foreground);
-  min-height: 32px;
-  padding: 0 9px;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
+  min-height: var(--spacing-8);
+  padding: 0 var(--spacing-2);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard);
   width: 100%;
+}
+
+.control::placeholder,
+.field input::placeholder,
+.field textarea::placeholder {
+  color: var(--foreground-light);
+}
+
+.control:hover,
+.field input:hover,
+.field select:hover,
+.field textarea:hover {
+  border-color: var(--border-strong);
+}
+
+.control:focus,
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  background: var(--background);
+  border-color: var(--ring);
 }
 
 .field textarea {
   min-height: 190px;
-  padding: 9px;
+  padding: var(--spacing-2);
   resize: vertical;
 }
 
-.field input:focus,
-.field textarea:focus,
-.field select:focus {
-  border-color: var(--color-blue);
-}
-
+.control:disabled,
 .field input:disabled,
-.field textarea:disabled,
-.field select:disabled {
+.field select:disabled,
+.field textarea:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+/* The passkey flows keep an empty live region for their status text; without
+   this it still claims a row in the form grid. */
+.help-text:empty {
+  display: none;
+}
+
+.help-text {
+  color: var(--foreground-tertiary);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-lg);
 }

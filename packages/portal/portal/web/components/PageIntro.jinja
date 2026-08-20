@@ -1,0 +1,5 @@
+{#def title, description="" #}
+<header {{ attrs.render(class="page-intro") }}>
+  <h1>{{ title }}</h1>
+  {% if description %}<p class="subtitle">{{ description }}</p>{% endif %}
+</header>

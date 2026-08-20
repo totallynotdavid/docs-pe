@@ -1,12 +1,38 @@
 .message {
-  border: 1px solid currentcolor;
-  border-radius: var(--radius-sm);
+  align-items: flex-start;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  display: flex;
   font-size: var(--font-size-caption);
-  margin-bottom: 16px;
-  padding: 9px 11px;
+  gap: var(--spacing-2);
+  line-height: var(--line-height-lg);
+  padding: var(--spacing-2) var(--spacing-3);
+}
+
+.message .icon {
+  margin-top: 2px;
 }
 
 .message--error {
   background: var(--color-red-5);
+  border-color: color-mix(in oklab, var(--color-red-11) 25%, transparent);
   color: var(--color-red-11);
+}
+
+.message--success {
+  background: var(--color-green-5);
+  border-color: color-mix(in oklab, var(--color-green-11) 25%, transparent);
+  color: var(--color-green-11);
+}
+
+.message--warning {
+  background: var(--color-orange-5);
+  border-color: color-mix(in oklab, var(--color-orange-11) 25%, transparent);
+  color: var(--color-orange-11);
+}
+
+.message--info {
+  background: var(--color-blue-5);
+  border-color: color-mix(in oklab, var(--color-blue-11) 25%, transparent);
+  color: var(--color-blue-11);
 }

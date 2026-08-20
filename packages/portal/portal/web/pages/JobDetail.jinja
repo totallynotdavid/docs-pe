@@ -8,7 +8,8 @@
     {% if team.role.value == 'team_leader' and not is_terminal(job) %}
       <Submission :action="'/teams/' ~ team.id ~ '/jobs/' ~ job.id ~ '/cancel'"
                   :csrf_token="csrf_token">
-        <ActionButton variant="danger" type="submit">
+        <ActionButton variant="destructive" size="sm" type="submit">
+          <Icon name="x" :size="14" />
           Cancelar consulta
         </ActionButton>
       </Submission>
@@ -22,7 +23,7 @@
              aria-live="polite"
              aria-atomic="true"
              {% if not is_terminal(job) %} data-sse-url="/teams/{{ team.id }}/jobs/{{ job.id }}/progress" {% endif %}>
-          <JobProgressFragment :job="job" />
+          <JobProgress :job="job" />
         </div>
       </PanelBody>
     </Panel>

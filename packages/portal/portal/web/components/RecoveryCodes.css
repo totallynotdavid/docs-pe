@@ -1,0 +1,14 @@
+.recovery-codes {
+  background: var(--secondary);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  columns: 2;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-caption);
+  gap: var(--spacing-2);
+  padding: var(--spacing-3) var(--spacing-4);
+}
+
+.recovery-codes li {
+  line-height: 1.8;
+}

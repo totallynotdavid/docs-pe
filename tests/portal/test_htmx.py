@@ -100,7 +100,8 @@ async def test_htmx_search_shows_an_empty_state_for_no_matches(
         )
 
     assert search.status_code == 200
-    assert "No hay resultados" in search.text
+    assert 'class="empty-state"' in search.text
+    assert "Sin resultados" in search.text
 
 
 async def test_htmx_job_list_pagination_links_to_the_next_and_previous_pages(

@@ -111,7 +111,8 @@ web              Litestar app for browsers: routes, auth, CSRF, SSE
   ├─ routes/
   ├─ deps.py    session extraction, same-origin, per-actor cap
   ├─ trace.py   client address from CF-Connecting-IP, and nothing else
-  └─ components/ JinjaX templates
+  ├─ components/ JinjaX components, one .jinja plus its .css
+  └─ pages/      JinjaX page and htmx-fragment templates
 
 worker           Both sides of the fleet, and the wire between them
   ├─ protocol.py   claim and publish payloads, imported by both sides

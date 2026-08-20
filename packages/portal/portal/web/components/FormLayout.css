@@ -1,14 +1,7 @@
 .form {
   display: grid;
-  gap: 15px;
-  max-width: 620px;
-}
-
-.help-text {
-  color: var(--foreground-tertiary);
-  font-size: 11px;
-  font-weight: var(--font-weight-regular);
-  line-height: 1.35;
+  gap: var(--spacing-4);
+  max-width: var(--layout-reading);
 }
 
 .form fieldset {
@@ -16,13 +9,18 @@
   border-radius: var(--radius-sm);
   display: flex;
   flex-wrap: wrap;
-  gap: 13px;
-  margin: 0;
-  padding: 12px;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
 }
 
 .form legend {
   color: var(--foreground-tertiary);
   font-size: var(--font-size-caption);
-  padding: 0 4px;
+  padding: 0 var(--spacing-1);
+}
+
+/* A form's submit sits on its own row rather than stretching to the grid
+   column it was placed in. */
+.form > .button {
+  justify-self: start;
 }

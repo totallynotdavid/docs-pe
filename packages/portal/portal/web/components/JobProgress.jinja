@@ -1,0 +1,33 @@
+{#def job #}
+{% set total = job.items|length %}
+{% set published = job.items|selectattr('state.value', 'equalto', 'published')|list|length %}
+<div class="job-progress">
+  <div class="job-progress__heading">
+    <Status :value="job.state">
+      {{ job.state|job_state }}
+    </Status>
+    <p>{{ job_summary(job) }}</p>
+  </div>
+  <ProgressBar :value="published" :total="total" label="Documentos publicados" />
+  <Metrics>
+    <Metric label="Registros">
+      {{ total }}
+    </Metric>
+    <Metric label="Excluidos">
+      {{ job.exclusions|length }}
+    </Metric>
+    <Metric label="Publicados">
+      {{ published }}
+    </Metric>
+  </Metrics>
+  {% if job.exclusions %}
+    <section class="job-progress__exclusions">
+      <h2>Excluidos</h2>
+      <List variant="plain">
+        {% for exclusion in job.exclusions %}
+          <li>Línea {{ exclusion.ordinal }}: {{ exclusion.value }} ({{ exclusion.reason|exclusion_reason }})</li>
+        {% endfor %}
+      </List>
+    </section>
+  {% endif %}
+</div>

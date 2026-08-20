@@ -1,2 +1,6 @@
 {#def tone="error" #}
-<p role="alert" {{ attrs.render(class=("message message--" ~ tone)) }}>{{ content }}</p>
+{% set icons = {"error": "circle-alert", "success": "circle-check", "warning": "circle-alert", "info": "info"} %}
+<p role="alert" {{ attrs.render(class=("message message--" ~ tone)) }}>
+  <Icon :name="icons[tone]" :size="15" />
+  <span>{{ content }}</span>
+</p>

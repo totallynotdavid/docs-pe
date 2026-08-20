@@ -25,9 +25,9 @@
           {% endfor %}
         </List>
       {% else %}
-        <EmptyState>
-          Aún no perteneces a un equipo.
-        </EmptyState>
+        <EmptyState icon="users"
+                    title="Aún no perteneces a un equipo"
+                    description="Cuando alguien te agregue a uno, aparecerá aquí." />
       {% endif %}
     </Panel>
   </MainContent>

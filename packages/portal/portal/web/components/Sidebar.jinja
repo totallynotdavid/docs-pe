@@ -9,7 +9,7 @@
       <p class="sidebar__nav-label">Espacio de trabajo</p>
       <a class="{{ 'sidebar__nav-link sidebar__nav-link--active' if active == 'teams' else 'sidebar__nav-link' }}"
          href="/">
-        <Icon name="teams" />
+        <Icon name="users" />
         Equipos
       </a>
       {% if active_team %}
@@ -37,7 +37,7 @@
       {% if user.is_site_admin %}
         <a class="{{ 'sidebar__nav-link sidebar__nav-link--admin sidebar__nav-link--active' if active.startswith('admin') else 'sidebar__nav-link sidebar__nav-link--admin' }}"
            href="/admin">
-          <Icon name="admin" />
+          <Icon name="settings" />
           Administración
         </a>
         {% if active.startswith('admin') %}
@@ -71,10 +71,10 @@
          data-account-menu>
       <span class="sidebar__account-email">{{ user.email }}</span>
       <InlineAction action="/logout" :csrf_token="csrf_token">
-        <button type="submit">
+        <ActionButton variant="ghost" size="sm" type="submit">
           <Icon name="logout" :size="14" />
           Cerrar sesión
-        </button>
+        </ActionButton>
       </InlineAction>
     </div>
   </div>

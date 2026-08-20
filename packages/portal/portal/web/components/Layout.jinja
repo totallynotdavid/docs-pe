@@ -23,7 +23,10 @@
         </a>
         <span class="onboarding-topbar__step">Paso {{ onboarding_step }} de 2</span>
         <InlineAction action="/logout" :csrf_token="csrf_token">
-          <button type="submit">Cerrar sesión</button>
+          <ActionButton variant="ghost" size="sm" type="submit">
+            <Icon name="logout" :size="14" />
+            Cerrar sesión
+          </ActionButton>
         </InlineAction>
       </header>
       {{ content }}

@@ -10,25 +10,27 @@
     <Panel>
       <PanelHeader title="Búsquedas recientes"
                    description="Quién buscó qué y cuántos resultados encontró." />
-      <List>
-        {% for entry in entries %}
-          <ListItem>
-            <div>
-              <span>{{ entry.query }}</span>
+      {% if entries %}
+        <List>
+          {% for entry in entries %}
+            <ListItem>
+              <Stack>
+                <span>{{ entry.query }}</span>
+                <MetaText>
+                  {{ entry.actor_email }} · {{ entry.created_at.strftime("%d/%m %H:%M") }}
+                </MetaText>
+              </Stack>
               <MetaText>
-                {{ entry.actor_email }} · {{ entry.created_at.strftime("%d/%m %H:%M") }}
+                {{ entry.result_count }} resultado{{ 's' if entry.result_count != 1 else '' }}
               </MetaText>
-            </div>
-            <MetaText>
-              {{ entry.result_count }} resultado{{ 's' if entry.result_count != 1 else '' }}
-            </MetaText>
-          </ListItem>
-        {% else %}
-          <ListItem class="empty-state">
-            Aún no se han hecho búsquedas en este equipo.
-          </ListItem>
-        {% endfor %}
-      </List>
+            </ListItem>
+          {% endfor %}
+        </List>
+      {% else %}
+        <EmptyState icon="search"
+                    title="Sin búsquedas todavía"
+                    description="Cuando alguien del equipo busque un documento, quedará registrado aquí." />
+      {% endif %}
     </Panel>
   </MainContent>
 </Layout>
