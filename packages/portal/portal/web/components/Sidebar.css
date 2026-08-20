@@ -1,175 +1,105 @@
-/* No fill, no border: the sidebar reads as part of the same canvas as the
-   content area, and the panels floating in the workspace already provide all
-   the contrast that's needed. */
-.sidebar {
+/* No fill and no border: the drawer sits directly on the app background and
+   the page card beside it supplies all the contrast there is. */
+.drawer {
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  width: var(--navigation-drawer-width);
+}
+
+.drawer__inner {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-5);
-  padding: var(--spacing-3) var(--spacing-2);
-}
-
-.sidebar__brand {
-  align-items: center;
-  display: flex;
-  font-size: var(--font-size-heading-sm);
-  font-weight: var(--font-weight-semibold);
-  gap: var(--spacing-2);
-  letter-spacing: -0.015em;
-  padding: 0 var(--spacing-2);
-  text-decoration: none;
-}
-
-.sidebar__nav {
-  display: grid;
-  gap: 1px;
-}
-
-.sidebar__nav-label {
-  color: var(--foreground-light);
-  font-size: var(--font-size-label);
-  font-weight: var(--font-weight-semibold);
-  margin: 0 var(--spacing-2) var(--spacing-1);
-}
-
-.sidebar__nav-link {
-  align-items: center;
-  border-radius: var(--radius-md);
-  color: var(--foreground-secondary);
-  display: flex;
-  font-weight: var(--font-weight-medium);
-  gap: var(--spacing-2);
-  height: var(--spacing-7);
-  padding: 0 var(--spacing-2);
-  text-decoration: none;
-  transition: background-color var(--motion-fast) var(--ease-standard);
-}
-
-.sidebar__nav-link:hover {
-  background: var(--background-transparent-light);
-  color: var(--foreground);
-}
-
-.sidebar__nav-link--active {
-  background: var(--background-transparent-medium);
-  color: var(--foreground);
-}
-
-.sidebar__nav-link--admin {
-  margin-top: var(--spacing-3);
-}
-
-.sidebar__subnav {
-  display: grid;
-  gap: 1px;
-  margin-left: var(--spacing-6);
-}
-
-.sidebar__subnav .sidebar__nav-link {
-  font-weight: var(--font-weight-regular);
-  height: var(--spacing-6);
-}
-
-.sidebar__account {
-  border-top: 1px solid var(--border);
-  margin-top: auto;
-  padding-top: var(--spacing-3);
-}
-
-.sidebar__account-trigger {
-  align-items: center;
-  border-radius: var(--radius-md);
-  color: var(--foreground-secondary);
-  display: flex;
-  font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-medium);
-  gap: var(--spacing-2);
-  height: var(--spacing-7);
-  padding: 0 var(--spacing-2);
-  transition: background-color var(--motion-fast) var(--ease-standard);
+  gap: var(--spacing-3);
+  height: 100%;
+  padding: var(--spacing-2) 0 var(--spacing-4) var(--spacing-2);
   width: 100%;
 }
 
-.sidebar__account-trigger:hover,
-.sidebar__account-trigger[aria-expanded="true"] {
-  background: var(--background-transparent-light);
+.drawer__header {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  min-height: var(--spacing-8);
+  padding-right: var(--spacing-2);
+  user-select: none;
+}
+
+.drawer__brand {
+  align-items: center;
   color: var(--foreground);
-}
-
-.sidebar__account-trigger .icon {
-  margin-left: auto;
-  transition: transform var(--motion-fast) var(--ease-standard);
-}
-
-.sidebar__account-trigger[aria-expanded="true"] .icon {
-  transform: rotate(180deg);
-}
-
-.sidebar__avatar {
-  align-items: center;
-  background: var(--avatar-bg);
-  border-radius: 50%;
-  color: var(--avatar-fg);
-  display: inline-flex;
-  flex: 0 0 auto;
-  font-size: var(--font-size-tiny);
+  display: flex;
+  font-size: var(--font-size-body);
   font-weight: var(--font-weight-semibold);
-  height: var(--spacing-6);
-  justify-content: center;
-  text-transform: uppercase;
-  width: var(--spacing-6);
-}
-
-.sidebar__account-menu {
-  background: var(--background);
-  border: 1px solid var(--border-medium);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-elevation-2);
-  display: grid;
   gap: var(--spacing-2);
-  margin-top: var(--spacing-2);
-  padding: var(--spacing-3);
+  min-width: 0;
+  padding: var(--spacing-1);
+  text-decoration: none;
 }
 
-.sidebar__account-email {
-  color: var(--foreground-tertiary);
-  font-size: var(--font-size-label);
-  overflow-wrap: anywhere;
+.drawer__brand span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-@media (max-width: 720px) {
-  .sidebar {
-    border-bottom: 1px solid var(--border);
-    display: block;
-    padding: var(--spacing-2) var(--spacing-4);
-  }
-
-  .sidebar__nav,
-  .sidebar__account {
-    display: none;
-  }
+/* Only the nav scrolls: the brand above it and the account menu below stay
+   put however long the list of teams gets. */
+.drawer__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: var(--spacing-2);
 }
 
-/* A search-only session gets a slim top strip instead of a nav column:
-   brand and account menu, nothing to manage. */
-.sidebar--minimal {
-  align-items: center;
-  border-bottom: 1px solid var(--border);
-  flex-direction: row;
-  height: var(--page-bar-height);
-  padding: 0 var(--spacing-4);
-}
-
-.sidebar--minimal .sidebar__account {
-  border-top: 0;
-  margin-left: auto;
-  margin-top: 0;
-  padding-top: 0;
+.drawer__footer {
+  flex-shrink: 0;
+  padding-right: var(--spacing-2);
   position: relative;
 }
 
-.sidebar--minimal .sidebar__account-menu {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  z-index: 20;
+/* A search-only session has nothing to navigate, so the drawer collapses to
+   the strip above the page card: brand at one end, account at the other. */
+.drawer--minimal {
+  height: auto;
+  overflow: visible;
+  width: 100%;
+}
+
+.drawer--minimal .drawer__inner {
+  align-items: center;
+  flex-direction: row;
+  gap: var(--spacing-4);
+  height: var(--spacing-12);
+  padding: 0 var(--spacing-3);
+}
+
+.drawer--minimal .drawer__footer {
+  margin-left: auto;
+  max-width: 220px;
+}
+
+@media (max-width: 720px) {
+  .drawer {
+    height: auto;
+    overflow: visible;
+    width: 100%;
+  }
+
+  .drawer__inner {
+    flex-direction: row;
+    gap: var(--spacing-3);
+    height: auto;
+    padding: var(--spacing-2) var(--spacing-3);
+  }
+
+  .drawer__scroll {
+    display: none;
+  }
+
+  .drawer__footer {
+    margin-left: auto;
+    max-width: 220px;
+  }
 }

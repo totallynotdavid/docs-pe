@@ -30,6 +30,7 @@
   --font-20: 1.538rem;
   --font-24: 1.846rem;
   --font-size-tiny: var(--font-10);
+  --font-size-xs: var(--font-11);
   --font-size-label: var(--font-11);
   --font-size-caption: var(--font-12);
   --font-size-body: var(--font-13);
@@ -52,9 +53,12 @@
   --spacing-10: 40px;
   --spacing-12: 48px;
   --spacing-16: 64px;
-  --layout-max-content: 1120px;
-  --layout-reading: 640px;
-  --page-bar-height: 48px;
+  --navigation-drawer-width: 220px;
+  --z-modal: 100;
+  /* The page-width ladder, matching the shared Page component's narrow and
+     medium variants. A page picks one; nothing hardcodes a width. */
+  --layout-narrow: 640px;
+  --layout-content: 960px;
   --background-transparent-lighter: color(display-p3 0 0 0 / 0.02);
   --background-transparent-light: color(display-p3 0 0 0 / 0.039);
   --background-transparent-medium: color(display-p3 0 0 0 / 0.078);
@@ -74,6 +78,7 @@
   --background-app: color(display-p3 0.976 0.976 0.976);
   --foreground: color(display-p3 0.2 0.2 0.2);
   --surface: color(display-p3 1 1 1);
+  --overlay: rgba(255, 255, 255, 0.98);
   --secondary: color(display-p3 0.988 0.988 0.988);
   --secondary-foreground: color(display-p3 0.4 0.4 0.4);
   --tertiary: color(display-p3 0.945 0.945 0.945);
@@ -123,6 +128,7 @@
     --background-app: color(display-p3 0.098 0.098 0.098);
     --foreground: color(display-p3 0.922 0.922 0.922);
     --surface: color(display-p3 0.09 0.09 0.09);
+    --overlay: rgba(18, 18, 18, 0.98);
     --secondary: color(display-p3 0.106 0.106 0.106);
     --secondary-foreground: color(display-p3 0.702 0.702 0.702);
     --tertiary: color(display-p3 0.114 0.114 0.114);

@@ -1,7 +1,7 @@
 .form {
   display: grid;
   gap: var(--spacing-4);
-  max-width: var(--layout-reading);
+  max-width: var(--layout-narrow);
 }
 
 .form fieldset {

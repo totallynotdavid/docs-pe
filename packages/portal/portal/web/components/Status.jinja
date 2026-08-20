@@ -1,5 +1,22 @@
 {#def value #}
-<span {{ attrs.render(class=("status status--" ~ value)) }}>
+{#- A job, worker or credential state rendered as a badge. The state to tone
+    mapping lives here so a page never picks a colour for a state itself. -#}
+{% set tones = {
+  "queued": "secondary",
+  "draft": "secondary",
+  "retired": "secondary",
+  "offline": "secondary",
+  "running": "info",
+  "validating": "info",
+  "online": "success",
+  "active": "success",
+  "completed": "success",
+  "cancelling": "warning",
+  "failed": "destructive",
+  "cancelled": "destructive"
+} %}
+<Badge :variant="tones.get(value, 'secondary')"
+       :class="'status status--' ~ value">
   <span class="status__dot" aria-hidden="true"></span>
   {{ content }}
-</span>
+</Badge>

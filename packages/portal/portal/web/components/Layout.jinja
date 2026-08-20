@@ -37,7 +37,9 @@
                  :minimal="minimal"
                  :active="active"
                  :active_team="active_team" />
-        <div class="workspace">{{ content }}</div>
+        <div class="workspace">
+          <div class="page-card">{{ content }}</div>
+        </div>
       </div>
     {% else %}
       {{ content }}

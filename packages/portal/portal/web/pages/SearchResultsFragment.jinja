@@ -1,16 +1,32 @@
 {#def team, query, results, page, has_more #}
 {% if query %}
   {% if results %}
-    <List>
-      {% for result in results %}
-        <ListItem>
-          <a href="/teams/{{ team.id }}/jobs/{{ result.job_id }}">{{ result.document }}</a>
-          <MetaText>
-            {{ result.filename }}
-          </MetaText>
-        </ListItem>
-      {% endfor %}
-    </List>
+    <DataTable>
+      <TableHeader>
+        <TableRow>
+          <TableHead>
+            Documento
+          </TableHead>
+          <TableHead align="right">
+            Tarea
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {% for result in results %}
+          <TableRow>
+            <TableCell ellipsis>
+              <a href="/teams/{{ team.id }}/jobs/{{ result.job_id }}">{{ result.document }}</a>
+            </TableCell>
+            <TableCell align="right">
+              <MetaText>
+                {{ result.filename }}
+              </MetaText>
+            </TableCell>
+          </TableRow>
+        {% endfor %}
+      </TableBody>
+    </DataTable>
   {% else %}
     <EmptyState icon="search"
                 title="Sin resultados"

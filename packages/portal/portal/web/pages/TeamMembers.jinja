@@ -4,7 +4,7 @@
         :csrf_token="csrf_token"
         active="team-settings"
         :active_team="team">
-  <TopBar title="Personas del equipo" />
+  <TopBar title="Personas del equipo" icon="users" />
   <MainContent>
     <h1 class="sr-only">Personas de {{ team.name }}</h1>
     <Panel>
@@ -32,57 +32,95 @@
     <Panel>
       <PanelHeader title="Equipo actual"
                    description="Las personas administradoras pueden actualizar la configuración." />
-      <List>
-        {% for member, role in members %}
-          <ListItem>
-            <span>{{ member.email }}</span>
-            <Actions>
-              <MetaText>
-                {{ role|role_name }}
-              </MetaText>
-              {% if member.id != user.id %}
-                <InlineAction :action="'/teams/' ~ team.id ~ '/settings/members/remove'"
-                              :csrf_token="csrf_token">
-                  <input type="hidden" name="email" value="{{ member.email }}">
-                  <ActionButton variant="link-danger" type="submit">
-                    Quitar
-                  </ActionButton>
-                </InlineAction>
-              {% endif %}
-            </Actions>
-          </ListItem>
-        {% endfor %}
-      </List>
+      <DataTable>
+        <TableHeader>
+          <TableRow>
+            <TableHead>
+              Persona
+            </TableHead>
+            <TableHead>
+              Acceso
+            </TableHead>
+            <TableHead align="right">
+              Acciones
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {% for member, role in members %}
+            <TableRow>
+              <TableCell ellipsis>
+                {{ member.email }}
+              </TableCell>
+              <TableCell>
+                <MetaText>
+                  {{ role|role_name }}
+                </MetaText>
+              </TableCell>
+              <TableCell align="right">
+                {% if member.id != user.id %}
+                  <InlineAction :action="'/teams/' ~ team.id ~ '/settings/members/remove'"
+                                :csrf_token="csrf_token">
+                    <input type="hidden" name="email" value="{{ member.email }}">
+                    <ActionButton variant="link-danger" type="submit">
+                      Quitar
+                    </ActionButton>
+                  </InlineAction>
+                {% endif %}
+              </TableCell>
+            </TableRow>
+          {% endfor %}
+        </TableBody>
+      </DataTable>
     </Panel>
     {% if invites %}
       <Panel>
         <PanelHeader title="Invitaciones pendientes" />
-        <List>
-          {% for invite in invites %}
-            <ListItem>
-              <Stack>
-                <span>{{ invite.email }}</span>
-                <MetaText>
-                  {{ invite.role|role_name }}
-                </MetaText>
-              </Stack>
-              <Actions>
-                <InlineAction :action="'/teams/' ~ team.id ~ '/settings/invites/' ~ invite.id ~ '/resend'"
-                              :csrf_token="csrf_token">
-                  <ActionButton variant="link" type="submit">
-                    Reenviar
-                  </ActionButton>
-                </InlineAction>
-                <InlineAction :action="'/teams/' ~ team.id ~ '/settings/invites/' ~ invite.id ~ '/cancel'"
-                              :csrf_token="csrf_token">
-                  <ActionButton variant="link-danger" type="submit">
-                    Cancelar
-                  </ActionButton>
-                </InlineAction>
-              </Actions>
-            </ListItem>
-          {% endfor %}
-        </List>
+        <DataTable>
+          <TableHeader>
+            <TableRow>
+              <TableHead>
+                Correo
+              </TableHead>
+              <TableHead>
+                Acceso
+              </TableHead>
+              <TableHead align="right">
+                Acciones
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {% for invite in invites %}
+              <TableRow>
+                <TableCell ellipsis>
+                  {{ invite.email }}
+                </TableCell>
+                <TableCell>
+                  <MetaText>
+                    {{ invite.role|role_name }}
+                  </MetaText>
+                </TableCell>
+                <TableCell align="right">
+                  <Actions>
+                    <InlineAction :action="'/teams/' ~ team.id ~ '/settings/invites/' ~ invite.id ~ '/resend'"
+                                  :csrf_token="csrf_token">
+                      <ActionButton variant="link" type="submit">
+                        Reenviar
+                      </ActionButton>
+                    </InlineAction>
+                    <InlineAction :action="'/teams/' ~ team.id ~ '/settings/invites/' ~ invite.id ~ '/cancel'"
+                                  :csrf_token="csrf_token">
+                      <ActionButton variant="link-danger" type="submit">
+                        Cancelar
+                      </ActionButton>
+                    </InlineAction>
+                  </Actions>
+                </TableCell>
+              </TableRow>
+            {% endfor %}
+          </TableBody>
+        </DataTable>
       </Panel>
     {% endif %}
   </MainContent>

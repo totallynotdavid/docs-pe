@@ -5,7 +5,7 @@
         :minimal="minimal"
         active="team-jobs"
         :active_team="team">
-  <TopBar :title="team.name">
+  <TopBar :title="team.name" icon="users">
     {% if team.role and team.role.value == 'team_leader' %}
       <ActionButton size="sm" :href="'/teams/' ~ team.id ~ '/jobs/new'">
         <Icon name="plus" />

@@ -1,0 +1,17 @@
+{#def href, label, icon="", active=False, sub=False #}
+{% set classes = ["nav-item"] %}
+{% if sub %}
+  {% set classes = classes + ["nav-item--sub"] %}
+{% endif %}
+{% if active %}
+  {% set classes = classes + ["nav-item--active"] %}
+{% endif %}
+<a {{ attrs.render(class=classes|join(" "), href=href) }}
+   {% if active %}aria-current="page"{% endif %}>
+  {% if icon %}
+    <span class="nav-item__icon">
+      <Icon :name="icon" />
+    </span>
+  {% endif %}
+  <span class="nav-item__label">{{ label }}</span>
+</a>

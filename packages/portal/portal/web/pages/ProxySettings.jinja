@@ -4,7 +4,7 @@
         :csrf_token="csrf_token"
         active="team-settings"
         :active_team="team">
-  <TopBar title="Conexión proxy">
+  <TopBar title="Conexión proxy" icon="link">
     {% if connections and not show_form %}
       <ActionButton size="sm" :href="'/teams/' ~ team.id ~ '/settings/proxy?add=1'">
         <Icon name="plus" />
@@ -19,32 +19,51 @@
       <Panel>
         <PanelHeader title="Conexiones"
                      :description="'Hay una conexión validada y lista para usar.' if readiness.has_active_credential else 'Aún falta una conexión activa.'" />
-        <List>
-          {% for connection in connections %}
-            <ListItem>
-              <InlineAction :action="'/teams/' ~ team.id ~ '/settings/proxy/' ~ connection.credential_id ~ '/rename'"
-                            :csrf_token="csrf_token">
-                <input class="control"
-                       name="label"
-                       value="{{ connection.label }}"
-                       maxlength="120"
-                       aria-label="Nombre de la conexión"
-                       required>
-                <ActionButton variant="secondary" size="sm" type="submit">
-                  Guardar
-                </ActionButton>
-              </InlineAction>
-              <Actions>
-                <MetaText>
-                  {{ provider_label(connection.provider) }}
-                </MetaText>
-                <Status :value="connection.state.value">
-                  {{ connection.state.value|credential_state }}
-                </Status>
-              </Actions>
-            </ListItem>
-          {% endfor %}
-        </List>
+        <DataTable>
+          <TableHeader>
+            <TableRow>
+              <TableHead>
+                Nombre
+              </TableHead>
+              <TableHead>
+                Proveedor
+              </TableHead>
+              <TableHead align="right">
+                Estado
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {% for connection in connections %}
+              <TableRow>
+                <TableCell grow>
+                  <InlineAction :action="'/teams/' ~ team.id ~ '/settings/proxy/' ~ connection.credential_id ~ '/rename'"
+                                :csrf_token="csrf_token">
+                    <input class="control"
+                           name="label"
+                           value="{{ connection.label }}"
+                           maxlength="120"
+                           aria-label="Nombre de la conexión"
+                           required>
+                    <ActionButton variant="secondary" size="sm" type="submit">
+                      Guardar
+                    </ActionButton>
+                  </InlineAction>
+                </TableCell>
+                <TableCell>
+                  <MetaText>
+                    {{ provider_label(connection.provider) }}
+                  </MetaText>
+                </TableCell>
+                <TableCell align="right">
+                  <Status :value="connection.state.value">
+                    {{ connection.state.value|credential_state }}
+                  </Status>
+                </TableCell>
+              </TableRow>
+            {% endfor %}
+          </TableBody>
+        </DataTable>
       </Panel>
     {% endif %}
     {% if show_form %}

@@ -4,7 +4,7 @@
         :csrf_token="csrf_token"
         :minimal="minimal"
         active="teams">
-  <TopBar title="Equipos" />
+  <TopBar title="Equipos" icon="users" />
   <MainContent>
     <h1 class="sr-only">Equipos</h1>
     <Panel aria-labelledby="teams-title">
@@ -12,18 +12,32 @@
                    :description="'Elige un equipo para buscar.' if minimal else 'Espacios a los que tienes acceso.'"
                    title_id="teams-title" />
       {% if teams %}
-        <List>
-          {% for team in teams %}
-            <ListItem>
-              <a href="/teams/{{ team.id }}{{ '/search' if minimal else '' }}">{{ team.name }}</a>
-              {% if not minimal %}
-                <MetaText>
-                  {{ team.role|role_name }}
-                </MetaText>
-              {% endif %}
-            </ListItem>
-          {% endfor %}
-        </List>
+        <DataTable>
+          <TableHeader>
+            <TableRow>
+              <TableHead>
+                Equipo
+              </TableHead>
+              {% if not minimal %}<TableHead align="right">Acceso</TableHead>{% endif %}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {% for team in teams %}
+              <TableRow>
+                <TableCell ellipsis>
+                  <a href="/teams/{{ team.id }}{{ '/search' if minimal else '' }}">{{ team.name }}</a>
+                </TableCell>
+                {% if not minimal %}
+                  <TableCell align="right">
+                    <MetaText>
+                      {{ team.role|role_name }}
+                    </MetaText>
+                  </TableCell>
+                {% endif %}
+              </TableRow>
+            {% endfor %}
+          </TableBody>
+        </DataTable>
       {% else %}
         <EmptyState icon="users"
                     title="Aún no perteneces a un equipo"

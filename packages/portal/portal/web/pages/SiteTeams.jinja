@@ -3,7 +3,7 @@
         :user="user"
         :csrf_token="csrf_token"
         active="admin-teams">
-  <TopBar title="Administración · Equipos">
+  <TopBar title="Administración · Equipos" icon="users">
     {% if not show_form %}
       <ActionButton href="/admin/teams?add=1">
         Crear equipo
@@ -15,23 +15,42 @@
     <Panel>
       <PanelHeader title="Equipos existentes" />
       {% if teams %}
-        <List>
-          {% for team in teams %}
-            <ListItem>
-              <Stack>
-                <a href="/teams/{{ team.id }}">{{ team.name }}</a>
-                <MetaText>
-                  {{ team.slug }}
-                </MetaText>
-              </Stack>
-              <ActionButton variant="secondary"
-                            size="sm"
-                            :href="'/teams/' ~ team.id ~ '/settings/proxy'">
-                Gestionar
-              </ActionButton>
-            </ListItem>
-          {% endfor %}
-        </List>
+        <DataTable>
+          <TableHeader>
+            <TableRow>
+              <TableHead>
+                Equipo
+              </TableHead>
+              <TableHead>
+                Identificador
+              </TableHead>
+              <TableHead align="right">
+                Acciones
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {% for team in teams %}
+              <TableRow>
+                <TableCell ellipsis>
+                  <a href="/teams/{{ team.id }}">{{ team.name }}</a>
+                </TableCell>
+                <TableCell ellipsis>
+                  <MetaText>
+                    {{ team.slug }}
+                  </MetaText>
+                </TableCell>
+                <TableCell align="right">
+                  <ActionButton variant="secondary"
+                                size="sm"
+                                :href="'/teams/' ~ team.id ~ '/settings/proxy'">
+                    Gestionar
+                  </ActionButton>
+                </TableCell>
+              </TableRow>
+            {% endfor %}
+          </TableBody>
+        </DataTable>
       {% else %}
         <EmptyState icon="users"
                     title="Aún no hay equipos"

@@ -1,16 +1,3 @@
-.status {
-  align-items: center;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  display: inline-flex;
-  font-size: var(--font-size-label);
-  font-weight: var(--font-weight-semibold);
-  gap: var(--spacing-1);
-  line-height: 1;
-  padding: var(--spacing-1) var(--spacing-2);
-  white-space: nowrap;
-}
-
 .status__dot {
   background: currentcolor;
   border-radius: 50%;
@@ -22,6 +9,7 @@
 /* Only the states that are still moving get a live dot: on a list of
    finished jobs a blinking row is noise, not information. */
 .status--running .status__dot,
+.status--validating .status__dot,
 .status--cancelling .status__dot {
   animation: status-pulse 1.6s var(--ease-standard) infinite;
 }
@@ -34,51 +22,14 @@
 
 @media (prefers-reduced-motion: reduce) {
   .status--running .status__dot,
+  .status--validating .status__dot,
   .status--cancelling .status__dot {
     animation: none;
   }
 }
 
-/* Neutral carries a border because its fill is a hair off the panel it sits
-   on; without one the badge disappears. */
-.status--draft,
-.status--retired,
-.status--queued {
-  background: var(--secondary);
-  border-color: var(--border-medium);
-  color: var(--secondary-foreground);
-}
-
-.status--online {
-  background: var(--success);
-  color: var(--success-foreground);
-}
-
+/* Offline is a neutral badge with the label greyed rather than a red one:
+   a node that is simply not running is not a failure. */
 .status--offline {
-  background: var(--secondary);
-  border-color: var(--border-medium);
   color: var(--foreground-tertiary);
-}
-
-.status--running,
-.status--validating {
-  background: var(--info);
-  color: var(--info-foreground);
-}
-
-.status--active,
-.status--completed {
-  background: var(--success);
-  color: var(--success-foreground);
-}
-
-.status--failed,
-.status--cancelled {
-  background: var(--destructive);
-  color: var(--destructive-foreground);
-}
-
-.status--cancelling {
-  background: var(--warning);
-  color: var(--warning-foreground);
 }

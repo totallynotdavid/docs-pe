@@ -1,0 +1,44 @@
+.account {
+  position: relative;
+  width: 100%;
+}
+
+.account__trigger {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--foreground);
+  display: inline-flex;
+  gap: var(--spacing-2);
+  height: var(--spacing-7);
+  max-width: 100%;
+  min-width: 0;
+  padding: calc(var(--spacing-1) - 1px);
+  width: 100%;
+}
+
+.account__trigger:hover,
+.account__trigger[aria-expanded="true"] {
+  background: var(--background-transparent-lighter);
+  border-color: var(--border-medium);
+}
+
+.account__label {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account__chevron {
+  color: var(--muted-foreground);
+  margin-left: auto;
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+
+.account__trigger[aria-expanded="true"] .account__chevron {
+  transform: rotate(180deg);
+}

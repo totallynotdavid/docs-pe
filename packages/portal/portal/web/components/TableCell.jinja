@@ -1,0 +1,11 @@
+{#def align="left", ellipsis=False, grow=False #}
+{% set classes = ["table__cell"] %}
+{% if ellipsis %}
+  {% set classes = classes + ["table__cell--ellipsis"] %}
+{% endif %}
+{% if grow %}
+  {% set classes = classes + ["table__cell--grow"] %}
+{% endif %}
+<td {{ attrs.render(class=classes|join(" "), **{"data-align": align}) }}>
+  {{ content }}
+</td>

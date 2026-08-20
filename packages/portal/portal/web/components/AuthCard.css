@@ -1,7 +1,14 @@
+/* A real surface, not fields floating on the page: signed out there is no
+   app shell behind this, so the card has to supply its own edge. */
 .auth-card {
   align-items: center;
+  background: var(--background);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-elevation-1);
   display: flex;
   flex-direction: column;
+  padding: var(--spacing-8) var(--spacing-6);
   text-align: center;
 }
 

@@ -1,5 +1,5 @@
 .field {
-  color: var(--foreground-tertiary);
+  color: var(--foreground-light);
   display: grid;
   font-size: var(--font-size-label);
   font-weight: var(--font-weight-semibold);
@@ -13,16 +13,16 @@
 .field select,
 .field textarea {
   background: var(--background-transparent-lighter);
-  border: 1px solid var(--border-medium);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   color: var(--foreground);
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-regular);
-  min-height: var(--spacing-8);
+  height: var(--spacing-8);
   padding: 0 var(--spacing-2);
   transition:
-    border-color var(--motion-fast) var(--ease-standard),
-    background-color var(--motion-fast) var(--ease-standard);
+    border-color var(--motion-fast) linear,
+    background-color var(--motion-fast) linear;
   width: 100%;
 }
 
@@ -30,25 +30,25 @@
 .field input::placeholder,
 .field textarea::placeholder {
   color: var(--foreground-light);
+  font-weight: var(--font-weight-medium);
 }
 
-.control:hover,
-.field input:hover,
-.field select:hover,
-.field textarea:hover {
-  border-color: var(--border-strong);
-}
-
+/* Blue border on focus and nothing else. The base layer's focus ring marks
+   where keyboard traversal has landed on things that don't otherwise change;
+   a text control already reads as focused, and wearing both looks doubled. */
 .control:focus,
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
-  background: var(--background);
-  border-color: var(--ring);
+  border-color: var(--color-blue);
+  box-shadow: none;
+  outline: none;
 }
 
 .field textarea {
-  min-height: 190px;
+  border-radius: var(--radius-sm);
+  height: auto;
+  min-height: calc(var(--spacing-12) * 2);
   padding: var(--spacing-2);
   resize: vertical;
 }
@@ -57,8 +57,8 @@
 .field input:disabled,
 .field select:disabled,
 .field textarea:disabled {
+  color: var(--foreground-tertiary);
   cursor: not-allowed;
-  opacity: 0.5;
 }
 
 /* The passkey flows keep an empty live region for their status text; without
@@ -69,7 +69,7 @@
 
 .help-text {
   color: var(--foreground-tertiary);
-  font-size: var(--font-size-label);
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-regular);
   line-height: var(--line-height-lg);
 }
