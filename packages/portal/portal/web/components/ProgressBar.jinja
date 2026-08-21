@@ -7,7 +7,12 @@
        aria-valuenow="{{ value }}"
        aria-valuemin="0"
        aria-valuemax="{{ total }}">
-    <div class="progress__fill" style="width: {{ percent }}%"></div>
+    <svg class="progress__fill"
+         viewBox="0 0 100 1"
+         preserveAspectRatio="none"
+         aria-hidden="true">
+      <rect width="{{ percent }}" height="1" />
+    </svg>
   </div>
   <p class="progress__caption">
     <span>{{ label }}</span>

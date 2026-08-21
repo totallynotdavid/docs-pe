@@ -28,9 +28,16 @@ if TYPE_CHECKING:
 # challenge cannot load fails closed forever. Only the two directives the widget
 # needs name challenges.cloudflare.com; everything else stays same-origin.
 # https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html
+#
+# static.cloudflareinsights.com/cloudflareinsights.com carve the same way for
+# Cloudflare's Web Analytics beacon, which the zone injects at the edge: the
+# script itself loads from the static subdomain, then reports each pageview
+# to the bare domain over fetch/sendBeacon, so both script-src and connect-src
+# need an entry.
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; "
-    f"script-src 'self' {WIDGET_SCRIPT_ORIGIN}; "
+    f"script-src 'self' {WIDGET_SCRIPT_ORIGIN} https://static.cloudflareinsights.com; "
+    "connect-src 'self' https://cloudflareinsights.com; "
     f"frame-src {WIDGET_SCRIPT_ORIGIN}; "
     "object-src 'none'; "
     "base-uri 'none'; "
