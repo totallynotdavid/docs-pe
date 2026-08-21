@@ -1,4 +1,4 @@
-{#def user, csrf_token, team, job #}
+{#def user, csrf_token, team, job, counts #}
 <Layout :title="job.filename"
         :user="user"
         :csrf_token="csrf_token"
@@ -23,7 +23,7 @@
              aria-live="polite"
              aria-atomic="true"
              {% if not is_terminal(job) %} data-sse-url="/teams/{{ team.id }}/jobs/{{ job.id }}/progress" {% endif %}>
-          <JobProgress :job="job" />
+          <JobProgress :job="job" :counts="counts" />
         </div>
       </PanelBody>
     </Panel>

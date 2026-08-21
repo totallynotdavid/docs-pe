@@ -41,6 +41,7 @@ if TYPE_CHECKING:
         CredentialVersion,
         Job,
         JobEvent,
+        JobItemCounts,
         SearchLogEntry,
         TeamSearchActivity,
     )
@@ -149,6 +150,15 @@ class PortalService(AuthorizedService):
             raise NotFound(Reason.JOB_NOT_FOUND)
 
         return job
+
+    @team_reader()
+    async def job_progress_counts(
+        self,
+        actor_id: UUID,
+        team_id: UUID,
+        job_id: UUID,
+    ) -> JobItemCounts:
+        return await self._jobs.item_counts(job_id, team_id)
 
     @team_reader()
     async def job_events_after(
