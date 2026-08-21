@@ -11,9 +11,13 @@
 }
 
 .progress__fill {
-  background: var(--foreground);
-  border-radius: inherit;
+  display: block;
   height: 100%;
+  width: 100%;
+}
+
+.progress__fill rect {
+  fill: var(--foreground);
   transition: width var(--motion-normal) var(--ease-standard);
 }
 
