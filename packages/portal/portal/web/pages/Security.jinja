@@ -1,0 +1,192 @@
+{#def user, csrf_token, setup, passkeys, error, show_form, recovery_codes=None, totp_setup_token="", totp_enrollment_uri="" #}
+<Layout title="Seguridad"
+        :user="user"
+        :csrf_token="csrf_token"
+        :setup="setup"
+        active="security">
+  {% if not setup %}<TopBar title="Seguridad" icon="shield" />{% endif %}
+  <MainContent>
+    {% if setup and not recovery_codes %}
+      <PageIntro title="Protege tu cuenta"
+                 description="Tu cuenta será administradora del sitio en cuanto agregues un factor de seguridad: una app de autenticación o una clave de acceso. Ninguna otra persona puede hacer esto por ti." />
+    {% else %}
+      <h1 class="sr-only">Seguridad de la cuenta</h1>
+    {% endif %}
+    {% if error %}<Message>{{ error }}</Message>{% endif %}
+    {% if recovery_codes %}
+      <Panel>
+        <PanelHeader title="Guarda tus códigos de recuperación"
+                     description="Se muestran una sola vez. Úsalos si pierdes acceso a tu app de autenticación o a tus claves de acceso." />
+        <PanelBody>
+          <RecoveryCodes :codes="recovery_codes" />
+          <Actions>
+            <ActionButton href="/">
+              Ya los guardé, continuar
+            </ActionButton>
+          </Actions>
+        </PanelBody>
+      </Panel>
+    {% endif %}
+    {# Once codes are up, whatever just granted them (passkey or TOTP) is
+       done: showing the pitch panel for it again would repeat, in past
+       tense, what the codes panel above already just confirmed. #}
+    {% set choosing = setup and not recovery_codes and not user.mfa_enabled and not totp_setup_token and not passkeys %}
+    {% if choosing %}
+      {# During first-time setup, before any factor exists, lead with the
+         faster option instead of two equally-weighted panels forcing a
+         choice: a passkey is one tap, TOTP means installing an app first. #}
+      <Panel>
+        <PanelHeader title="Clave de acceso"
+                     description="La forma más rápida: usa la huella, el rostro o una llave física de tu dispositivo." />
+        <PanelBody>
+          <FormLayout action="/security/passkey/register" :csrf_token="csrf_token">
+            <input type="hidden" name="setup_token" data-passkey-setup-token>
+            <input type="hidden" name="response" data-passkey-response>
+            <Field label="Nombre para la nueva clave (opcional)">
+              <input type="text" name="label" placeholder="Ej. Laptop de trabajo">
+            </Field>
+            <Actions>
+              <ActionButton type="submit" data-passkey-add>
+                Agregar clave de acceso
+              </ActionButton>
+            </Actions>
+            <p data-passkey-add-status class="help-text" role="status"></p>
+            <p class="help-text">
+              ¿Prefieres una app de autenticación?
+              <a href="/security/totp/setup">Configúrala en su lugar</a>.
+            </p>
+          </FormLayout>
+        </PanelBody>
+      </Panel>
+    {% elif not recovery_codes %}
+      <Panel>
+        <PanelHeader title="App de autenticación (TOTP)"
+                     description="Un código de seis dígitos que cambia cada 30 segundos.">
+          {% if user.mfa_enabled %}<Status value="online">Activada</Status>{% endif %}
+        </PanelHeader>
+        <PanelBody>
+          {% if user.mfa_enabled %}
+            <Actions>
+              <InlineAction action="/security/totp/disable" :csrf_token="csrf_token">
+                <ActionButton variant="link-danger" type="submit">
+                  Desactivar
+                </ActionButton>
+              </InlineAction>
+            </Actions>
+          {% elif totp_setup_token %}
+            <TotpQr :uri="totp_enrollment_uri" />
+            <p class="help-text">Escanéalo con tu app de autenticación, o ingresa este enlace manualmente: {{ totp_enrollment_uri }}</p>
+            <FormLayout action="/security/totp/confirm" :csrf_token="csrf_token">
+              <input type="hidden" name="setup_token" value="{{ totp_setup_token }}">
+              <Field label="Código de la app">
+                <input type="text"
+                       name="code"
+                       inputmode="numeric"
+                       autocomplete="one-time-code"
+                       autofocus
+                       required>
+              </Field>
+              <ActionButton type="submit">
+                Confirmar
+              </ActionButton>
+            </FormLayout>
+          {% else %}
+            <Actions>
+              <ActionButton variant="secondary" href="/security/totp/setup">
+                Configurar
+              </ActionButton>
+            </Actions>
+          {% endif %}
+        </PanelBody>
+      </Panel>
+      <Panel>
+        <PanelHeader title="Claves de acceso"
+                     description="La huella, el rostro o una llave física de tus dispositivos.">
+          {% if not show_form %}
+            <ActionButton variant="secondary" size="sm" href="/security?add=1">
+              <Icon name="plus" />
+              Agregar
+            </ActionButton>
+          {% endif %}
+        </PanelHeader>
+        {% if passkeys %}
+          <DataTable>
+            <TableHeader>
+              <TableRow>
+                <TableHead>
+                  Clave
+                </TableHead>
+                <TableHead>
+                  Agregada
+                </TableHead>
+                <TableHead>
+                  Último uso
+                </TableHead>
+                <TableHead align="right">
+                  Acciones
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {% for passkey in passkeys %}
+                <TableRow>
+                  <TableCell ellipsis>
+                    {{ passkey.label }}
+                  </TableCell>
+                  <TableCell>
+                    <MetaText>
+                      {{ passkey.created_at.strftime("%d/%m/%Y") }}
+                    </MetaText>
+                  </TableCell>
+                  <TableCell>
+                    <MetaText>
+                      {% if passkey.last_used_at %}
+                        {{ passkey.last_used_at.strftime("%d/%m %H:%M") }}
+                      {% else %}
+                        Nunca
+                      {% endif %}
+                    </MetaText>
+                  </TableCell>
+                  <TableCell align="right">
+                    <InlineAction action="/security/passkey/remove" :csrf_token="csrf_token">
+                      <input type="hidden" name="credential_id" value="{{ passkey.id }}">
+                      <ActionButton variant="link-danger" type="submit">
+                        Eliminar
+                      </ActionButton>
+                    </InlineAction>
+                  </TableCell>
+                </TableRow>
+              {% endfor %}
+            </TableBody>
+          </DataTable>
+        {% elif not show_form %}
+          <EmptyState icon="lock"
+                      title="Todavía no agregaste ninguna"
+                      description="Usa la huella, el rostro o una llave física de seguridad, según lo que ofrezca tu dispositivo.">
+            <ActionButton variant="secondary" href="/security?add=1">
+              <Icon name="plus" />
+              Agregar clave de acceso
+            </ActionButton>
+          </EmptyState>
+        {% endif %}
+        {% if show_form %}
+          <PanelBody>
+            <FormLayout action="/security/passkey/register" :csrf_token="csrf_token">
+              <input type="hidden" name="setup_token" data-passkey-setup-token>
+              <input type="hidden" name="response" data-passkey-response>
+              <Field label="Nombre para la nueva clave (opcional)">
+                <input type="text" name="label" placeholder="Ej. Laptop de trabajo">
+              </Field>
+              <Actions>
+                <ActionButton type="submit" data-passkey-add>
+                  Agregar clave de acceso
+                </ActionButton>
+              </Actions>
+              <p data-passkey-add-status class="help-text" role="status"></p>
+            </FormLayout>
+          </PanelBody>
+        {% endif %}
+      </Panel>
+    {% endif %}
+  </MainContent>
+</Layout>

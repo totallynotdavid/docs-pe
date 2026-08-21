@@ -46,6 +46,7 @@ restate its content in a package readme:
   sunat, portabilidad)
 - `docs/adding-a-site.md`: capture → browser → fetch workflow
 - `docs/results.md`: historical job data and reconciliation
+- `docs/portal-deployment.md`: Dokploy topology, cloudflared edge, master key, tailnet
 
 See `docs/architecture.md` for:
 

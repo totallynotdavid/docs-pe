@@ -53,6 +53,7 @@ behavior, and how state works.
 - [docs/troubleshooting.md](docs/troubleshooting.md), if you're debugging a job
   failure, then [docs/sites/](docs/sites/) for the specific site
 - [docs/adding-a-site.md](docs/adding-a-site.md), if you're adding a new site
-- [portal](packages/portal/readme.md), if you're running the web UI
+- [portal](packages/portal/readme.md), if you're running the web UI, then
+  [docs/portal-deployment.md](docs/portal-deployment.md) if you're deploying it
 - [docs/architecture.md](docs/architecture.md), if you're reviewing code or want
   to understand the whole system before picking a package

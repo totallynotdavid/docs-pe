@@ -1,0 +1,101 @@
+{#def user, csrf_token, health #}
+<Layout title="Sistema · Administración"
+        :user="user"
+        :csrf_token="csrf_token"
+        active="admin-system">
+  <TopBar title="Administración · Sistema" icon="settings" />
+  <MainContent>
+    <h1 class="sr-only">Salud del sistema</h1>
+    <Panel>
+      <PanelHeader title="Cola de trabajo"
+                   description="Procesos activos frente al límite fijo del sistema." />
+      <PanelBody>
+        <Metrics>
+          <Metric label="Procesos activos">
+            {{ health.queue.active_jobs }} / {{ health.queue.max_active_jobs }}
+          </Metric>
+          <Metric label="En espera">
+            {{ health.queue.queued_jobs }}
+          </Metric>
+        </Metrics>
+      </PanelBody>
+    </Panel>
+    <Panel>
+      <PanelHeader title="Trabajadores"
+                   description="Estado y consumo de recursos de cada nodo del clúster." />
+      {% if health.workers %}
+        <DataTable>
+          <TableHeader>
+            <TableRow>
+              <TableHead>
+                Nodo
+              </TableHead>
+              <TableHead>
+                Proceso
+              </TableHead>
+              <TableHead align="right">
+                CPU
+              </TableHead>
+              <TableHead align="right">
+                Memoria
+              </TableHead>
+              <TableHead align="right">
+                Estado
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {% for worker in health.workers %}
+              <TableRow>
+                <TableCell ellipsis>
+                  <Stack>
+                    <span>{{ worker.worker_id }}</span>
+                    <MetaText>
+                      {{ worker.tailscale_hostname }}
+                    </MetaText>
+                  </Stack>
+                </TableCell>
+                <TableCell>
+                  {% if worker.current_job_id %}
+                    <MetaText>
+                      {{ worker.current_job_id|string|truncate(8, true, '') }}
+                    </MetaText>
+                  {% else %}
+                    <MetaText>
+                      Libre
+                    </MetaText>
+                  {% endif %}
+                </TableCell>
+                <TableCell align="right">
+                  {% if worker.cpu_percent is not none %}
+                    {{ '%.0f'|format(worker.cpu_percent) }}%
+                  {% endif %}
+                </TableCell>
+                <TableCell align="right">
+                  {% if worker.memory_mb is not none %}
+                    {{ '%.0f'|format(worker.memory_mb) }} MB
+                  {% endif %}
+                </TableCell>
+                <TableCell align="right">
+                  {% if worker.online %}
+                    <Status value="online">
+                      En línea
+                    </Status>
+                  {% else %}
+                    <Status value="offline">
+                      Sin conexión
+                    </Status>
+                  {% endif %}
+                </TableCell>
+              </TableRow>
+            {% endfor %}
+          </TableBody>
+        </DataTable>
+      {% else %}
+        <EmptyState icon="package"
+                    title="Aún no hay trabajadores"
+                    description="Los nodos aparecen aquí en cuanto se registran con su token de arranque." />
+      {% endif %}
+    </Panel>
+  </MainContent>
+</Layout>

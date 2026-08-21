@@ -1,36 +1,61 @@
-{#def user, csrf_token, team, jobs, page, total #}
-<Layout :title="team.name ~ ' · Worker'"
+{#def user, csrf_token, team, jobs, page, total, minimal=False, readiness=None #}
+<Layout :title="team.name"
         :user="user"
-        :csrf_token="csrf_token">
-  <TopBar :title="team.name">
-    <ActionButton variant="secondary" :href="'/teams/' ~ team.id ~ '/search'">
-      Buscar
-    </ActionButton>
-    {% if team.role.value == 'team_leader' %}
-      <ActionButton :href="'/teams/' ~ team.id ~ '/jobs/new'">
+        :csrf_token="csrf_token"
+        :minimal="minimal"
+        active="team-jobs"
+        :active_team="team">
+  <TopBar :title="team.name" icon="users">
+    {% if team.role and team.role.value == 'team_leader' %}
+      <ActionButton size="sm" :href="'/teams/' ~ team.id ~ '/jobs/new'">
+        <Icon name="plus" />
         Nueva consulta
       </ActionButton>
     {% endif %}
   </TopBar>
   <MainContent>
     <h1 class="sr-only">{{ team.name }}</h1>
-    {% if team.role.value == 'team_leader' %}
+    {% if readiness and not (readiness.has_active_credential and readiness.has_members_beyond_creator) %}
+      <Panel>
+        <PanelHeader title="Antes de empezar"
+                     description="Dos pasos para que el equipo esté listo." />
+        <Checklist>
+          <ChecklistItem label="Conecta un proxy" :done="readiness.has_active_credential">
+            <ActionButton variant="secondary"
+                          size="sm"
+                          :href="'/teams/' ~ team.id ~ '/settings/proxy'">
+              Conectar
+            </ActionButton>
+          </ChecklistItem>
+          <ChecklistItem label="Invita a tu equipo"
+                         :done="readiness.has_members_beyond_creator">
+            <ActionButton variant="secondary"
+                          size="sm"
+                          :href="'/teams/' ~ team.id ~ '/settings/members'">
+              Invitar
+            </ActionButton>
+          </ChecklistItem>
+        </Checklist>
+      </Panel>
+    {% endif %}
+    {% if (team.role and team.role.value == 'team_leader') or user.is_site_admin %}
       <Panel aria-labelledby="jobs-title">
         <PanelHeader title="Tareas recientes"
                      description="El estado se actualiza mientras se procesan."
-                     title_id="jobs-title">
-          <ActionButton variant="secondary" :href="'/teams/' ~ team.id ~ '/settings'">
-            Configuración
-          </ActionButton>
-        </PanelHeader>
+                     title_id="jobs-title" />
         <div id="jobs-list">
           <JobsFragment :team="team" :jobs="jobs" :page="page" :total="total" />
         </div>
       </Panel>
     {% else %}
       <Panel>
-        <EmptyState>
-          Puedes buscar documentos en este equipo.
+        <EmptyState icon="search"
+                    title="Busca documentos de este equipo"
+                    description="Consulta cualquier DNI o RUC que el equipo ya haya procesado.">
+          <ActionButton :href="'/teams/' ~ team.id ~ '/search'">
+            <Icon name="search" />
+            Ir a buscar
+          </ActionButton>
         </EmptyState>
       </Panel>
     {% endif %}

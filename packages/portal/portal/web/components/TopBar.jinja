@@ -1,5 +1,10 @@
-{#def title #}
-<header class="top-bar">
-  <span class="top-bar__title">{{ title }}</span>
-  <div class="top-bar__actions">{{ content }}</div>
+{#def title, icon="" #}
+<header class="page-header">
+  <div class="page-header__left">
+    <div class="page-header__title">
+      {% if icon %}<Icon :name="icon" />{% endif %}
+      <span>{{ title }}</span>
+    </div>
+  </div>
+  <div class="page-header__right">{{ content }}</div>
 </header>

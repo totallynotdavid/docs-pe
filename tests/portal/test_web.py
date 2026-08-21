@@ -31,6 +31,16 @@ def test_responses_use_same_origin_content_security_policy(app: Litestar) -> Non
     assert "unsafe-eval" not in policy
 
 
+def test_responses_deny_powerful_browser_features(app: Litestar) -> None:
+    with TestClient(app) as client:
+        headers = client.get("/login").headers
+
+    assert headers["permissions-policy"] == (
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    )
+    assert headers["x-frame-options"] == "DENY"
+
+
 def test_login_page_uses_available_local_assets(app: Litestar) -> None:
     with TestClient(app) as client:
         page = client.get("/login")
@@ -81,7 +91,7 @@ async def test_csv_upload_accepts_valid_file_and_strips_directories() -> None:
         (
             _upload("enorme.csv", b"0" * (MAX_CSV_UPLOAD_BYTES + 1)),
             Reason.CSV_TOO_LARGE,
-            "el archivo CSV no puede superar los 10 MB",
+            "el archivo CSV no puede superar los 15 MB",
         ),
     ],
 )

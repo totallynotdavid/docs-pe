@@ -17,13 +17,20 @@ from litestar.response.sse import ServerSentEvent, ServerSentEventMessage
 from litestar_htmx import HTMXRequest
 
 from portal.application.service import PortalService
+from portal.application.sessions import BrowserSessions
 from portal.domain.errors import PortalError
-from portal.domain.models import TERMINAL_JOB_STATES, BrowserSession
+from portal.domain.models import TERMINAL_JOB_STATES, BrowserSession, JobItemCounts
 from portal.settings import PortalSettings
 from portal.storage.port import ObjectStorage
 from portal.web.deps import require_verified_session
 from portal.web.render import render, render_fragment
-from portal.web.uploads import csv_input_lines, read_csv_upload
+from portal.web.uploads import (
+    MAX_CSV_UPLOAD_BYTES,
+    MAX_CSV_UPLOAD_MB,
+    MAX_REQUEST_BODY_BYTES,
+    csv_input_lines,
+    read_csv_upload,
+)
 
 
 SOURCE_OPTIONS = (
@@ -83,6 +90,8 @@ async def _form_context(
         "credentials": active_credentials,
         "source_options": SOURCE_OPTIONS,
         "error": error,
+        "max_upload_mb": MAX_CSV_UPLOAD_MB,
+        "max_upload_bytes": MAX_CSV_UPLOAD_BYTES,
     }
 
 
@@ -106,7 +115,7 @@ class JobSubmissionForm:
     input_file: UploadFile | None = None
 
 
-@post("", status_code=200)
+@post("", status_code=200, request_max_body_size=MAX_REQUEST_BODY_BYTES)
 async def new_job_post(
     request: HTMXRequest,
     service: NamedDependency[PortalService],
@@ -120,7 +129,6 @@ async def new_job_post(
 ) -> Response:
     session = await require_verified_session(
         request,
-        service,
         settings,
         data.csrf_token,
     )
@@ -159,12 +167,16 @@ async def job_detail(
     team_id: FromPath[UUID],
     job_id: FromPath[UUID],
 ) -> Response:
+    job = await service.job(page_session.user.id, team_id, job_id)
+    counts = await service.job_progress_counts(page_session.user.id, team_id, job_id)
+
     return render(
         "JobDetail",
         user=page_session.user,
         csrf_token=page_session.csrf_token,
         team=await service.team(page_session.user.id, team_id),
-        job=await service.job(page_session.user.id, team_id, job_id),
+        job=job,
+        counts=counts,
     )
 
 
@@ -187,7 +199,6 @@ async def cancel_job(
 ) -> Response:
     session = await require_verified_session(
         request,
-        service,
         settings,
         data.csrf_token,
     )
@@ -202,6 +213,7 @@ async def job_progress(
     request: Request,
     api_session: NamedDependency[BrowserSession],
     service: NamedDependency[PortalService],
+    sessions: NamedDependency[BrowserSessions],
     settings: NamedDependency[PortalSettings],
     team_id: FromPath[UUID],
     job_id: FromPath[UUID],
@@ -212,6 +224,7 @@ async def job_progress(
     return ServerSentEvent(
         _progress_events(
             service,
+            sessions,
             token=request.cookies.get(settings.session_cookie),
             actor_id=api_session.user.id,
             team_id=team_id,
@@ -223,6 +236,7 @@ async def job_progress(
 
 async def _progress_events(
     service: PortalService,
+    sessions: BrowserSessions,
     *,
     token: str | None,
     actor_id: UUID,
@@ -230,8 +244,13 @@ async def _progress_events(
     job_id: UUID,
     last_sequence: int,
 ) -> AsyncIterator[ServerSentEventMessage]:
+    job = await service.job(actor_id, team_id, job_id)
+    last_counts: JobItemCounts | None = None
+
     while True:
-        session = await service.browser_session(token)
+        # Re-checked on every poll: a stream must not outlive the session that
+        # opened it, and the session can be destroyed from another tab.
+        session = await sessions.load(token)
 
         if session is None or session.user.id != actor_id:
             return
@@ -246,22 +265,34 @@ async def _progress_events(
         for event in events:
             last_sequence = event.sequence
             job = await service.job(actor_id, team_id, job_id)
+            last_counts = await service.job_progress_counts(actor_id, team_id, job_id)
 
             yield ServerSentEventMessage(
                 id=event.sequence,
                 event="progress",
-                data=render_fragment("JobProgressFragment", job=job),
+                data=render_fragment("JobProgress", job=job, counts=last_counts),
             )
-
-            if job.state in TERMINAL_JOB_STATES:
-                yield ServerSentEventMessage(event="done", data="")
-                return
-
-        job = await service.job(actor_id, team_id, job_id)
 
         if job.state in TERMINAL_JOB_STATES:
             yield ServerSentEventMessage(event="done", data="")
             return
+
+        # There is no per-item event: portal_job_events only ever records
+        # job-level transitions (see JobsRepository._event). Items keep
+        # moving through pending, running, and published in between, so this
+        # cheap state-count aggregate, not the full item list, is what a
+        # viewer watching a job with tens of thousands of documents actually
+        # needs polled.
+        counts = await service.job_progress_counts(actor_id, team_id, job_id)
+
+        if counts != last_counts:
+            last_counts = counts
+
+            yield ServerSentEventMessage(
+                id=last_sequence,
+                event="progress",
+                data=render_fragment("JobProgress", job=job, counts=counts),
+            )
 
         await asyncio.sleep(PROGRESS_POLL_SECONDS)
 

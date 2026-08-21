@@ -1,50 +1,71 @@
-{#def user, csrf_token="", setup=False #}
-<aside class="sidebar">
-  <a class="sidebar__brand" href="/">
-    <span class="sidebar__brand-mark" aria-hidden="true">W</span>
-    Worker
-  </a>
-  {% if not setup %}
-    <nav class="sidebar__nav" aria-label="Navegación principal">
-      <p class="sidebar__nav-label">Espacio de trabajo</p>
-      <a class="sidebar__nav-link" href="/">
-        <Icon name="teams" />
-        Equipos
+{#def user, csrf_token="", minimal=False, active="", active_team=None #}
+<aside class="{{ 'drawer drawer--minimal' if minimal else 'drawer' }}">
+  <div class="drawer__inner">
+    <header class="drawer__header">
+      <a class="drawer__brand" href="/">
+        <Brand />
+        <span>{{ PRODUCT_NAME }}</span>
       </a>
-      <a class="sidebar__nav-link" href="/notifications">
-        <Icon name="activity" />
-        Actividad
-      </a>
-      {% if user.is_site_admin %}
-        <a class="sidebar__nav-link sidebar__nav-link--admin"
-           href="/admin/teams">
-          <Icon name="admin" />
-          Administración
-        </a>
-      {% endif %}
-    </nav>
-  {% endif %}
-  <div class="sidebar__account" data-account>
-    <button class="sidebar__account-trigger"
-            type="button"
-            aria-expanded="false"
-            aria-controls="account-menu"
-            data-account-trigger>
-      <span class="sidebar__avatar">{{ user.email[0] }}</span>
-      <span>Mi cuenta</span>
-      <Icon name="chevron-down" :size="14" />
-    </button>
-    <div class="sidebar__account-menu"
-         id="account-menu"
-         hidden
-         data-account-menu>
-      <span class="sidebar__account-email">{{ user.email }}</span>
-      <InlineAction action="/logout" :csrf_token="csrf_token">
-        <button type="submit">
-          <Icon name="logout" :size="14" />
-          Cerrar sesión
-        </button>
-      </InlineAction>
+    </header>
+    {% if not minimal %}
+      <nav class="drawer__scroll nav" aria-label="Navegación principal">
+        <NavSection label="Espacio de trabajo">
+          <NavItem href="/" label="Equipos" icon="users" :active="active == 'teams'" />
+          {% if active_team %}
+            <NavItem :href="'/teams/' ~ active_team.id"
+                     label="Tareas"
+                     sub
+                     :active="active == 'team-jobs'" />
+            <NavItem :href="'/teams/' ~ active_team.id ~ '/search'"
+                     label="Buscar"
+                     sub
+                     :active="active == 'team-search'" />
+            {% if (active_team.role and active_team.role.value == 'team_leader') or user.is_site_admin %}
+              <NavItem :href="'/teams/' ~ active_team.id ~ '/settings/proxy'"
+                       label="Configuración"
+                       sub
+                       :active="active == 'team-settings'" />
+            {% endif %}
+          {% endif %}
+          <NavItem href="/notifications"
+                   label="Actividad"
+                   icon="activity"
+                   :active="active == 'activity'" />
+          <NavItem href="/security"
+                   label="Seguridad"
+                   icon="shield"
+                   :active="active == 'security'" />
+        </NavSection>
+        {% if user.is_site_admin %}
+          <NavSection label="Administración">
+            <NavItem href="/admin"
+                     label="Resumen"
+                     icon="settings"
+                     :active="active == 'admin'" />
+            <NavItem href="/admin/teams"
+                     label="Equipos"
+                     sub
+                     :active="active == 'admin-teams'" />
+            <NavItem href="/admin/users"
+                     label="Personas"
+                     sub
+                     :active="active == 'admin-users'" />
+            <NavItem href="/admin/search-activity"
+                     label="Búsquedas"
+                     sub
+                     :active="active == 'admin-search-activity'" />
+            <NavItem href="/admin/system"
+                     label="Sistema"
+                     sub
+                     :active="active == 'admin-system'" />
+          </NavSection>
+        {% endif %}
+      </nav>
+    {% endif %}
+    <div class="drawer__footer">
+      <AccountMenu :user="user"
+                   :csrf_token="csrf_token"
+                   :placement="'below' if minimal else 'above'" />
     </div>
   </div>
 </aside>

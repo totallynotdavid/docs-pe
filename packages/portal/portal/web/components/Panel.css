@@ -1,34 +1,38 @@
 .panel {
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-medium);
   border-radius: var(--radius-md);
-  box-shadow: 0 1px 2px color(display-p3 0 0 0 / 0.025);
   overflow: hidden;
-}
-
-.panel + .panel {
-  margin-top: 16px;
 }
 
 .panel__header {
   align-items: center;
   border-bottom: 1px solid var(--border);
   display: flex;
-  gap: 16px;
+  gap: var(--spacing-4);
   justify-content: space-between;
-  padding: 15px 17px;
+  padding: var(--spacing-3) var(--spacing-4);
 }
 
 .panel__header h2 {
   font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: normal;
 }
 
 .panel__header p {
-  color: var(--foreground-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-caption);
-  margin-top: 3px;
+  line-height: var(--line-height-lg);
+  margin-top: var(--spacing-1);
 }
 
 .panel__body {
-  padding: 17px;
+  padding: var(--spacing-4);
+}
+
+/* Panel bodies stack arbitrary blocks (prose, a form, a metric grid), so the
+   gap belongs to the container rather than to each thing that can land here. */
+.panel__body > * + * {
+  margin-top: var(--spacing-4);
 }

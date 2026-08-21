@@ -1,11 +1,12 @@
 {#def user, csrf_token, error, setup #}
-<Layout title="Crear equipo · Worker"
+<Layout title="Crear equipo"
         :user="user"
         :csrf_token="csrf_token"
-        :setup="setup">
-  <TopBar title="Crear equipo" />
+        :setup="setup"
+        :onboarding_step="2">
   <MainContent>
-    <h1 class="sr-only">Crear equipo</h1>
+    <PageIntro title="Crea tu primer equipo"
+               description="Así organizas el trabajo: quién sube documentos, qué conexión usa y quién ve los resultados. Puedes invitar a más personas después." />
     <Panel>
       <PanelBody>
         {% if error %}<Message>{{ error }}</Message>{% endif %}
@@ -17,14 +18,9 @@
                    autofocus
                    placeholder="Ej. Equipo Lima">
           </Field>
-          <Field label="Dirección del equipo"
-                 help_text="Se usa para identificar el equipo en su enlace. Solo minúsculas, números y guiones.">
-            <input name="slug"
-                   pattern="[a-z0-9][a-z0-9-]{1,62}"
-                   required
-                   placeholder="equipo-lima">
-          </Field>
-          <button type="submit">Crear equipo</button>
+          <ActionButton type="submit">
+            Crear equipo
+          </ActionButton>
         </FormLayout>
       </PanelBody>
     </Panel>

@@ -1,71 +1,118 @@
-{#def user, csrf_token, team, readiness, provider, providers, fields, credentials, error #}
-<Layout :title="'Conexión proxy · ' ~ team.name ~ ' · Worker'"
+{#def user, csrf_token, team, connections, readiness, provider, providers, fields, show_form, error #}
+<Layout :title="'Conexión proxy · ' ~ team.name"
         :user="user"
-        :csrf_token="csrf_token">
-  <TopBar title="Conexión proxy" />
+        :csrf_token="csrf_token"
+        active="team-settings"
+        :active_team="team">
+  <TopBar title="Conexión proxy" icon="link">
+    {% if connections and not show_form %}
+      <ActionButton size="sm" :href="'/teams/' ~ team.id ~ '/settings/proxy?add=1'">
+        <Icon name="plus" />
+        Añadir conexión
+      </ActionButton>
+    {% endif %}
+  </TopBar>
   <MainContent>
     <h1 class="sr-only">Conexión proxy de {{ team.name }}</h1>
-    <Panel>
-      <PanelHeader :title="'Conexión activa' if readiness.has_active_credential else 'Configurar conexión'"
-                   :description="'Hay una conexión validada y lista para usar.' if readiness.has_active_credential else 'Añade los datos de tu proveedor para continuar.'" />
-      <PanelBody>
-        <Actions position="above">
-          {% for name in providers %}
-            <ActionButton :variant="'' if provider == name else 'secondary'"
-                          :href="'/teams/' ~ team.id ~ '/settings/proxy?provider=' ~ name">
-              {{ provider_label(name) }}
-            </ActionButton>
-          {% endfor %}
-        </Actions>
-        {% if error %}<Message>{{ error }}</Message>{% endif %}
-        <FormLayout :action="'/teams/' ~ team.id ~ '/settings/proxy'"
-                    :csrf_token="csrf_token"
-                    autocomplete="off">
-          <input type="hidden" name="provider" value="{{ provider }}">
-          <Field label="Nombre de referencia">
-            <input name="label"
-                   maxlength="120"
-                   placeholder="Ej. Producción Lima"
-                   required>
-          </Field>
-          {% for field in fields %}
-            <Field :label="field_label(field.name)">
-              {% if field.choices %}
-                <select name="{{ field.name }}" {% if field.required %}required{% endif %}>
-                  {% for value in field.choices %}
-                    <option value="{{ value }}"
-                            {% if value is eq field.default %}selected{% endif %}>{{ choice_label(value) }}</option>
-                  {% endfor %}
-                </select>
-              {% else %}
-                <input name="{{ field.name }}"
-                       type="{% if field.secret %}password{% else %}text{% endif %}"
-                       value="{% if not field.secret %}{{ field.default }}{% endif %}"
-                       {% if field.required %}required{% endif %}>
-              {% endif %}
+    {% if error %}<Message>{{ error }}</Message>{% endif %}
+    {% if connections %}
+      <Panel>
+        <PanelHeader title="Conexiones"
+                     :description="'Hay una conexión validada y lista para usar.' if readiness.has_active_credential else 'Aún falta una conexión activa.'" />
+        <DataTable>
+          <TableHeader>
+            <TableRow>
+              <TableHead>
+                Nombre
+              </TableHead>
+              <TableHead>
+                Proveedor
+              </TableHead>
+              <TableHead align="right">
+                Estado
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {% for connection in connections %}
+              <TableRow>
+                <TableCell grow>
+                  <InlineAction :action="'/teams/' ~ team.id ~ '/settings/proxy/' ~ connection.credential_id ~ '/rename'"
+                                :csrf_token="csrf_token">
+                    <input class="control"
+                           name="label"
+                           value="{{ connection.label }}"
+                           maxlength="120"
+                           aria-label="Nombre de la conexión"
+                           required>
+                    <ActionButton variant="secondary" size="sm" type="submit">
+                      Guardar
+                    </ActionButton>
+                  </InlineAction>
+                </TableCell>
+                <TableCell>
+                  <MetaText>
+                    {{ provider_label(connection.provider) }}
+                  </MetaText>
+                </TableCell>
+                <TableCell align="right">
+                  <Status :value="connection.state.value">
+                    {{ connection.state.value|credential_state }}
+                  </Status>
+                </TableCell>
+              </TableRow>
+            {% endfor %}
+          </TableBody>
+        </DataTable>
+      </Panel>
+    {% endif %}
+    {% if show_form %}
+      <Panel>
+        <PanelHeader title="Nueva conexión"
+                     description="Añade los datos de tu proveedor para continuar." />
+        <PanelBody>
+          <Actions position="above">
+            {% for name in providers %}
+              <ActionButton :variant="'primary' if provider == name else 'outline'"
+                            size="sm"
+                            :href="'/teams/' ~ team.id ~ '/settings/proxy?add=1&provider=' ~ name">
+                {{ provider_label(name) }}
+              </ActionButton>
+            {% endfor %}
+          </Actions>
+          <FormLayout :action="'/teams/' ~ team.id ~ '/settings/proxy'"
+                      :csrf_token="csrf_token"
+                      autocomplete="off">
+            <input type="hidden" name="provider" value="{{ provider }}">
+            <Field label="Nombre de referencia">
+              <input name="label"
+                     maxlength="120"
+                     placeholder="Ej. Producción Lima"
+                     required>
             </Field>
-          {% endfor %}
-          <button type="submit">Validar y guardar</button>
-        </FormLayout>
-      </PanelBody>
-    </Panel>
-    <Panel>
-      <PanelHeader title="Historial de conexiones"
-                   description="Versiones guardadas para este equipo." />
-      <List>
-        {% for credential in credentials %}
-          <ListItem>
-            <span>{{ credential.label }} · versión {{ credential.version }}</span>
-            <MetaText>
-              {{ credential.state.value|credential_state }}
-            </MetaText>
-          </ListItem>
-        {% else %}
-          <ListItem class="empty-state">
-            Aún no hay conexiones guardadas.
-          </ListItem>
-        {% endfor %}
-      </List>
-    </Panel>
+            {% for field in fields %}
+              <Field :label="field_label(field.name)">
+                {% if field.choices %}
+                  <select name="{{ field.name }}" {% if field.required %}required{% endif %}>
+                    {% for value in field.choices %}
+                      <option value="{{ value }}"
+                              {% if value is eq field.default %}selected{% endif %}>{{ choice_label(value) }}</option>
+                    {% endfor %}
+                  </select>
+                {% else %}
+                  <input name="{{ field.name }}"
+                         type="{% if field.secret %}password{% else %}text{% endif %}"
+                         value="{% if not field.secret %}{{ field.default }}{% endif %}"
+                         {% if field.required %}required{% endif %}>
+                {% endif %}
+              </Field>
+            {% endfor %}
+            <ActionButton type="submit">
+              Validar y guardar
+            </ActionButton>
+          </FormLayout>
+        </PanelBody>
+      </Panel>
+    {% endif %}
   </MainContent>
 </Layout>

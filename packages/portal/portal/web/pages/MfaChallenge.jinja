@@ -1,0 +1,37 @@
+{#def user, error #}
+{# No CSRF token: there is no session yet to synchronize one against. The
+   pending-login cookie is SameSite=Strict and single-use, and the handler
+   carries the same-origin guard, so a cross-site post cannot reach this
+   form's state. #}
+<Layout title="Verificación" :user="user" csrf_token="">
+  <MainContent>
+    <AuthCard title="Verificación en dos pasos"
+              description="Ingresa el código de tu aplicación de autenticación."
+              title_id="mfa-title">
+      {% if error %}<Message>El código no es válido.</Message>{% endif %}
+      <form action="/login/mfa" method="post" class="form">
+        <Field label="Código"
+               help_text="También puedes usar uno de tus códigos de recuperación.">
+          <input type="text"
+                 name="code"
+                 inputmode="numeric"
+                 autocomplete="one-time-code"
+                 autofocus
+                 required>
+        </Field>
+        <ActionButton type="submit">
+          Verificar
+        </ActionButton>
+      </form>
+      <form class="auth-card__alt" action="/login/passkey/verify" method="post">
+        <input type="hidden" name="login_token" data-passkey-login-token>
+        <input type="hidden" name="response" data-passkey-response>
+        <ActionButton variant="secondary" type="submit" data-passkey-login>
+          <Icon name="lock" :size="14" />
+          Usar una clave de acceso
+        </ActionButton>
+        <p data-passkey-status class="help-text" role="status"></p>
+      </form>
+    </AuthCard>
+  </MainContent>
+</Layout>

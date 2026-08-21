@@ -1,22 +1,45 @@
-{#def title, user=None, csrf_token="", setup=False #}
+{#def title, user=None, csrf_token="", setup=False, minimal=False, active="", active_team=None, onboarding_step=1 #}
 <!DOCTYPE html>
 <html lang="es">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ title }}</title>
-    <link rel="stylesheet" href="/static/tokens.css">
+    <title>{{ title }} · {{ PRODUCT_NAME }}</title>
+    <link rel="stylesheet" href="{{ tokens_stylesheet_url }}">
     <link rel="stylesheet" href="{{ component_stylesheet_url }}">
     <meta name="htmx-config" content='{"includeIndicatorStyles": false}'>
     <script defer src="/static/htmx.min.js"></script>
     <script defer src="/static/portal.js"></script>
   </head>
-  <body{% if not user %} class="signed-out"{% endif %}>
+  <body class="{{ 'signed-out' if not user else ('onboarding' if setup else '') }}">
     <a class="skip-link" href="#content">Saltar al contenido</a>
-    {% if user %}
-      <div class="app-shell">
-        <Sidebar :user="user" :csrf_token="csrf_token" :setup="setup" />
-        <div class="workspace">{{ content }}</div>
+    {% if user and setup %}
+      {# No nav to show mid-setup: a bare brand and a way out, not a sidebar
+         with an empty middle. #}
+      <header class="onboarding-topbar">
+        <a class="onboarding-topbar__brand" href="/">
+          <Brand />
+          {{ PRODUCT_NAME }}
+        </a>
+        <span class="onboarding-topbar__step">Paso {{ onboarding_step }} de 2</span>
+        <InlineAction action="/logout" :csrf_token="csrf_token">
+          <ActionButton variant="ghost" size="sm" type="submit">
+            <Icon name="logout" :size="14" />
+            Cerrar sesión
+          </ActionButton>
+        </InlineAction>
+      </header>
+      {{ content }}
+    {% elif user %}
+      <div class="{{ 'app-shell app-shell--minimal' if minimal else 'app-shell' }}">
+        <Sidebar :user="user"
+                 :csrf_token="csrf_token"
+                 :minimal="minimal"
+                 :active="active"
+                 :active_team="active_team" />
+        <div class="workspace">
+          <div class="page-card">{{ content }}</div>
+        </div>
       </div>
     {% else %}
       {{ content }}

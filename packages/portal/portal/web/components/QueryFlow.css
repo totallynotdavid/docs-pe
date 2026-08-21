@@ -1,44 +1,46 @@
 .query-flow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
   max-width: 680px;
 }
 
 .query-flow__header {
-  margin-bottom: 30px;
+  margin-bottom: var(--spacing-4);
 }
 
 .query-flow__header h1 {
-  font-size: 24px;
+  font-size: var(--font-size-heading-lg);
   letter-spacing: -0.03em;
-  line-height: 1.1;
-  margin: 0;
 }
 
 .query-flow__header p {
   color: var(--foreground-secondary);
-  margin-top: 7px;
+  line-height: var(--line-height-lg);
+  margin-top: var(--spacing-2);
 }
 
-/* Doubled up so this beats `.form` regardless of which stylesheet the
-   asset collector happens to emit first. */
+/* The steps supply their own rhythm and run the full width of the flow, so
+   this form drops the stacked-field grid it would otherwise inherit. */
 .form.query-form {
   gap: 0;
   max-width: none;
 }
 
 .query-step {
-  padding: 0 0 30px;
+  padding-bottom: var(--spacing-8);
 }
 
 .query-step + .query-step {
   border-top: 1px solid var(--border);
-  padding-top: 30px;
+  padding-top: var(--spacing-8);
 }
 
 .query-step__header {
   align-items: flex-start;
   display: flex;
-  gap: 10px;
-  margin-bottom: 15px;
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-4);
 }
 
 .query-step__number {
@@ -48,67 +50,33 @@
   color: var(--foreground-secondary);
   display: inline-flex;
   flex: 0 0 auto;
-  font-size: 11px;
+  font-size: var(--font-size-label);
   font-weight: var(--font-weight-semibold);
-  height: 20px;
+  height: var(--spacing-5);
   justify-content: center;
-  margin-top: 1px;
-  width: 20px;
+  width: var(--spacing-5);
 }
 
 .query-step__header h2 {
   font-size: var(--font-size-body);
-  line-height: 20px;
+  line-height: var(--spacing-5);
 }
 
 .query-step__header p {
   color: var(--foreground-secondary);
   font-size: var(--font-size-caption);
-  margin-top: 3px;
-}
-
-.query-form .csv-file {
-  background: var(--surface);
-  border-width: 1px;
-  min-height: 132px;
-}
-
-.query-form .csv-file:hover,
-.query-form .csv-file--dragging {
-  background: var(--background-transparent-lighter);
-  border-color: var(--foreground-secondary);
-}
-
-.query-form .source-list {
-  margin-bottom: 0;
-}
-
-.query-form .source-option:hover {
-  background: var(--background-transparent-lighter);
-  border-color: var(--border-strong);
-}
-
-.query-form .source-option:has(input:checked) {
-  background: var(--background);
-  border-color: var(--foreground);
-}
-
-.query-form .source-option__preview {
-  display: none;
-  margin-top: 8px;
-}
-
-.query-form .source-option:has(input:checked) .source-option__preview {
-  display: grid;
+  line-height: var(--line-height-lg);
+  margin-top: var(--spacing-1);
 }
 
 .query-action {
   align-items: center;
   border-top: 1px solid var(--border);
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: var(--spacing-4);
   justify-content: space-between;
-  padding-top: 20px;
+  padding-top: var(--spacing-5);
 }
 
 .query-action__connection {
@@ -122,13 +90,12 @@
 }
 
 .query-action__select {
-  align-items: center !important;
-  display: flex !important;
-  font-size: var(--font-size-caption) !important;
-  gap: 8px !important;
+  align-items: center;
+  display: flex;
+  font-size: var(--font-size-caption);
+  gap: var(--spacing-2);
 }
 
-.query-action__select select {
-  min-height: 31px;
+.query-action__select .control {
   width: auto;
 }

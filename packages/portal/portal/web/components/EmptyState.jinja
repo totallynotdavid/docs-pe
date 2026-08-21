@@ -1,1 +1,9 @@
-<p {{ attrs.render(class="empty-state") }}>{{ content }}</p>
+{#def title, description="", icon="inbox" #}
+<div {{ attrs.render(class="empty-state") }}>
+  <span class="empty-state__icon">
+    <Icon :name="icon" :size="20" />
+  </span>
+  <p class="empty-state__title">{{ title }}</p>
+  {% if description %}<p class="empty-state__description">{{ description }}</p>{% endif %}
+  {% if content|trim %}<div class="empty-state__action">{{ content }}</div>{% endif %}
+</div>

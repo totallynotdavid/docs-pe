@@ -1,0 +1,75 @@
+.field {
+  color: var(--foreground-light);
+  display: grid;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
+  gap: var(--spacing-1);
+}
+
+/* One definition for every text control in the portal. The search form and
+   the connection picker used to carry their own near-copies of this block. */
+.control,
+.field input,
+.field select,
+.field textarea {
+  background: var(--background-transparent-lighter);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--foreground);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
+  height: var(--spacing-8);
+  padding: 0 var(--spacing-2);
+  transition:
+    border-color var(--motion-fast) linear,
+    background-color var(--motion-fast) linear;
+  width: 100%;
+}
+
+.control::placeholder,
+.field input::placeholder,
+.field textarea::placeholder {
+  color: var(--foreground-light);
+  font-weight: var(--font-weight-medium);
+}
+
+/* Blue border on focus and nothing else. The base layer's focus ring marks
+   where keyboard traversal has landed on things that don't otherwise change;
+   a text control already reads as focused, and wearing both looks doubled. */
+.control:focus,
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: var(--color-blue);
+  box-shadow: none;
+  outline: none;
+}
+
+.field textarea {
+  border-radius: var(--radius-sm);
+  height: auto;
+  min-height: calc(var(--spacing-12) * 2);
+  padding: var(--spacing-2);
+  resize: vertical;
+}
+
+.control:disabled,
+.field input:disabled,
+.field select:disabled,
+.field textarea:disabled {
+  color: var(--foreground-tertiary);
+  cursor: not-allowed;
+}
+
+/* The passkey flows keep an empty live region for their status text; without
+   this it still claims a row in the form grid. */
+.help-text:empty {
+  display: none;
+}
+
+.help-text {
+  color: var(--foreground-tertiary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-lg);
+}

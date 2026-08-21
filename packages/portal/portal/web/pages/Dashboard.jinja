@@ -1,27 +1,47 @@
-{#def user, csrf_token, teams #}
-<Layout title="Equipos · Worker" :user="user" :csrf_token="csrf_token">
-  <TopBar title="Equipos" />
+{#def user, csrf_token, teams, minimal=False #}
+<Layout title="Equipos"
+        :user="user"
+        :csrf_token="csrf_token"
+        :minimal="minimal"
+        active="teams">
+  <TopBar title="Equipos" icon="users" />
   <MainContent>
     <h1 class="sr-only">Equipos</h1>
     <Panel aria-labelledby="teams-title">
       <PanelHeader title="Tus equipos"
-                   description="Espacios a los que tienes acceso."
+                   :description="'Elige un equipo para buscar.' if minimal else 'Espacios a los que tienes acceso.'"
                    title_id="teams-title" />
       {% if teams %}
-        <List>
-          {% for team in teams %}
-            <ListItem>
-              <a href="/teams/{{ team.id }}">{{ team.name }}</a>
-              <MetaText>
-                {{ team.role|role_name }}
-              </MetaText>
-            </ListItem>
-          {% endfor %}
-        </List>
+        <DataTable>
+          <TableHeader>
+            <TableRow>
+              <TableHead>
+                Equipo
+              </TableHead>
+              {% if not minimal %}<TableHead align="right">Acceso</TableHead>{% endif %}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {% for team in teams %}
+              <TableRow>
+                <TableCell ellipsis>
+                  <a href="/teams/{{ team.id }}{{ '/search' if minimal else '' }}">{{ team.name }}</a>
+                </TableCell>
+                {% if not minimal %}
+                  <TableCell align="right">
+                    <MetaText>
+                      {{ team.role|role_name }}
+                    </MetaText>
+                  </TableCell>
+                {% endif %}
+              </TableRow>
+            {% endfor %}
+          </TableBody>
+        </DataTable>
       {% else %}
-        <EmptyState>
-          Aún no perteneces a un equipo.
-        </EmptyState>
+        <EmptyState icon="users"
+                    title="Aún no perteneces a un equipo"
+                    description="Cuando alguien te agregue a uno, aparecerá aquí." />
       {% endif %}
     </Panel>
   </MainContent>

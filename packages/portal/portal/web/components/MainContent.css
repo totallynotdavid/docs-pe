@@ -1,12 +1,24 @@
+/* The card's body is the only thing that scrolls: the drawer beside it and
+   the header above it stay fixed, so a long list never carries the chrome
+   off the screen with it. */
+.page-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
   margin: 0 auto;
-  max-width: 1120px;
-  padding: 40px 48px 72px;
+  max-width: var(--layout-content);
+  padding: var(--spacing-6) var(--spacing-6) var(--spacing-16);
   width: 100%;
 }
 
 @media (max-width: 720px) {
   .content {
-    padding: 26px 16px 48px;
+    padding: var(--spacing-4) var(--spacing-4) var(--spacing-12);
   }
 }

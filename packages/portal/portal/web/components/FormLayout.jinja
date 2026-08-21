@@ -1,6 +1,11 @@
-{#def action, csrf_token, css_class="" #}
+{#def action, csrf_token, css_class="", enctype=None #}
+{# jinjax resolves a custom component tag's attributes from source text at
+   compile time, so {{ attrs.render() }} (a runtime expression) can't forward
+   unknown attrs into another component tag the way it can onto a plain HTML
+   element. enctype has to be a declared param, passed through explicitly. #}
 <Submission :action="action"
             :csrf_token="csrf_token"
             :class="('form ' ~ css_class)|trim"
-            {{ attrs.render() }}>{{ content }}
+            :enctype="enctype">
+  {{ content }}
 </Submission>

@@ -1,0 +1,8 @@
+{#def label, done=False #}
+<li class="{{ 'checklist__item checklist__item--done' if done else 'checklist__item' }}">
+  <span class="checklist__marker" aria-hidden="true">
+    {% if done %}<Icon name="check" :size="12" />{% endif %}
+  </span>
+  <span class="checklist__label">{{ label }}</span>
+  {% if not done %}<span class="checklist__action">{{ content }}</span>{% endif %}
+</li>

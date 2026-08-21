@@ -1,0 +1,25 @@
+.brand-mark {
+  align-items: center;
+  background: var(--foreground);
+  border-radius: var(--radius-sm);
+  color: var(--primary-foreground);
+  display: inline-flex;
+  flex: 0 0 auto;
+  justify-content: center;
+  letter-spacing: 0;
+}
+
+.brand-mark--sm {
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+  height: var(--spacing-6);
+  width: var(--spacing-6);
+}
+
+.brand-mark--lg {
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-heading-md);
+  font-weight: var(--font-weight-semibold);
+  height: var(--spacing-12);
+  width: var(--spacing-12);
+}

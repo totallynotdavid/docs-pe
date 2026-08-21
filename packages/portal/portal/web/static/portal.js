@@ -41,6 +41,9 @@ function setupCsvDropzone() {
   const status = document.querySelector("[data-csv-status]");
   const title = document.querySelector("[data-csv-title]");
   const detection = document.querySelector("[data-csv-detection]");
+  // The banner keeps a static icon beside the text, so the copy goes into an
+  // inner span rather than replacing the banner's children.
+  const detectionText = document.querySelector("[data-csv-detection-text]");
 
   if (!dropzone || !input || !status || !title) {
     return;
@@ -51,12 +54,37 @@ function setupCsvDropzone() {
     status.textContent = `${(file.size / 1024).toFixed(1)} KB · listo para consultar`;
   }
 
+  // A file over the limit still uploads and hangs the tab instead of
+  // failing fast: the server rejects it by Content-Length before reading
+  // the body, and the ASGI server closes the connection mid-upload rather
+  // than draining it, which browsers don't surface as a clean error.
+  // Blocking submission here means those bytes never go over the wire.
+  function validateSize(file) {
+    const maxBytes = Number(input.dataset.csvMaxBytes);
+
+    if (!maxBytes || file.size <= maxBytes) {
+      input.setCustomValidity("");
+      return true;
+    }
+
+    const message = `el archivo CSV no puede superar los ${input.dataset.csvMaxMb} MB`;
+
+    input.setCustomValidity(message);
+    status.textContent = message;
+    return false;
+  }
+
   function detectDocuments(file) {
-    if (!detection) {
+    if (!detection || !detectionText) {
       return;
     }
 
     const reader = new FileReader();
+
+    function announce(message) {
+      detection.hidden = false;
+      detectionText.textContent = message;
+    }
 
     reader.onload = () => {
       const firstDocument = String(reader.result)
@@ -67,22 +95,17 @@ function setupCsvDropzone() {
         ?.trim();
 
       if (/^10\d{9}$/.test(firstDocument)) {
-        detection.hidden = false;
-        detection.textContent =
-          "Detectamos RUC de personas naturales. “DNI y nombre” ya está seleccionado.";
+        announce("Detectamos RUC de personas naturales. “DNI y nombre” ya está seleccionado.");
         return;
       }
 
       if (/^20\d{9}$/.test(firstDocument)) {
-        detection.hidden = false;
-        detection.textContent =
-          "Detectamos RUC de empresa. Puedes elegir “Representantes legales”.";
+        announce("Detectamos RUC de empresa. Puedes elegir “Representantes legales”.");
         return;
       }
 
       if (/^\d{8}$/.test(firstDocument)) {
-        detection.hidden = false;
-        detection.textContent = "Detectamos DNI. Puedes elegir “Líneas móviles”.";
+        announce("Detectamos DNI. Puedes elegir “Líneas móviles”.");
         return;
       }
 
@@ -94,7 +117,12 @@ function setupCsvDropzone() {
 
   function updateSelectedFile(file) {
     describe(file);
-    detectDocuments(file);
+
+    if (validateSize(file)) {
+      detectDocuments(file);
+    } else if (detection) {
+      detection.hidden = true;
+    }
   }
 
   function selectFile(file) {
@@ -155,6 +183,216 @@ function setupProgressStream() {
   });
 }
 
+// --- WebAuthn/passkeys -------------------------------------------------
+//
+// navigator.credentials wants ArrayBuffers where the server's JSON carries
+// base64url text (challenge, credential ids, the public key user handle),
+// and wants the reverse on the way back. These four functions are the only
+// place that conversion happens.
+
+function base64urlToBuffer(value) {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/");
+  const withPadding = padded.padEnd(padded.length + ((4 - (padded.length % 4)) % 4), "=");
+  const binary = atob(withPadding);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return bytes.buffer;
+}
+
+function bufferToBase64url(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function decodeCredentialOptions(options, kind) {
+  const decoded = { ...options, challenge: base64urlToBuffer(options.challenge) };
+
+  if (kind === "create") {
+    decoded.user = { ...options.user, id: base64urlToBuffer(options.user.id) };
+
+    if (options.excludeCredentials) {
+      decoded.excludeCredentials = options.excludeCredentials.map((credential) => ({
+        ...credential,
+        id: base64urlToBuffer(credential.id),
+      }));
+    }
+  } else if (options.allowCredentials) {
+    decoded.allowCredentials = options.allowCredentials.map((credential) => ({
+      ...credential,
+      id: base64urlToBuffer(credential.id),
+    }));
+  }
+
+  return decoded;
+}
+
+function encodeRegistrationCredential(credential) {
+  return {
+    id: credential.id,
+    rawId: bufferToBase64url(credential.rawId),
+    type: credential.type,
+    response: {
+      clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+      attestationObject: bufferToBase64url(credential.response.attestationObject),
+      transports: credential.response.getTransports
+        ? credential.response.getTransports()
+        : [],
+    },
+    clientExtensionResults: credential.getClientExtensionResults(),
+  };
+}
+
+function encodeAuthenticationCredential(credential) {
+  return {
+    id: credential.id,
+    rawId: bufferToBase64url(credential.rawId),
+    type: credential.type,
+    response: {
+      clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+      authenticatorData: bufferToBase64url(credential.response.authenticatorData),
+      signature: bufferToBase64url(credential.response.signature),
+      userHandle: credential.response.userHandle
+        ? bufferToBase64url(credential.response.userHandle)
+        : null,
+    },
+    clientExtensionResults: credential.getClientExtensionResults(),
+  };
+}
+
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+
+  return { ok: response.ok, data: await response.json() };
+}
+
+// Shared by Login.jinja (no pending_mfa cookie: passwordless) and
+// MfaChallenge.jinja (cookie present: a passkey offered instead of a TOTP
+// code). Which case applies is decided server-side from that cookie, so the
+// client script is identical either way.
+function setupPasskeyLogin() {
+  const form = document.querySelector('form[action="/login/passkey/verify"]');
+
+  if (!form) {
+    return;
+  }
+
+  const button = form.querySelector("[data-passkey-login]");
+  const status = form.querySelector("[data-passkey-status]");
+  const loginTokenInput = form.querySelector("[data-passkey-login-token]");
+  const responseInput = form.querySelector("[data-passkey-response]");
+
+  if (!window.PublicKeyCredential) {
+    button.hidden = true;
+    return;
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    button.disabled = true;
+    if (status) status.textContent = "Esperando tu dispositivo...";
+
+    try {
+      const { ok: optionsOk, data: optionsData } = await postJson(
+        "/login/passkey/options",
+      );
+
+      if (!optionsOk) {
+        throw new Error("options");
+      }
+
+      const assertion = await navigator.credentials.get({
+        publicKey: decodeCredentialOptions(optionsData.options, "get"),
+      });
+
+      loginTokenInput.value = optionsData.loginToken;
+      responseInput.value = JSON.stringify(encodeAuthenticationCredential(assertion));
+      form.submit();
+    } catch (error) {
+      if (status) {
+        status.textContent =
+          error && error.name === "NotAllowedError"
+            ? "Operación cancelada."
+            : "No se pudo verificar la clave de acceso.";
+      }
+
+      button.disabled = false;
+    }
+  });
+}
+
+// Security.jinja: add a passkey to the signed-in account. Same shape as
+// setupPasskeyLogin above: the WebAuthn ceremony is async client code, but
+// fills a real form and submits it for real once it resolves.
+function setupPasskeyEnrollment() {
+  const form = document.querySelector('form[action="/security/passkey/register"]');
+
+  if (!form) {
+    return;
+  }
+
+  const button = form.querySelector("[data-passkey-add]");
+  const status = form.querySelector("[data-passkey-add-status]");
+  const setupTokenInput = form.querySelector("[data-passkey-setup-token]");
+  const responseInput = form.querySelector("[data-passkey-response]");
+
+  if (!window.PublicKeyCredential) {
+    button.disabled = true;
+    if (status) status.textContent = "Este navegador no admite claves de acceso.";
+    return;
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    button.disabled = true;
+    if (status) status.textContent = "Esperando tu dispositivo...";
+
+    try {
+      const { ok: optionsOk, data: optionsData } = await postJson(
+        "/security/passkey/options",
+        { csrf_token: form.elements.csrf_token.value },
+      );
+
+      if (!optionsOk) {
+        throw new Error("options");
+      }
+
+      const credential = await navigator.credentials.create({
+        publicKey: decodeCredentialOptions(optionsData.options, "create"),
+      });
+
+      setupTokenInput.value = optionsData.setupToken;
+      responseInput.value = JSON.stringify(encodeRegistrationCredential(credential));
+      // Not requestSubmit(): that re-fires this same "submit" listener.
+      form.submit();
+    } catch (error) {
+      if (status) {
+        status.textContent =
+          error && error.name === "NotAllowedError"
+            ? "Operación cancelada."
+            : "No se pudo registrar la clave de acceso.";
+      }
+
+      button.disabled = false;
+    }
+  });
+}
+
 setupAccountMenu();
 setupCsvDropzone();
 setupProgressStream();
+setupPasskeyLogin();
+setupPasskeyEnrollment();

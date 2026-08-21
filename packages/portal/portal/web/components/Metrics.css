@@ -1,32 +1,32 @@
+/* Only the inter-cell hairlines (the 1px gap showing the background through)
+   frame this: it's always inside a Panel already, so its own outer border
+   would just be a box drawn inside a box. */
 .metrics {
-  display: grid;
-  gap: 1px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin: 18px 0;
-  overflow: hidden;
   background: var(--border);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  display: grid;
+  gap: 1px;
+  /* auto-fit, not a fixed three: a two-metric panel used to leave a third
+     empty cell showing the hairline background as a grey block. */
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  overflow: hidden;
 }
 
-.metrics div {
+.metrics > div {
   background: var(--background);
-  padding: 13px;
+  padding: var(--spacing-3);
 }
 
 .metrics dt {
   color: var(--foreground-tertiary);
-  font-size: 11px;
+  font-size: var(--font-size-label);
+  line-height: var(--line-height-lg);
 }
 
 .metrics dd {
   font-size: var(--font-size-heading-sm);
   font-weight: var(--font-weight-semibold);
-  margin: 4px 0 0;
-}
-
-@media (max-width: 720px) {
-  .metrics {
-    grid-template-columns: 1fr;
-  }
+  letter-spacing: -0.015em;
+  margin-top: var(--spacing-1);
 }

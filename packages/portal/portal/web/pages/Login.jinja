@@ -1,8 +1,8 @@
-{#def user, csrf_token, error #}
-<Layout title="Ingresar · Worker" :user="user" :csrf_token="csrf_token">
+{#def user, csrf_token, turnstile_site_key, error #}
+<Layout title="Ingresar" :user="user" :csrf_token="csrf_token">
   <MainContent>
     <AuthCard title="Iniciar sesión"
-              description="Accede al portal de Worker."
+              :description="'Accede al portal de ' ~ PRODUCT_NAME ~ '.'"
               title_id="login-title">
       {% if error %}<Message>No se pudo iniciar sesión.</Message>{% endif %}
       <FormLayout action="/login" :csrf_token="csrf_token">
@@ -15,8 +15,27 @@
                  autocomplete="current-password"
                  required>
         </Field>
-        <button type="submit">Ingresar</button>
+        {% if turnstile_site_key %}
+          <div class="cf-turnstile"
+               data-sitekey="{{ turnstile_site_key }}"
+               data-response-field-name="turnstile_token"></div>
+          <script src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+                  async
+                  defer></script>
+        {% endif %}
+        <ActionButton type="submit">
+          Ingresar
+        </ActionButton>
       </FormLayout>
+      <form class="auth-card__alt" action="/login/passkey/verify" method="post">
+        <input type="hidden" name="login_token" data-passkey-login-token>
+        <input type="hidden" name="response" data-passkey-response>
+        <ActionButton variant="secondary" type="submit" data-passkey-login>
+          <Icon name="lock" :size="14" />
+          Entrar con una clave de acceso
+        </ActionButton>
+        <p data-passkey-status class="help-text" role="status"></p>
+      </form>
     </AuthCard>
   </MainContent>
 </Layout>

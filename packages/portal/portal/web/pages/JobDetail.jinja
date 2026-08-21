@@ -1,12 +1,15 @@
-{#def user, csrf_token, team, job #}
-<Layout :title="job.filename ~ ' · Worker'"
+{#def user, csrf_token, team, job, counts #}
+<Layout :title="job.filename"
         :user="user"
-        :csrf_token="csrf_token">
-  <TopBar :title="job.filename">
+        :csrf_token="csrf_token"
+        active="team-jobs"
+        :active_team="team">
+  <TopBar :title="job.filename" icon="list">
     {% if team.role.value == 'team_leader' and not is_terminal(job) %}
       <Submission :action="'/teams/' ~ team.id ~ '/jobs/' ~ job.id ~ '/cancel'"
                   :csrf_token="csrf_token">
-        <ActionButton variant="danger" type="submit">
+        <ActionButton variant="destructive" size="sm" type="submit">
+          <Icon name="x" :size="14" />
           Cancelar consulta
         </ActionButton>
       </Submission>
@@ -20,7 +23,7 @@
              aria-live="polite"
              aria-atomic="true"
              {% if not is_terminal(job) %} data-sse-url="/teams/{{ team.id }}/jobs/{{ job.id }}/progress" {% endif %}>
-          <JobProgressFragment :job="job" />
+          <JobProgress :job="job" :counts="counts" />
         </div>
       </PanelBody>
     </Panel>

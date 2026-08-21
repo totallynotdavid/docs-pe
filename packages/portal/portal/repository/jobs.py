@@ -16,7 +16,10 @@ from portal.domain.models import (
     JobCredential,
     JobEvent,
     JobItem,
+    JobItemCounts,
     JobState,
+    ProtectedSecret,
+    QueueHealth,
     SearchResult,
     SubmissionPlan,
     SubmitJob,
@@ -446,6 +449,21 @@ class PostgresJobRepository:
 
         return tuple(self._job(row) for row in rows)
 
+    async def queue_health(self) -> QueueHealth:
+        async with self._pool.acquire() as connection:
+            active = int(await connection.fetchval(_ACTIVE_COUNT))
+            queued = int(
+                await connection.fetchval(
+                    "SELECT count(*) FROM portal_jobs WHERE state = 'queued'"
+                )
+            )
+
+        return QueueHealth(
+            active_jobs=active,
+            max_active_jobs=MAX_ACTIVE_JOBS,
+            queued_jobs=queued,
+        )
+
     async def add_object_reference(self, reference: ObjectReference) -> None:
         async with self._pool.acquire() as connection:
             await connection.execute(
@@ -564,6 +582,37 @@ class PostgresJobRepository:
 
         return job
 
+    async def item_counts(self, job_id: UUID, team_id: UUID) -> JobItemCounts:
+        """Cheap state tally for progress display.
+
+        Unlike job(), this never reads document, source, or lease columns,
+        so it stays affordable to poll while a job with tens of thousands
+        of items is running.
+        """
+
+        rows = await self._pool.fetch(
+            """
+            SELECT item.state, count(*) AS count
+              FROM portal_job_items AS item
+              JOIN portal_jobs AS job ON job.id = item.job_id
+             WHERE item.job_id = $1
+               AND job.team_id = $2
+               AND item.state != 'excluded'
+             GROUP BY item.state
+            """,
+            job_id,
+            team_id,
+        )
+        by_state = {row["state"]: int(row["count"]) for row in rows}
+
+        return JobItemCounts(
+            pending=by_state.get(ItemState.PENDING.value, 0),
+            running=by_state.get(ItemState.RUNNING.value, 0),
+            published=by_state.get(ItemState.PUBLISHED.value, 0),
+            failed=by_state.get(ItemState.FAILED.value, 0),
+            cancelled=by_state.get(ItemState.CANCELLED.value, 0),
+        )
+
     async def job_events_after(
         self,
         job_id: UUID,
@@ -675,11 +724,14 @@ class PostgresJobRepository:
             """
             SELECT
                 version.provider,
-                version.config_ciphertext
+                version.config_ciphertext,
+                version.wrapped_data_key,
+                version.master_key_version
               FROM portal_jobs AS job
               JOIN portal_team_proxy_credential_versions AS version
                 ON version.id = job.credential_version_id
              WHERE job.id = $1
+               AND version.wrapped_data_key IS NOT NULL
             """,
             job_id,
         )
@@ -689,7 +741,11 @@ class PostgresJobRepository:
 
         return JobCredential(
             row["provider"],
-            bytes(row["config_ciphertext"]),
+            ProtectedSecret(
+                ciphertext=bytes(row["config_ciphertext"]),
+                wrapped_data_key=bytes(row["wrapped_data_key"]),
+                master_key_version=str(row["master_key_version"]),
+            ),
         )
 
     async def item_team(self, item_id: UUID) -> UUID | None:
