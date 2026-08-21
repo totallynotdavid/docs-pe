@@ -289,6 +289,36 @@ class JobItem:
     result_object_id: UUID | None = None
 
 
+@dataclass(frozen=True)
+class JobItemCounts:
+    """How far a job's items have gotten, without paying for the full list.
+
+    Excludes ItemState.EXCLUDED: those are input-validation rejects fixed at
+    submission time, tracked separately as Job.exclusions.
+    """
+
+    pending: int = 0
+    running: int = 0
+    published: int = 0
+    failed: int = 0
+    cancelled: int = 0
+
+    @property
+    def total(self) -> int:
+        return (
+            self.pending + self.running + self.published + self.failed + self.cancelled
+        )
+
+    @property
+    def attempted(self) -> int:
+        """Items that have left pending/running, whatever the outcome.
+
+        The progress bar tracks this rather than `published` alone: a job
+        working through a lot of failures still visibly moves.
+        """
+        return self.published + self.failed + self.cancelled
+
+
 @dataclass
 class Job:
     id: UUID

@@ -1,6 +1,4 @@
-{#def job #}
-{% set total = job.items|length %}
-{% set published = job.items|selectattr('state.value', 'equalto', 'published')|list|length %}
+{#def job, counts #}
 <div class="job-progress">
   <div class="job-progress__heading">
     <Status :value="job.state">
@@ -8,16 +6,21 @@
     </Status>
     <p>{{ job_summary(job) }}</p>
   </div>
-  <ProgressBar :value="published" :total="total" label="Documentos publicados" />
+  <ProgressBar :value="counts.attempted"
+               :total="counts.total"
+               label="Documentos procesados" />
   <Metrics>
     <Metric label="Registros">
-      {{ total }}
+      {{ counts.total }}
+    </Metric>
+    <Metric label="Publicados">
+      {{ counts.published }}
+    </Metric>
+    <Metric label="Con error">
+      {{ counts.failed }}
     </Metric>
     <Metric label="Excluidos">
       {{ job.exclusions|length }}
-    </Metric>
-    <Metric label="Publicados">
-      {{ published }}
     </Metric>
   </Metrics>
   {% if job.exclusions %}
