@@ -11,7 +11,12 @@ from portal.branding import PRODUCT_MARK, PRODUCT_NAME
 from portal.domain.models import CredentialState, Job, JobState, TeamRole
 from portal.messages import choice_label, field_label, provider_label
 from portal.security import totp_qr_svg
-from portal.web.assets import COMPONENTS_DIR, PAGES_DIR, build_component_stylesheet
+from portal.web.assets import (
+    COMPONENTS_DIR,
+    PAGES_DIR,
+    build_component_stylesheet,
+    build_tokens_stylesheet,
+)
 
 
 if TYPE_CHECKING:
@@ -57,6 +62,7 @@ def component_catalog() -> Catalog:
     environment.globals["provider_label"] = provider_label
     environment.globals["totp_qr_svg"] = totp_qr_svg
     environment.globals["component_stylesheet_url"] = build_component_stylesheet()
+    environment.globals["tokens_stylesheet_url"] = build_tokens_stylesheet()
     environment.globals["PRODUCT_NAME"] = PRODUCT_NAME
     environment.globals["PRODUCT_MARK"] = PRODUCT_MARK
 

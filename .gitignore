@@ -17,6 +17,7 @@ results/
 
 # Bundled at process startup by portal.web.assets
 packages/portal/portal/web/static/components.*.css
+packages/portal/portal/web/static/tokens.*.css
 
 # results contain PII data
 /*.csv
