@@ -76,18 +76,25 @@ class WorkerAgent:
 
         # A relayed/latent tailnet path lets a pooled keep-alive connection sit
         # idle long enough (a lookup can take tens of seconds) that the peer or
-        # an in-between relay tears it down; the next request then races a dead
-        # socket and fails with no bytes read. retries=2 is httpx's own
-        # transport-level retry for exactly that connection-level failure, not
-        # for HTTP error responses, so a real rejection (e.g. a stale fence)
-        # still surfaces instead of being masked.
+        # an in-between relay tears it down; the next request reuses it from the
+        # pool and fails with RemoteProtocolError before a single byte comes
+        # back. httpx's own `retries` only covers failures establishing a fresh
+        # connection (httpcore.ConnectionPool's docstring is explicit about
+        # this) and does nothing for a request that fails on a connection
+        # pulled back out of the pool, confirmed live: it kept happening with
+        # retries=2 set. max_keepalive_connections=0 sidesteps the whole class
+        # by never reusing a connection across requests, which costs an extra
+        # handshake per call but these are infrequent control-plane calls, not
+        # a hot path.
         transport = httpx.AsyncHTTPTransport(retries=2)
+        limits = httpx.Limits(max_keepalive_connections=0)
 
         async with httpx.AsyncClient(
             base_url=self.options.worker_api_url,
             headers=headers,
             timeout=90,
             transport=transport,
+            limits=limits,
         ) as client:
             await asyncio.gather(
                 self._heartbeat_loop(client),
