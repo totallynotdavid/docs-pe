@@ -74,10 +74,20 @@ class WorkerAgent:
             "X-Portal-Worker": self.options.worker_id,
         }
 
+        # A relayed/latent tailnet path lets a pooled keep-alive connection sit
+        # idle long enough (a lookup can take tens of seconds) that the peer or
+        # an in-between relay tears it down; the next request then races a dead
+        # socket and fails with no bytes read. retries=2 is httpx's own
+        # transport-level retry for exactly that connection-level failure, not
+        # for HTTP error responses, so a real rejection (e.g. a stale fence)
+        # still surfaces instead of being masked.
+        transport = httpx.AsyncHTTPTransport(retries=2)
+
         async with httpx.AsyncClient(
             base_url=self.options.worker_api_url,
             headers=headers,
             timeout=90,
+            transport=transport,
         ) as client:
             await asyncio.gather(
                 self._heartbeat_loop(client),
