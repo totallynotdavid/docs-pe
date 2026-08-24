@@ -1,9 +1,17 @@
-{#def title, icon="" #}
+{#def title, icon="", breadcrumb=None #}
 <header class="page-header">
   <div class="page-header__left">
     <div class="page-header__title">
       {% if icon %}<Icon :name="icon" />{% endif %}
-      <span>{{ title }}</span>
+      {% if breadcrumb %}
+        <nav class="page-header__breadcrumb" aria-label="Ruta">
+          {% for crumb in breadcrumb %}
+            <a href="{{ crumb.href }}">{{ crumb.label }}</a>
+            <Icon name="chevron-right" size="14" />
+          {% endfor %}
+        </nav>
+      {% endif %}
+      <h1>{{ title }}</h1>
     </div>
   </div>
   <div class="page-header__right">{{ content }}</div>

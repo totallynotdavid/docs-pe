@@ -4,7 +4,9 @@
         :csrf_token="csrf_token"
         active="team-jobs"
         :active_team="team">
-  <TopBar :title="job.filename" icon="list">
+  <TopBar :title="job.filename"
+          icon="file"
+          :breadcrumb="[{'label': 'Equipos', 'href': '/'}, {'label': team.name, 'href': '/teams/' ~ team.id}]">
     {% if team.role.value == 'team_leader' and not is_terminal(job) %}
       <Submission :action="'/teams/' ~ team.id ~ '/jobs/' ~ job.id ~ '/cancel'"
                   :csrf_token="csrf_token">
@@ -16,7 +18,6 @@
     {% endif %}
   </TopBar>
   <MainContent>
-    <h1 class="sr-only">Tarea {{ job.filename }}</h1>
     <Panel>
       <PanelBody>
         <div id="job-progress"

@@ -27,15 +27,7 @@
           Ingresar
         </ActionButton>
       </FormLayout>
-      <form class="auth-card__alt" action="/login/passkey/verify" method="post">
-        <input type="hidden" name="login_token" data-passkey-login-token>
-        <input type="hidden" name="response" data-passkey-response>
-        <ActionButton variant="secondary" type="submit" data-passkey-login>
-          <Icon name="lock" :size="14" />
-          Entrar con una clave de acceso
-        </ActionButton>
-        <p data-passkey-status class="help-text" role="status"></p>
-      </form>
+      <PasskeyFallback label="Entrar con una clave de acceso" />
     </AuthCard>
   </MainContent>
 </Layout>

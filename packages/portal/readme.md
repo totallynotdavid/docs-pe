@@ -341,12 +341,28 @@ Every component is `Name.jinja` plus `Name.css`, and its stylesheet may only
 style what that template renders. `List.css` used to own the badge, the meta
 text, the empty state and the pagination as well; each of those is now its own
 component. `assets.py` concatenates `components/*.css` into one content-hashed
-bundle, so the split costs nothing at request time.
+bundle, so the split costs nothing at request time. Three components are a
+deliberate exception, each owning a tightly-coupled family rather than one
+template each: `Nav.css` covers `NavSection` and `NavItem`, `Metrics.css`
+covers `Metric`, and `DataTable.css` covers `TableHeader`/`TableBody`/
+`TableRow`/`TableHead`/`TableCell`. A new member of one of these families joins
+the family sheet; a genuinely new table-like or nav-like component still gets
+its own `Name.jinja` + `Name.css`.
 
 The shell mirrors the shared app frame: a fixed `100dvh` grid that never
 scrolls, a transparent drawer sitting on `--background-app`, and a `page-card`
 rounded into the drawer's corner only. Only `MainContent` scrolls, so the
-drawer and page header stay put.
+drawer and page header stay put. Inside the card, a page places up to three
+siblings in order: `TopBar` (always — the page's one real `<h1>`, an optional
+breadcrumb, and the page's one primary action, right-aligned), an optional
+`SecondaryBar` for filters/search/view controls, and `MainContent`. A
+multi-step flow's own submit button is the one exception to "primary action
+lives in the header": it stays at the end of the flow, not the header, because
+there is no single page-level action until the last step. `PageIntro` is a
+second, unrelated header idiom for the no-sidebar onboarding archetype
+(`FirstTeam`, `Security`'s pre-setup branch) — it has no drawer to sit beside,
+so it isn't a `TopBar` replacement to reconcile, just a different shell for a
+different kind of page.
 
 Names collide with HTML. djlint lowercases any component tag that matches a
 real element, which silently turned `<Table>` into a bare `<table>` and

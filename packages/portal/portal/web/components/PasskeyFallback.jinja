@@ -1,0 +1,13 @@
+{#def label #}
+{# Shared by Login and MfaChallenge: same passkey assertion flow, same
+   hand-rolled base64url glue in static/portal.js, only the button text
+   differs by which step in the login flow the user is on. #}
+<form class="auth-card__alt" action="/login/passkey/verify" method="post">
+  <input type="hidden" name="login_token" data-passkey-login-token>
+  <input type="hidden" name="response" data-passkey-response>
+  <ActionButton variant="secondary" type="submit" data-passkey-login>
+    <Icon name="lock" :size="14" />
+    {{ label }}
+  </ActionButton>
+  <p data-passkey-status class="help-text" role="status"></p>
+</form>

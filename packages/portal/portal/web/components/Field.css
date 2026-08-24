@@ -61,10 +61,26 @@
   cursor: not-allowed;
 }
 
+.control[aria-invalid="true"],
+.field input[aria-invalid="true"],
+.field select[aria-invalid="true"],
+.field textarea[aria-invalid="true"] {
+  border-color: var(--destructive);
+}
+
+.control[aria-invalid="true"]:focus,
+.field input[aria-invalid="true"]:focus,
+.field select[aria-invalid="true"]:focus,
+.field textarea[aria-invalid="true"]:focus {
+  border-color: var(--destructive);
+}
+
 /* The passkey flows keep an empty live region for their status text; without
-   this it still claims a row in the form grid. */
+   this it still claims a row in the form grid. Reserved to one line's height
+   otherwise, so an error appearing or clearing doesn't shift the field below
+   it. */
 .help-text:empty {
-  display: none;
+  min-height: var(--font-size-xs);
 }
 
 .help-text {
@@ -72,4 +88,8 @@
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-regular);
   line-height: var(--line-height-lg);
+}
+
+.help-text--error {
+  color: var(--destructive);
 }

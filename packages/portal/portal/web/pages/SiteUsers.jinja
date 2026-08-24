@@ -3,24 +3,26 @@
         :user="user"
         :csrf_token="csrf_token"
         active="admin-users">
-  <TopBar title="Administración · Personas" icon="user" />
+  <TopBar title="Personas"
+          icon="user"
+          :breadcrumb="[{'label': 'Administración', 'href': '/admin'}]">
+    <ActionButton type="submit" form="add-user-form">
+      Añadir persona
+    </ActionButton>
+  </TopBar>
   <MainContent>
-    <h1 class="sr-only">Administración de personas</h1>
     <Panel>
       <PanelHeader title="Añadir persona"
                    description="La contraseña se cambia en el primer acceso si corresponde." />
       <PanelBody>
         {% if error %}<Message>{{ error }}</Message>{% endif %}
-        <FormLayout action="/admin/users" :csrf_token="csrf_token">
+        <FormLayout id="add-user-form" action="/admin/users" :csrf_token="csrf_token">
           <Field label="Correo electrónico">
             <input type="email" name="email" required>
           </Field>
           <Field label="Contraseña temporal">
             <input type="password" name="password" minlength="12" required>
           </Field>
-          <ActionButton type="submit">
-            Añadir persona
-          </ActionButton>
         </FormLayout>
       </PanelBody>
     </Panel>

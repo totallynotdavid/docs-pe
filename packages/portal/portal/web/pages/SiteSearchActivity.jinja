@@ -3,9 +3,10 @@
         :user="user"
         :csrf_token="csrf_token"
         active="admin-search-activity">
-  <TopBar title="Administración · Búsquedas" icon="search" />
+  <TopBar title="Búsquedas"
+          icon="search"
+          :breadcrumb="[{'label': 'Administración', 'href': '/admin'}]" />
   <MainContent>
-    <h1 class="sr-only">Actividad de búsqueda por equipo</h1>
     <Panel>
       <PanelHeader title="Uso de búsqueda por equipo"
                    description="Últimos 14 días, equipos más activos primero. Los términos de búsqueda quedan dentro de cada equipo." />

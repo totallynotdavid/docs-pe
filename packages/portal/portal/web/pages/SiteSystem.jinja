@@ -3,9 +3,10 @@
         :user="user"
         :csrf_token="csrf_token"
         active="admin-system">
-  <TopBar title="Administración · Sistema" icon="settings" />
+  <TopBar title="Sistema"
+          icon="settings"
+          :breadcrumb="[{'label': 'Administración', 'href': '/admin'}]" />
   <MainContent>
-    <h1 class="sr-only">Salud del sistema</h1>
     <Panel>
       <PanelHeader title="Cola de trabajo"
                    description="Procesos activos frente al límite fijo del sistema." />

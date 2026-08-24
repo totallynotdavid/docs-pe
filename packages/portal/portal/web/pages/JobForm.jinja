@@ -6,8 +6,7 @@
         :active_team="team">
   <TopBar title="Nueva consulta" icon="plus" />
   <MainContent>
-    <QueryFlow title="Nueva consulta"
-               description="Sube una lista y elige la información que necesitas.">
+    <QueryFlow description="Sube una lista y elige la información que necesitas.">
       {% if error %}<Message>{{ error }}</Message>{% endif %}
       {% if credentials %}
         <FormLayout :action="'/teams/' ~ team.id ~ '/jobs'"

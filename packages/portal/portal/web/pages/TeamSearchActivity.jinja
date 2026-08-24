@@ -4,9 +4,10 @@
         :csrf_token="csrf_token"
         active="team-settings"
         :active_team="team">
-  <TopBar title="Actividad de búsqueda" icon="search" />
+  <TopBar title="Actividad de búsqueda"
+          icon="search"
+          :breadcrumb="[{'label': 'Equipos', 'href': '/'}, {'label': team.name, 'href': '/teams/' ~ team.id}]" />
   <MainContent>
-    <h1 class="sr-only">Actividad de búsqueda de {{ team.name }}</h1>
     <Panel>
       <PanelHeader title="Búsquedas recientes"
                    description="Quién buscó qué y cuántos resultados encontró." />

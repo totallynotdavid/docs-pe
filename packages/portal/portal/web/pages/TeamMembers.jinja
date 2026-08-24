@@ -4,15 +4,21 @@
         :csrf_token="csrf_token"
         active="team-settings"
         :active_team="team">
-  <TopBar title="Personas del equipo" icon="users" />
+  <TopBar title="Personas"
+          icon="users"
+          :breadcrumb="[{'label': 'Equipos', 'href': '/'}, {'label': team.name, 'href': '/teams/' ~ team.id}]">
+    <ActionButton type="submit" form="invite-form">
+      Enviar invitación
+    </ActionButton>
+  </TopBar>
   <MainContent>
-    <h1 class="sr-only">Personas de {{ team.name }}</h1>
     <Panel>
       <PanelHeader title="Invitar a una persona"
                    description="Si todavía no tiene cuenta, le enviamos un enlace para crearla." />
       <PanelBody>
         {% if error %}<Message>{{ error }}</Message>{% endif %}
-        <FormLayout :action="'/teams/' ~ team.id ~ '/settings/members'"
+        <FormLayout id="invite-form"
+                    :action="'/teams/' ~ team.id ~ '/settings/members'"
                     :csrf_token="csrf_token">
           <Field label="Correo electrónico">
             <input type="email" name="email" required autofocus>
@@ -23,9 +29,6 @@
               <option value="team_leader">Puede administrar</option>
             </select>
           </Field>
-          <ActionButton type="submit">
-            Enviar invitación
-          </ActionButton>
         </FormLayout>
       </PanelBody>
     </Panel>

@@ -3,6 +3,17 @@
   gap: var(--spacing-5);
 }
 
+/* At-a-glance status separated from the detail below it: a tinted, bordered
+   block rather than the same flat stack the exclusions list sits in. */
+.job-progress__summary {
+  background: var(--background-transparent-lighter);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: var(--spacing-4);
+  padding: var(--spacing-4);
+}
+
 .job-progress__heading {
   display: grid;
   gap: var(--spacing-2);

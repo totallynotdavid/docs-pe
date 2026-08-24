@@ -1,0 +1,10 @@
+.secondary-bar {
+  align-items: center;
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-3);
+  padding: var(--spacing-2) var(--spacing-3);
+  width: 100%;
+}

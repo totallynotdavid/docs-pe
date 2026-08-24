@@ -54,6 +54,7 @@
   --spacing-12: 48px;
   --spacing-16: 64px;
   --navigation-drawer-width: 220px;
+  --topbar-height: 39px;
   --z-modal: 100;
   /* The page-width ladder, matching the shared Page component's narrow and
      medium variants. A page picks one; nothing hardcodes a width. */

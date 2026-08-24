@@ -5,7 +5,7 @@
   column-gap: var(--spacing-2);
   display: grid;
   grid-template-columns: minmax(0, auto) minmax(0, 1fr);
-  min-height: var(--spacing-12);
+  min-height: var(--topbar-height);
   padding: 0 var(--spacing-3);
   width: 100%;
 }
@@ -30,10 +30,25 @@
   min-width: 0;
 }
 
-.page-header__title span {
+.page-header__title h1 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Ancestor trail, not the current page: dimmer than the title and never the
+   last thing before it truncates when the row runs out of room. */
+.page-header__breadcrumb {
+  align-items: center;
+  color: var(--foreground-tertiary);
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--spacing-1);
+}
+
+.page-header__breadcrumb a:hover {
+  color: var(--foreground);
+  text-decoration: underline;
 }
 
 .page-header__right {

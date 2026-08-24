@@ -9,8 +9,6 @@
     {% if setup and not recovery_codes %}
       <PageIntro title="Protege tu cuenta"
                  description="Tu cuenta será administradora del sitio en cuanto agregues un factor de seguridad: una app de autenticación o una clave de acceso. Ninguna otra persona puede hacer esto por ti." />
-    {% else %}
-      <h1 class="sr-only">Seguridad de la cuenta</h1>
     {% endif %}
     {% if error %}<Message>{{ error }}</Message>{% endif %}
     {% if recovery_codes %}

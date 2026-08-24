@@ -9,5 +9,5 @@
 .subtitle {
   color: var(--foreground-secondary);
   line-height: var(--line-height-lg);
-  max-width: 640px;
+  max-width: var(--layout-narrow);
 }

@@ -106,8 +106,10 @@
 }
 
 /* Reads as prose, not as a control: used where an action sits inline in a
-   sentence or a list row and a filled button would shout. */
-.button--link {
+   sentence or a list row and a filled button would shout. `-danger` is a
+   tone on the same shape, not a second recipe. */
+.button--link,
+.button--link-danger {
   background: transparent;
   border: 0;
   box-shadow: none;
@@ -123,14 +125,7 @@
 }
 
 .button--link-danger {
-  background: transparent;
-  border: 0;
-  box-shadow: none;
   color: var(--color-red-11);
-  height: auto;
-  padding: 0;
-  text-decoration: underline;
-  text-underline-offset: 4px;
 }
 
 .button--link-danger:hover {

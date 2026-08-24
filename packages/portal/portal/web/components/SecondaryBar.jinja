@@ -1,0 +1,6 @@
+{#def #}
+{# A shell region between TopBar and MainContent, for filters, search, and
+   view controls. A sibling of TopBar and MainContent inside Layout's single
+   content slot (Layout.jinja), not nested in either, so it stays pinned
+   above MainContent's scroll the same way TopBar does. #}
+<div class="secondary-bar">{{ content }}</div>

@@ -5,19 +5,9 @@
   max-width: 680px;
 }
 
-.query-flow__header {
-  margin-bottom: var(--spacing-4);
-}
-
-.query-flow__header h1 {
-  font-size: var(--font-size-heading-lg);
-  letter-spacing: -0.03em;
-}
-
-.query-flow__header p {
+.query-flow__description {
   color: var(--foreground-secondary);
   line-height: var(--line-height-lg);
-  margin-top: var(--spacing-2);
 }
 
 /* The steps supply their own rhythm and run the full width of the flow, so

@@ -14,7 +14,6 @@
     {% endif %}
   </TopBar>
   <MainContent>
-    <h1 class="sr-only">{{ team.name }}</h1>
     {% if readiness and not (readiness.has_active_credential and readiness.has_members_beyond_creator) %}
       <Panel>
         <PanelHeader title="Antes de empezar"
