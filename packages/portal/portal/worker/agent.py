@@ -227,7 +227,15 @@ async def self_enroll(
     shown-once credential with a value that never has to be persisted on the
     node at all.
     """
-    async with httpx.AsyncClient(base_url=worker_api_url, timeout=30) as client:
+    # Same connection-retry as WorkerAgent.run(): this runs fresh on every
+    # process start, including every restart of a crash-looping container, so
+    # it can't afford to be the one call with no resilience to a torn-down
+    # keep-alive connection.
+    transport = httpx.AsyncHTTPTransport(retries=2)
+
+    async with httpx.AsyncClient(
+        base_url=worker_api_url, timeout=30, transport=transport
+    ) as client:
         response = await client.post(
             "/enroll",
             content=msgspec.json.encode(
