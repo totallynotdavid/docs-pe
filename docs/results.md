@@ -53,13 +53,19 @@ Phone lines per document. Input is DNIs unless noted.
 | lince_dni             |   9,530 |      7,534 |     1,996 |    16,924 |      0 |
 | puente_piedra_dni     |  27,649 |     23,793 |     3,856 |    57,289 |      0 |
 | vmt_dni               |  31,238 |     26,133 |     5,105 |    61,773 |      0 |
+| jesus_maria_dni       |  11,894 |      9,388 |     2,506 |    20,369 |      0 |
+| el_agustino_dni       |  15,791 |     13,000 |     2,791 |    30,230 |      0 |
+| independencia_dni     |  19,780 |     16,104 |     3,676 |    37,588 |      0 |
+| tacna_dni             |  35,545 |     31,212 |     4,333 |    81,387 |      0 |
+| junin_con_negocio_dni |  48,724 |     41,883 |     6,841 |    99,873 |      0 |
 
 Zero-line share is a useful sanity check for new DNI jobs. Across these
-2,136,293 documents, it's 16.8%, ranging from 4.5% (Ancash) to 30.0% (La
+2,268,027 documents, it's 16.7%, ranging from 4.5% (Ancash) to 30.0% (La
 Molina). Jobs outside roughly 4-30% deserve investigation; results near 0% or
 100% usually indicate a bug, not real data.
 
-Carrier distribution across 3,208,834 lines:
+Carrier distribution across 3,208,834 lines (pre-2026-08-23 jobs; the five
+districts above haven't been folded into this breakdown yet):
 
 | Carrier                   |   Lines |  Share |
 | ------------------------- | ------: | -----: |
@@ -96,6 +102,11 @@ Identity records for RUC-10 (natural persons).
 | lince             |   9,533 |   9,533 |      0 |         0 |
 | puente_piedra     |  27,660 |  27,660 |      0 |         0 |
 | vmt               |  31,266 |  31,266 |      0 |         0 |
+| jesus_maria       |  11,900 |  11,900 |      0 |         0 |
+| el_agustino       |  15,809 |  15,807 |      0 |         2 |
+| independencia     |  19,800 |  19,800 |      0 |         0 |
+| tacna             |  35,583 |  35,583 |      0 |         0 |
+| junin_con_negocio |  48,768 |  48,767 |      0 |         1 |
 
 Jobs before 2026-08-01 had residual error rates ranging from 0.03% to 0.07%,
 entirely explained by two parser gaps (sucesión indivisa handling and non-DNI
