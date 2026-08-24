@@ -2,172 +2,154 @@
 
 Status as of 2026-08-24. Self-enrollment and a git-connected `worker-api` are
 real, built, tested code (see `docs/portal-deployment.md#worker-connectivity`
-and `docs/portal-deployment.md#dokploy-services` for the design). This doc is
-the runbook for standing up a node: what's automatic, and the one-time
-Dokploy/platform quirks that aren't. `zeus` and `apollo` are live proof this
-works end to end: both self-enrolled and started claiming real queued job
-items within a minute of their first deploy.
+and `docs/portal-deployment.md#dokploy-services` for the design). Adding or
+removing a fleet node is scripted end to end in
+[`ops/worker_node.py`](../ops/worker_node.py); this doc explains the fleet
+model and what that script does, for reviewing a run before it happens or
+troubleshooting one that failed partway through.
 
 The fleet is a fixed, small set of named nodes (`master` runs `web` and
-`worker-api`; `zeus` and `apollo` run the worker agent), not autoscaled.
-`aws` and `poseidon` exist as Tailscale nodes but are not part of the fleet
-right now (see Resource identifiers).
+`worker-api`; `zeus`, `apollo`, and `hermes` run the worker agent), not
+autoscaled. `hermes` (`100.106.48.64`) was brought up through
+`ops/worker_node.py add hermes 100.106.48.64` as this pipeline's first live
+test — it worked end to end on the first clean run, with one real bug found
+and fixed along the way: `dokploy_container_id()` filtered by
+`ancestor=dokploy/dokploy:v0.29.14`, which stopped matching after the local
+image tag drifted off the running container sometime in the two weeks since
+that container last restarted (the container kept running fine; only the
+tag->id lookup went stale). Fixed to filter by the swarm service label
+(`com.docker.swarm.service.name=dokploy`) instead, which doesn't depend on the
+image tag staying put. `poseidon` has a stale Dokploy server row (`serverId
+6tVjkiNoiy0GtLfMf6oXT`, username `dokploy` instead of `dubu`) left over from
+before this pipeline existed; it's offline and not currently reachable. `aws`
+was a fleet member during early development; its `portal_workers` credential
+was revoked (`portal enroll-worker --worker-id aws-1 --revoke`) and it was
+never registered with Dokploy, so no further cleanup is owed there.
 
-## Resource identifiers
+## Usage
 
-- Dokploy project `docs-pe`, environment `production`: `projectId
-  7vIKTngpThRQOl6qLNj6z`, `environmentId LNBiAHi2juK4fbQQ58lzs`
-- `web` application: `applicationId pwI2OMynqxYOYS4E8mHV5`, git-connected
-  (`totallynotdavid/docs-pe`, branch `scale`, `packages/portal/Dockerfile`),
-  runs on `master` (no `serverId`: it's the Dokploy host itself, tailnet
-  `100.86.240.39`, `master.taila2cbc1.ts.net`)
-- `worker-api` compose service: `composeId 4j2tZFo9wcw4v9IeEjsnc`,
-  git-connected to the same repo/branch/Dockerfile as `web` via
-  `docker-compose.worker-api.yml`, also on `master`
-- `portal-worker-zeus`: `applicationId amnqjF44pHK7SQyTRp43p`, `serverId
-  cmjQ_i2CZta51vPUVB3z4` (host `zeus`, tailnet `100.106.175.77`)
-- `portal-worker-apollo`: `applicationId t1Uy5LneW11l6Q_76bvKl`, `serverId
-  M4e66HVOFonytW8SGWCYb` (host `apollo`, tailnet `100.101.190.106`)
-- `aws` (tailnet `100.73.201.73`) and `hermes` (tailnet `100.106.48.64`) are
-  Tailscale nodes that exist but have no Dokploy server row and aren't part
-  of the fleet. Don't assume a box named for a place or provider is the one
-  meant here; check `tailscale status` against this list before targeting
-  one. `aws` does still hold a live, unrevoked `portal_workers` credential
-  (`aws-1`, enrolled 2026-08-14 from an earlier ad hoc fix, predates this
-  runbook); nothing runs against it, but it hasn't been explicitly revoked
-  either.
-- A pre-existing Dokploy server row for `poseidon` (`serverId
-  6tVjkiNoiy0GtLfMf6oXT`, `serverType: build`, user `dokploy`) predates this
-  session. Its SSH key (`sshKeyId AW23Q6JMq4M5m2UT9tNTZ`, name "poseidon" in
-  Dokploy, comment `dokploy` on the key itself) is the only SSH key Dokploy
-  holds; it's reused for `zeus` and `apollo` below under username `dubu`, not
-  `dokploy` (see step 4). Poseidon itself is offline
-  (`tailscale status` shows it 3+ days stale) and not currently reachable.
+```sh
+uv run ops/worker_node.py list                          # every node's state, in one shot
+uv run ops/worker_node.py add <name> <tailnet-ip>        # add a node
+uv run ops/worker_node.py add --dry-run <name> <ip>      # show the plan, touch nothing
+uv run ops/worker_node.py remove <name> --yes            # remove a node
+```
 
-## Adding a node
+`<name>` is the short tailnet hostname (`hermes`, not the FQDN). The script
+derives everything else: `PORTAL_WORKER_ID` (`<name>-1`), the Dokploy
+Application name (`portal-worker-<name>`), and the node's FQDN
+(`<name>.taila2cbc1.ts.net`).
 
-None of this is specific to the app; it's what a fresh box needs before
-Dokploy can build and run a Swarm service on it. Once done, adding the next
-node is these same seven steps, not new ones. Every step below was hit and
-fixed live while bringing up `zeus` and `apollo` — this isn't a theoretical
-procedure.
+Requires `DOKPLOY_URL` and `DOKPLOY_API_KEY` in the environment (Dokploy's own
+REST API, `x-api-key` auth: `curl -H "x-api-key: $DOKPLOY_API_KEY"
+"$DOKPLOY_URL/api/project.all"`), and an SSH agent already trusted by the
+tailnet — the same access this pipeline uses to configure the box and to
+reach `master` for the Dokploy-container and `portal_workers` steps.
 
-1. **Docker + docker group.** Needs root, one time:
-   ```sh
-   curl -fsSL https://get.docker.com | sh
-   sudo usermod -aG docker <user>
-   ```
-   Confirm with a fresh SSH connection (group membership doesn't apply to an
-   already-open session): `ssh <user>@<host> docker ps`.
+### The one thing it can't do for you
 
-2. **Passwordless sudo for the deploy user.** Not optional and not just for
-   step 1: Dokploy runs root-level commands against a `deploy`-type server
-   on an ongoing basis, so the SSH user it connects as needs standing
-   `NOPASSWD` sudo, not just enough access to install Docker once.
-   ```sh
-   echo "<user> ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/<user>-dokploy
-   ```
-   Verify: `ssh <user>@<host> 'sudo -n true && echo ok'`.
+`add` needs `dubu@<name>.taila2cbc1.ts.net` to already be reachable over SSH
+with **passwordless sudo**. Getting a fresh box to that point is a one-time,
+per-box, human-with-console-access step: create the `dubu` account, put its
+SSH key on the box, and run
 
-3. **Pre-create `/etc/dokploy`, owned by the deploy user.** `server-setup`
-   does not create this, but the deploy pipeline assumes it exists and runs
-   a plain `mkdir -p /etc/dokploy/logs/<appName>` with no `sudo`, which fails
-   with `mkdir: Permission denied` against root-owned `/etc`, instantly,
-   with an empty deployment log (the real error only shows up in Dokploy's
-   own container logs, not the deployment record).
-   ```sh
-   sudo mkdir -p /etc/dokploy && sudo chown <user>:<user> /etc/dokploy
-   ```
+```sh
+echo "dubu ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/dubu-dokploy
+```
 
-4. **Register the box** (`server-create`): name, tailnet IP, port 22,
-   `sshKeyId` = the existing "poseidon" key, `serverType: deploy`. Use
-   **`dubu`** as the username, not `dokploy`: Tailscale SSH gates who can log
-   in as whom by ACL policy, not key content. Connecting as a fresh `dokploy`
-   user was refused with `tailnet policy does not permit you to SSH as user
-   "dokploy"` even holding the right key, while `dubu` was allowed straight
-   through. That means appending the Dokploy key to `dubu`'s own
-   `~/.ssh/authorized_keys` (no root needed for that part):
-   ```sh
-   echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGnrRCyNUWZLl7CZOwubdxpYUQoPwEQhcnfNuqO+OEqz dokploy" >> ~/.ssh/authorized_keys
-   ```
-   Then `server-validate` (confirms Docker + sudo are visible) and
-   `server-setup`.
+`add` checks for both up front and fails with the exact remediation command
+if either is missing, rather than half-running. Everything after that point
+is scripted and safe to re-run: every step checks whether it's already done
+before acting, so a run that fails partway through is resumed by running
+`add` again, not by figuring out by hand where it stopped.
 
-5. **Make the box its own single-node Swarm manager, with its own
-   `dokploy-network`.** This is the opposite of what seems natural (you'd
-   expect Dokploy to join every server into one shared Swarm led by
-   `master`), but it's what this Dokploy version actually does: when an
-   Application has a `serverId`, Dokploy builds *and* runs `docker service
-   create/update` directly on that box via SSH, not via `master`. That
-   command requires a Swarm *manager*, so the box has to be a manager of
-   some Swarm, and it needs its own `dokploy-network` overlay because it
-   isn't sharing `master`'s.
-   ```sh
-   ssh <user>@<host> docker swarm init --advertise-addr <tailnet-ip>
-   ssh <user>@<host> docker network create --driver overlay --attachable dokploy-network
-   ```
-   Do **not** `docker swarm join` this box to `master`'s Swarm as a worker;
-   that was the first thing tried here and it fails at deploy time with
-   `This node is not a swarm manager` after the image builds successfully
-   (the build step works fine against a worker; only the service
-   create/update step needs manager rights on the box itself). If a box was
-   already joined as a worker, `docker swarm leave --force` first.
+## What `add` actually does
 
-   (Separately: `master`'s own Swarm advertises itself at its Docker bridge
-   IP `172.17.0.1` rather than its tailnet address, which is why
-   `cluster-addWorker` 500s here regardless — one more sign this
-   multi-manager-Swarm approach isn't the one this installation's Dokploy
-   expects. Not worth fixing given the risk of touching a running Swarm's
-   advertise address for a workaround that turned out to be the wrong model
-   anyway.)
+Each of these is one `Step` in `ops/worker_node.py` (`build_docker_steps`,
+`build_swarm_steps`, `build_server_steps`, `build_application_steps`), in
+this order. Platform quirks called out below were each hit and fixed live
+standing up `zeus` and `apollo`; none of this is theoretical.
 
-6. **Add the node's SSH host key to Dokploy's own known_hosts.** Dokploy's
-   deploy pipeline runs `docker -H ssh://<user>@<host>` from inside its own
-   container, which has its own `/root/.ssh` separate from any host user's.
-   It is not TOFU (`StrictHostKeyChecking` is on), so a first-time host
-   fails the handshake instantly with no useful deployment log. This
-   directory is **not a mounted volume** — it resets if the `dokploy`
-   service container itself is ever redeployed or restarted, so if a future
-   node-add hits an instant, log-less deploy failure, do this again first:
-   ```sh
-   CID=$(ssh dubu@master.taila2cbc1.ts.net "docker ps -q --filter ancestor=dokploy/dokploy:v0.29.14")
-   ssh dubu@master.taila2cbc1.ts.net "ssh-keyscan -H <tailnet-ip>" | \
-     ssh dubu@master.taila2cbc1.ts.net "docker exec -i $CID sh -c 'mkdir -p /root/.ssh && cat >> /root/.ssh/known_hosts'"
-   ```
+1. **Docker + docker group.** `curl -fsSL https://get.docker.com | sudo sh`,
+   then `usermod -aG docker dubu`. Every later SSH call in the script is a
+   fresh connection, so the new group membership is picked up automatically;
+   no separate reconnect step is needed.
+
+2. **`/etc/dokploy`, owned by `dubu`.** Dokploy's own `server-setup` does not
+   create this, but the deploy pipeline assumes it exists and runs a plain
+   `mkdir -p /etc/dokploy/logs/<appName>` with no `sudo` — that fails with
+   `Permission denied` against root-owned `/etc`, instantly, with an empty
+   deployment log. The real error only ever showed up in Dokploy's own
+   container logs (`docker logs <dokploy-container-id>` on `master`), never
+   in the deployment record itself.
+
+3. **Make the box its own single-node Swarm manager, with its own
+   `dokploy-network`.** This is the opposite of the natural assumption (join
+   every server into one Swarm led by `master`), but it's what this Dokploy
+   version actually does: when an Application has a `serverId`, Dokploy
+   builds *and* runs `docker service create/update` directly on that box via
+   SSH, not via `master`. That requires the box to be a Swarm *manager*
+   itself, with its own overlay network since it isn't sharing `master`'s.
+   Joining as a worker instead fails at deploy time with `This node is not a
+   swarm manager`, *after* the image has already built successfully — the
+   build step works fine against a worker; only the service create/update
+   step needs manager rights on the box itself.
+
+   (`master`'s own Swarm advertises itself at its Docker bridge IP
+   `172.17.0.1` rather than its tailnet address, which is a separate reason a
+   plain `cluster.addWorker` wouldn't have worked here regardless — one more
+   sign the shared-Swarm model isn't what this installation's Dokploy
+   expects.)
+
+4. **Dokploy's SSH key in `dubu`'s `authorized_keys`.** Tailscale SSH ACLs
+   gate who may log in as whom by *destination username*, not by which key
+   is presented: connecting as a fresh `dokploy` user was refused with
+   `tailnet policy does not permit you to SSH as user "dokploy"` even holding
+   the right key, while `dubu` was let straight through. So the existing
+   Dokploy-managed key (name `poseidon` in Dokploy, `sshKeyId
+   AW23Q6JMq4M5m2UT9tNTZ`, reused for every node) gets appended to `dubu`'s
+   own `authorized_keys` rather than a `dokploy` user being created.
+
+5. **Register the server with Dokploy** (`server.create`, `serverType:
+   deploy`, username `dubu`), then `server.validate` and `server.setup`.
+
+6. **Seed the node's SSH host key into Dokploy's own container's
+   `known_hosts`.** Dokploy's deploy pipeline runs `docker -H
+   ssh://dubu@<host>` from *inside its own container*, which has its own
+   `/root/.ssh`, separate from any host user's, and is not TOFU
+   (`StrictHostKeyChecking` is on) — a first-time host fails the SSH
+   handshake instantly with no useful deployment log. This directory is
+   **not a mounted volume**: it resets if the `dokploy` service container
+   itself is ever redeployed or restarted, so an instant, log-less deploy
+   failure for a node that worked before likely means this step needs
+   redoing (`add` detects and redoes it automatically; it's idempotent).
 
 7. **Create the Dokploy Application**: git-connected to the same
-   repository/branch/Dockerfile as `web`, `command: portal worker`, no
-   domain, no port (the agent only makes outbound calls). Env:
-   - `PORTAL_WORKER_API_URL=http://100.86.240.39:8443`
-   - `PORTAL_WORKER_ID=<name>-1`
-   - `PORTAL_WORKER_BOOTSTRAP_TOKEN=<same value as web and worker-api>`
-   - `PORTAL_WORKER_TAILSCALE_HOSTNAME=<name>.taila2cbc1.ts.net`
+   repository/branch/Dockerfile as `web`, `command: portal worker`, no domain,
+   no port (the agent only makes outbound calls). Env is `PORTAL_WORKER_ID`,
+   `PORTAL_WORKER_API_URL`, `PORTAL_WORKER_TAILSCALE_HOSTNAME`, and
+   `PORTAL_WORKER_BOOTSTRAP_TOKEN` — the last one read back from `worker-api`'s
+   own Dokploy environment rather than asked of the operator, so the one
+   shared secret stays defined in exactly one place. Deploy, then poll
+   `portal_workers` for a fresh heartbeat before reporting success: the agent
+   self-enrolls on start (`POST /enroll`, idempotent by `PORTAL_WORKER_ID`),
+   so there is nothing to run by hand on the node and no credential to copy
+   anywhere.
 
-   Deploy. The agent self-enrolls on start (`POST /enroll`, idempotent by
-   `PORTAL_WORKER_ID`), so there is nothing to run by hand on the node and
-   no credential to copy anywhere. Confirm with `docker service logs
-   <appName>` on the node (should show it claiming job items, not just
-   sitting idle) and a row in `portal_workers` (`SELECT worker_id,
-   tailscale_hostname, revoked_at FROM portal_workers;` against
-   `docspe_portal` on `master`).
+## What `remove` does
 
-Steps 1-3 need a human with root on the box, once. Steps 4-7 are ordinary
-Dokploy operations once 1-3 and the platform quirks in 5 and 6 are worked
-around; nothing there is per-node custom work, no bespoke systemd unit, no
-object storage mount on the node (only `master` needs that, since results
-are published to `worker-api` over HTTP, not written locally).
+Revokes the `portal_workers` credential (`portal enroll-worker --worker-id
+<name>-1 --revoke`, run inside the live `worker-api` container on `master`),
+then deletes the Dokploy Application and the Dokploy server row. That's full
+removal from the fleet — matches how `aws` was cleaned up. It does **not**
+touch the box's Tailscale membership, Docker/Swarm state, or SSH access;
+decommissioning a box's tailnet presence entirely is a separate, larger
+decision than "stop it being a fleet member."
 
 ## What's still manual
 
-- **Steps 1-3 above** need a human with root on each new box.
-- **The single-node-Swarm setup (step 5)** and **the known_hosts seeding
-  (step 6)** are Dokploy/platform quirks in this installation, not
-  application code; they'll recur for every future node (e.g. re-adding
-  `poseidon`) until fixed at the platform level, which isn't planned given
-  the risk of touching a running Swarm's advertise address or Dokploy's
-  container internals for a workaround.
-- **`aws-1`'s stale credential.** Not revoked; flagged above under Resource
-  identifiers, decision deferred to whoever wants `aws` gone for good.
+- **Placing `dubu`'s SSH key and NOPASSWD sudo on a fresh box** (see above) —
+  inherent to needing SSH access to exist before this pipeline can use it.
 - **Tailscale ACL hardening.** `tag:worker` -> `tag:portal-worker-api:8443`
   scoping (see `docs/portal-deployment.md#worker-connectivity`) is not
   configured; every node currently reaches every other node by tailnet
@@ -176,7 +158,8 @@ are published to `worker-api` over HTTP, not written locally).
 - **Bootstrap token rotation.** No tooling for it yet. Today that would mean
   updating `PORTAL_WORKER_BOOTSTRAP_TOKEN` on `web`, `worker-api`, and every
   node's env by hand, then redeploying each. Not needed unless the token
-  leaks; worth a `portal rotate-bootstrap-token` command if it ever is.
+  leaks; worth adding to `ops/worker_node.py` if it ever is.
+- **`poseidon`'s stale server row and `hermes`** — see above.
 
 ## Unrelated thing noticed, not fixed
 
