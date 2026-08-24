@@ -5,6 +5,7 @@ import asyncio
 import base64
 import contextlib
 import json
+import logging
 import os
 
 from dataclasses import dataclass
@@ -34,6 +35,8 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from uuid import UUID
 
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_CONCURRENCY = 4
 IDLE_POLL_SECONDS = 2
@@ -128,7 +131,16 @@ class WorkerAgent:
 
     async def _loop(self, client: httpx.AsyncClient) -> None:
         while True:
-            lease = await self._claim(client)
+            try:
+                lease = await self._claim(client)
+            except httpx.HTTPError:
+                # A single lane's claim failing (worker-api briefly
+                # unreachable, a credential mid-rotation) must not take down
+                # the other concurrent lanes or the heartbeat: same principle
+                # as _heartbeat_loop's own catch, applied here too.
+                logger.warning("worker_claim_failed", exc_info=True)
+                await asyncio.sleep(IDLE_POLL_SECONDS)
+                continue
 
             if lease is None:
                 await asyncio.sleep(IDLE_POLL_SECONDS)
@@ -136,7 +148,15 @@ class WorkerAgent:
 
             result = await self._execute(lease)
 
-            await self._publish(client, lease, result)
+            try:
+                await self._publish(client, lease, result)
+            except httpx.HTTPError:
+                # The lease may already be gone (reclaimed under a stale
+                # fence after this took too long, or the credential rotated
+                # mid-flight): the result for this attempt is lost, but
+                # crashing every other concurrent lane over one rejected
+                # publish is worse. Whoever holds the lease now redoes it.
+                logger.warning("worker_publish_failed", exc_info=True)
 
     async def _claim(self, client: httpx.AsyncClient) -> WorkLease | None:
         response = await client.post(
