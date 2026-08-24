@@ -30,7 +30,16 @@
   min-width: 0;
 }
 
+/* Chrome, not content: without this the app's global h1 default
+   (heading-md/semibold/tight tracking, meant for real page headings) wins
+   over the ancestor's font-size, since that ancestor rule targets the div,
+   not the h1 itself. Matches crm's PageCardHeader title exactly, which
+   sidesteps the whole issue by using a span instead of an h1. */
 .page-header__title h1 {
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: normal;
+  line-height: inherit;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
