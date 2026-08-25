@@ -61,13 +61,22 @@ RETURNING job.id
 
 _CLAIM_ONE = """
 WITH candidate AS (
-    SELECT item.id, job.lease_fence
+    SELECT item.id, job.lease_fence, job.credential_version_id
       FROM portal_job_items AS item
       JOIN portal_jobs AS job ON job.id = item.job_id
      WHERE item.state = 'pending'
        AND job.state = 'running'
        AND item.source = ANY($2::text[])
-     ORDER BY job.queue_sequence, item.ordinal
+     ORDER BY
+       -- A lane that already holds a session for (source, credential) keeps
+       -- draining that pair's work before spilling to anything else, so the
+       -- session it opened gets reused instead of closed after one lookup.
+       CASE
+           WHEN item.source = $3 AND job.credential_version_id = $4 THEN 0
+           ELSE 1
+       END,
+       job.queue_sequence,
+       item.ordinal
      FOR UPDATE OF item SKIP LOCKED
      LIMIT 1
 )
@@ -79,7 +88,13 @@ UPDATE portal_job_items AS item
        attempts = item.attempts + 1
   FROM candidate
  WHERE item.id = candidate.id
-RETURNING item.id, item.job_id, item.source, item.document, item.lease_fence
+RETURNING
+    item.id,
+    item.job_id,
+    item.source,
+    item.document,
+    item.lease_fence,
+    candidate.credential_version_id
 """
 
 # Only running jobs may recover expired items. Cancellation makes its items
@@ -655,6 +670,9 @@ class PostgresJobRepository:
         self,
         worker_id: str,
         sources: tuple[str, ...],
+        *,
+        affinity_source: str | None = None,
+        affinity_credential_version_id: UUID | None = None,
     ) -> ClaimedWork | None:
         if not sources:
             raise SourceValidationError(Reason.WORKER_SOURCE_REQUIRED)
@@ -676,6 +694,8 @@ class PostgresJobRepository:
                 _CLAIM_ONE,
                 worker_id,
                 list(sources),
+                affinity_source,
+                affinity_credential_version_id,
             )
 
         if row is None:
@@ -687,6 +707,7 @@ class PostgresJobRepository:
             source=row["source"],
             document=row["document"],
             lease_fence=int(row["lease_fence"]),
+            credential_version_id=row["credential_version_id"],
         )
 
     async def publish(

@@ -15,6 +15,7 @@ def _lease() -> WorkLease:
         source="osiptel",
         document="10412345678",
         fence=3,
+        credential_version_id=uuid4(),
         credential=CredentialLease(
             provider="geonode",
             config={"username": "equipo", "password": "clave"},

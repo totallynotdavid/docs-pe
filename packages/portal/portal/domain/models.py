@@ -344,6 +344,7 @@ class ClaimedWork:
     source: str
     document: str
     lease_fence: int
+    credential_version_id: UUID
 
 
 @dataclass(frozen=True)

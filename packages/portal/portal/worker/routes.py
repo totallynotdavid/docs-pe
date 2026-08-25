@@ -143,7 +143,12 @@ async def worker_claim(
     protector: NamedDependency[EnvelopeProtector],
     audit: NamedDependency[PostgresAuditLog],
 ) -> WorkLease | None:
-    claim = await worker_jobs.claim(worker.worker_id, tuple(data.sources))
+    claim = await worker_jobs.claim(
+        worker.worker_id,
+        tuple(data.sources),
+        affinity_source=data.affinity_source,
+        affinity_credential_version_id=data.affinity_credential_version_id,
+    )
 
     if claim is None:
         return None
@@ -174,6 +179,7 @@ async def worker_claim(
         source=claim.source,
         document=claim.document,
         fence=claim.lease_fence,
+        credential_version_id=claim.credential_version_id,
         credential=CredentialLease(provider=credential.provider, config=config),
     )
 

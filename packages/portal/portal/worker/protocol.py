@@ -13,6 +13,13 @@ import msgspec
 class ClaimRequest(msgspec.Struct, frozen=True):
     sources: tuple[str, ...] = ()
 
+    # The (source, credential_version_id) of the session the requesting lane
+    # currently holds open, if any. /claim prefers handing back a matching
+    # item so the lane can keep using that session instead of opening a new
+    # one; absent (or non-matching) just falls back to plain FIFO.
+    affinity_source: str | None = None
+    affinity_credential_version_id: UUID | None = None
+
 
 class CredentialLease(msgspec.Struct, frozen=True):
     """The proxy configuration for one job, in the clear.
@@ -33,6 +40,7 @@ class WorkLease(msgspec.Struct, frozen=True):
     source: str
     document: str
     fence: int
+    credential_version_id: UUID
     credential: CredentialLease
 
 

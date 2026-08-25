@@ -8,7 +8,7 @@ import json
 import logging
 import os
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import httpx
@@ -23,6 +23,7 @@ from fetch.proxy.registry import provider_from_values
 from fetch.sites.registry import SITES
 
 from portal.worker.protocol import (
+    ClaimRequest,
     EnrollRequest,
     EnrollResponse,
     HeartbeatRequest,
@@ -35,15 +36,39 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from uuid import UUID
 
+    from fetch.proxy.base import ProxyProvider
+
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONCURRENCY = 4
 IDLE_POLL_SECONDS = 2
 
+# How many consecutive empty claims (no matching work anywhere) a lane waits
+# before releasing a session it's holding open. Keeps a quiet lane from
+# sitting on a sticky proxy session indefinitely while nothing needs it.
+IDLE_SESSION_CLOSE_AFTER = 5
+
 # 1/3 of repository/workers.py's HEARTBEAT_STALE_AFTER, so a single missed
 # beat (network blip, slow request) doesn't flip a healthy worker offline.
 HEARTBEAT_INTERVAL_SECONDS = 15
+
+
+@dataclass
+class LaneSession:
+    """One lane's held session, if any, across consecutive claims.
+
+    A lane is one concurrent slot in the fleet, not one document: it keeps a
+    provider session open across consecutive claims of the same
+    (source, credential_version_id) so fetch.pipeline.session's session_budget
+    is actually amortized the way the standalone fetch CLI amortizes it,
+    instead of every claimed document paying full session-open cost.
+    """
+
+    state: WorkerState = field(default_factory=WorkerState)
+    provider: ProxyProvider | None = None
+    key: tuple[str, UUID] | None = None
+    idle_polls: int = 0
 
 
 @dataclass(frozen=True)
@@ -56,7 +81,13 @@ class AgentOptions:
 
 
 class WorkerAgent:
-    """Claims one document at a time from portal-worker-api and publishes it.
+    """Claims documents from portal-worker-api, one at a time, and publishes them.
+
+    Each concurrent lane keeps its own LaneSession across claims: as long as
+    consecutive claims stay within the same (source, credential_version_id),
+    the lane's provider session lives on instead of being closed and reopened
+    per document, so fetch.pipeline.session's session_budget rotation applies
+    the same way it does in the standalone fetch CLI.
 
     The agent holds no database credentials by design: a compromised browser
     automation node gets the job it is holding and the proxy credential for that
@@ -130,38 +161,90 @@ class WorkerAgent:
                 pass
 
     async def _loop(self, client: httpx.AsyncClient) -> None:
-        while True:
-            try:
-                lease = await self._claim(client)
-            except httpx.HTTPError:
-                # A single lane's claim failing (worker-api briefly
-                # unreachable, a credential mid-rotation) must not take down
-                # the other concurrent lanes or the heartbeat: same principle
-                # as _heartbeat_loop's own catch, applied here too.
-                logger.warning("worker_claim_failed", exc_info=True)
-                await asyncio.sleep(IDLE_POLL_SECONDS)
-                continue
+        lane = LaneSession()
 
-            if lease is None:
-                await asyncio.sleep(IDLE_POLL_SECONDS)
-                continue
+        try:
+            while True:
+                try:
+                    lease = await self._claim(client, lane.key)
+                except httpx.HTTPError:
+                    # A single lane's claim failing (worker-api briefly
+                    # unreachable, a credential mid-rotation) must not take
+                    # down the other concurrent lanes or the heartbeat: same
+                    # principle as _heartbeat_loop's own catch, applied here
+                    # too.
+                    logger.warning("worker_claim_failed", exc_info=True)
+                    await asyncio.sleep(IDLE_POLL_SECONDS)
+                    continue
 
-            result = await self._execute(lease)
+                if lease is None:
+                    await self._idle(lane)
+                    continue
 
-            try:
-                await self._publish(client, lease, result)
-            except httpx.HTTPError:
-                # The lease may already be gone (reclaimed under a stale
-                # fence after this took too long, or the credential rotated
-                # mid-flight): the result for this attempt is lost, but
-                # crashing every other concurrent lane over one rejected
-                # publish is worse. Whoever holds the lease now redoes it.
-                logger.warning("worker_publish_failed", exc_info=True)
+                provider = await self._adopt(lane, lease)
 
-    async def _claim(self, client: httpx.AsyncClient) -> WorkLease | None:
+                result = await self._execute(lane, lease, provider)
+
+                try:
+                    await self._publish(client, lease, result)
+                except httpx.HTTPError:
+                    # The lease may already be gone (reclaimed under a stale
+                    # fence after this took too long, or the credential
+                    # rotated mid-flight): the result for this attempt is
+                    # lost, but crashing every other concurrent lane over one
+                    # rejected publish is worse. Whoever holds the lease now
+                    # redoes it.
+                    logger.warning("worker_publish_failed", exc_info=True)
+        finally:
+            # Cancellation (process shutdown) must not leak a held sticky
+            # session: every other exit from this loop already routes through
+            # _idle/_adopt, which close on their own terms.
+            if lane.provider is not None:
+                with contextlib.suppress(Exception):
+                    await close_session(lane.state, provider=lane.provider)
+
+    async def _idle(self, lane: LaneSession) -> None:
+        lane.idle_polls += 1
+
+        if lane.provider is not None and lane.idle_polls >= IDLE_SESSION_CLOSE_AFTER:
+            with contextlib.suppress(Exception):
+                await close_session(lane.state, provider=lane.provider)
+            lane.provider = None
+            lane.key = None
+
+        await asyncio.sleep(IDLE_POLL_SECONDS)
+
+    async def _adopt(self, lane: LaneSession, lease: WorkLease) -> ProxyProvider:
+        """Point the lane at this lease's (source, credential), closing
+        whatever session it was holding if that's actually changing."""
+        key = (lease.source, lease.credential_version_id)
+
+        if lane.key is not None and lane.key != key and lane.provider is not None:
+            with contextlib.suppress(Exception):
+                await close_session(lane.state, provider=lane.provider)
+
+        provider = provider_from_values(
+            lease.credential.provider, lease.credential.config
+        )
+        lane.key = key
+        lane.provider = provider
+        lane.idle_polls = 0
+
+        return provider
+
+    async def _claim(
+        self, client: httpx.AsyncClient, affinity: tuple[str, UUID] | None
+    ) -> WorkLease | None:
         response = await client.post(
             "/claim",
-            json={"sources": list(self.options.sources)},
+            content=msgspec.json.encode(
+                ClaimRequest(
+                    sources=self.options.sources,
+                    affinity_source=affinity[0] if affinity else None,
+                    affinity_credential_version_id=affinity[1] if affinity else None,
+                )
+            ),
+            headers={"Content-Type": "application/json"},
         )
         response.raise_for_status()
 
@@ -188,6 +271,9 @@ class WorkerAgent:
                 PublishRequest(
                     item_id=lease.item_id,
                     fence=lease.fence,
+                    source=lease.source,
+                    provider=lease.credential.provider,
+                    healthy_contact=result["status"] != "failed",
                     content=content,
                 )
             ),
@@ -195,9 +281,10 @@ class WorkerAgent:
         )
         response.raise_for_status()
 
-    async def _execute(self, lease: WorkLease) -> dict[str, object]:
+    async def _execute(
+        self, lane: LaneSession, lease: WorkLease, provider: ProxyProvider
+    ) -> dict[str, object]:
         provider_name = lease.credential.provider
-        provider = provider_from_values(provider_name, lease.credential.config)
         site = SITES[lease.source]
 
         breaker = self._breakers.setdefault(
@@ -208,37 +295,31 @@ class WorkerAgent:
             ),
         )
 
-        state = WorkerState()
+        result = await fetch_one(
+            site=site,
+            state=lane.state,
+            doc=Doc(lease.document),
+            provider=provider,
+            breaker=breaker,
+            slot_id=1,
+            run_id=self.options.worker_id,
+            lane_id=1,
+            cfg=WorkerConfig(
+                session_budget=site.tuning.session_budget,
+                wait_min_s=0,
+                wait_max_s=0,
+                ban_cooldown_s=provider.tuning.ban_cooldown_s,
+            ),
+        )
 
-        try:
-            result = await fetch_one(
-                site=site,
-                state=state,
-                doc=Doc(lease.document),
-                provider=provider,
-                breaker=breaker,
-                slot_id=1,
-                run_id=self.options.worker_id,
-                lane_id=1,
-                cfg=WorkerConfig(
-                    session_budget=site.tuning.session_budget,
-                    wait_min_s=0,
-                    wait_max_s=0,
-                    ban_cooldown_s=provider.tuning.ban_cooldown_s,
-                ),
-            )
-
-            return {
-                "document": lease.document,
-                "source": lease.source,
-                "status": result.status.value,
-                "columns": list(site.columns),
-                "rows": [list(row) for row in result.rows],
-                "error_code": result.error_code,
-            }
-        finally:
-            with contextlib.suppress(Exception):
-                await close_session(state, provider=provider)
+        return {
+            "document": lease.document,
+            "source": lease.source,
+            "status": result.status.value,
+            "columns": list(site.columns),
+            "rows": [list(row) for row in result.rows],
+            "error_code": result.error_code,
+        }
 
 
 async def self_enroll(
