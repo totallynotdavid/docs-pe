@@ -33,10 +33,17 @@ if TYPE_CHECKING:
 # Cloudflare's Web Analytics beacon, which the zone injects at the edge: the
 # script itself loads from the static subdomain, then reports each pageview
 # to the bare domain over fetch/sendBeacon, so both script-src and connect-src
-# need an entry.
+# need an entry. The edge also injects a small inline bootstrap snippet ahead
+# of that script tag; its content (and therefore its hash) is fixed by
+# Cloudflare, not by this app, so it's pinned by hash rather than widened with
+# 'unsafe-inline'.
+CLOUDFLARE_BEACON_BOOTSTRAP_HASH = (
+    "'sha256-4+7Ef+Wr2glo3yZvK4WyJZtdEuvLztBwfMaMbPpX4WQ='"
+)
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; "
-    f"script-src 'self' {WIDGET_SCRIPT_ORIGIN} https://static.cloudflareinsights.com; "
+    f"script-src 'self' {WIDGET_SCRIPT_ORIGIN} https://static.cloudflareinsights.com "
+    f"{CLOUDFLARE_BEACON_BOOTSTRAP_HASH}; "
     "connect-src 'self' https://cloudflareinsights.com; "
     f"frame-src {WIDGET_SCRIPT_ORIGIN}; "
     "object-src 'none'; "
