@@ -7,7 +7,7 @@
           icon="users"
           :breadcrumb="[{'label': 'Administración', 'href': '/admin'}]">
     {% if not show_form %}
-      <ActionButton href="/admin/teams?add=1">
+      <ActionButton href="/admin/teams?add=1" size="sm">
         Crear equipo
       </ActionButton>
     {% endif %}
@@ -42,20 +42,22 @@
                   </MetaText>
                 </TableCell>
                 <TableCell align="right">
-                  <ActionButton variant="secondary"
-                                size="sm"
-                                :href="'/teams/' ~ team.id ~ '/settings/proxy'">
-                    Gestionar
-                  </ActionButton>
-                  <Submission :action="'/admin/teams/' ~ team.id ~ '/global-search'"
-                              :csrf_token="csrf_token">
-                    <input type="hidden"
-                           name="enabled"
-                           value="{{ 'false' if team.has_global_search else 'true' }}">
-                    <ActionButton type="submit" variant="ghost" size="sm">
-                      {{ 'Quitar búsqueda global' if team.has_global_search else 'Dar búsqueda global' }}
+                  <Actions>
+                    <ActionButton variant="secondary"
+                                  size="sm"
+                                  :href="'/teams/' ~ team.id ~ '/settings/proxy'">
+                      Gestionar
                     </ActionButton>
-                  </Submission>
+                    <Submission :action="'/admin/teams/' ~ team.id ~ '/global-search'"
+                                :csrf_token="csrf_token">
+                      <input type="hidden"
+                             name="enabled"
+                             value="{{ 'false' if team.has_global_search else 'true' }}">
+                      <ActionButton type="submit" variant="ghost" size="sm">
+                        {{ 'Quitar búsqueda global' if team.has_global_search else 'Dar búsqueda global' }}
+                      </ActionButton>
+                    </Submission>
+                  </Actions>
                 </TableCell>
               </TableRow>
             {% endfor %}
