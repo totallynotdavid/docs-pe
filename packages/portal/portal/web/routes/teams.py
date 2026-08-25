@@ -36,6 +36,11 @@ async def team_page(
 ) -> Response:
     current_page = max(page, 1)
     team = await service.team(page_session.user.id, team_id)
+    can_manage = team.role is TeamRole.TEAM_LEADER or page_session.user.is_site_admin
+
+    if not can_manage:
+        return Redirect(f"/teams/{team_id}/search", status_code=303)
+
     jobs, total = await service.jobs(
         page_session.user.id,
         team_id,
@@ -45,15 +50,7 @@ async def team_page(
         page_session.user,
         await service.teams(page_session.user.id),
     )
-
-    # team_readiness is leader/admin-gated: a plain reader sees the jobs
-    # list only, so there is nothing to check readiness for on their behalf.
-    can_manage = team.role is TeamRole.TEAM_LEADER or page_session.user.is_site_admin
-    readiness = (
-        await provisioning.team_readiness(page_session.user.id, team_id)
-        if can_manage
-        else None
-    )
+    readiness = await provisioning.team_readiness(page_session.user.id, team_id)
 
     return render_hx(
         request,

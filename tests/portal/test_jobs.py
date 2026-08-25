@@ -72,6 +72,24 @@ async def test_team_member_can_search_but_not_create_jobs(
     assert new_job.status_code == 403
 
 
+async def test_team_member_landing_on_team_page_is_sent_to_search(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    app: Litestar,
+) -> None:
+    """A plain member has nothing to manage on this page: send them straight
+    to the search they can actually use instead of an empty-state detour."""
+    team_id = (await build_experience(pool, team_repository)).team_id
+
+    with sync_client(app) as client:
+        assert login(client, "miembro@osiptel.test").status_code == 303
+
+        landing = client.get(f"/teams/{team_id}", follow_redirects=False)
+
+    assert landing.status_code == 303
+    assert landing.headers["location"] == f"/teams/{team_id}/search"
+
+
 async def test_job_detail_shows_why_input_was_excluded(
     pool: asyncpg.Pool,
     team_repository: PostgresTeamRepository,
