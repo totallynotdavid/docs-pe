@@ -70,7 +70,6 @@ def site_csv_path(output_csv: Path, site_name: str) -> Path:
 
 
 def _projection_path(success_path: Path, projection_name: str) -> Path:
-    # out.osiptel.csv -> out.osiptel.counts.csv
     return success_path.with_name(
         f"{success_path.stem}.{projection_name}{success_path.suffix}"
     )
@@ -80,7 +79,6 @@ def _success_lines(
     store: OutcomeStore,
     site_name: str,
 ) -> Iterator[list[str | int]]:
-    # Empty successes produce no CSV rows.
     for doc, rows in store.success_rows(site_name):
         for row in rows:
             yield [doc, *row]
@@ -104,7 +102,7 @@ def _write_atomic(
     temp_path = path.with_suffix(path.suffix + ".tmp")
 
     with temp_path.open("w", newline="", encoding="utf-8") as file_obj:
-        writer = csv.writer(file_obj)
+        writer = csv.writer(file_obj, lineterminator="\n")
         writer.writerow(headers)
         writer.writerows(rows)
 
