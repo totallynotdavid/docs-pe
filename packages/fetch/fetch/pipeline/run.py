@@ -180,7 +180,10 @@ async def _run_workers(
 
 def _budget(cfg: RunConfig, site: Site) -> int:
     if cfg.session_budget is not None:
-        return cfg.session_budget
+        # A site's tuning is a ceiling, not just a default: OSIPTEL requires a
+        # fresh session per lookup, and --session-budget must not be able to
+        # relax that for a multi-site run.
+        return min(cfg.session_budget, site.tuning.session_budget)
 
     return site.tuning.session_budget
 

@@ -48,12 +48,36 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
         "--dedupe",
         action=argparse.BooleanOptionalAction,
         default=True,
+        help="drop duplicate documents from the input (default: enabled)",
     )
     parser.add_argument("--debug", action="store_true", default=False)
-    parser.add_argument("--session-budget", type=int, default=None)
-    parser.add_argument("--ban-cooldown-s", type=float, default=None)
-    parser.add_argument("--wait-min-s", type=float, default=0.0)
-    parser.add_argument("--wait-max-s", type=float, default=0.0)
+    parser.add_argument(
+        "--session-budget",
+        type=int,
+        default=None,
+        help=(
+            "lookups per sticky session; a site's own value is a ceiling and "
+            "this can only lower it (default: the site's own default)"
+        ),
+    )
+    parser.add_argument(
+        "--ban-cooldown-s",
+        type=float,
+        default=None,
+        help="delay after a provider ban (default: the provider's own default)",
+    )
+    parser.add_argument(
+        "--wait-min-s",
+        type=float,
+        default=0.0,
+        help="minimum delay after a successful lookup (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--wait-max-s",
+        type=float,
+        default=0.0,
+        help="maximum delay, sampled uniformly (default: %(default)s)",
+    )
     parser.add_argument(
         "--import",
         dest="do_import",

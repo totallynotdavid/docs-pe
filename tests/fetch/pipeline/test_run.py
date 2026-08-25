@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import csv
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from fetch.cli import RunConfig
@@ -208,6 +209,35 @@ def test_run_drops_already_done_rucs_on_a_resumed_run(
     )
     asyncio.run(run(cfg2, run_id="r2"))
     assert second_hits == ["20100000003"]
+
+
+def test_budget_clamps_a_cli_override_to_the_sites_own_ceiling(
+    tmp_path: Path,
+) -> None:
+    # OSIPTEL needs a fresh session per lookup; a multi-site --session-budget
+    # meant for a looser site must not relax that.
+    osiptel = fake_site("osiptel", "value", session_budget=1)
+    cfg = _cfg(tmp_path, tmp_path / "in.csv", (osiptel,))
+
+    assert run_mod._budget(replace(cfg, session_budget=50), osiptel) == 1
+
+
+def test_budget_honors_a_cli_override_below_the_sites_ceiling(
+    tmp_path: Path,
+) -> None:
+    sunat = fake_site("sunat", "value", session_budget=50)
+    cfg = _cfg(tmp_path, tmp_path / "in.csv", (sunat,))
+
+    assert run_mod._budget(replace(cfg, session_budget=10), sunat) == 10
+
+
+def test_budget_falls_back_to_the_sites_default_with_no_cli_override(
+    tmp_path: Path,
+) -> None:
+    sunat = fake_site("sunat", "value", session_budget=50)
+    cfg = _cfg(tmp_path, tmp_path / "in.csv", (sunat,))
+
+    assert run_mod._budget(cfg, sunat) == 50
 
 
 def test_run_releases_every_proxy_session_it_opened(
