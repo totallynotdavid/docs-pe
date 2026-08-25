@@ -3,6 +3,10 @@
 -- not a record. The second file added here will be the first one written
 -- against a database that holds real data.
 
+-- RUC-10 searches match an embedded DNI, which requires leading-wildcard
+-- substring search, used by portal_entries_document_trgm_idx below.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 -- Sites live in one lookup table so the database and
 -- fetch.sites.registry.STABLE_SITES have one list to keep synchronized.
 CREATE TABLE portal_sites (
@@ -19,6 +23,11 @@ CREATE TABLE portal_users (
     email text NOT NULL UNIQUE CHECK (email = lower(email)),
     password_hash text NOT NULL,
     is_site_admin boolean NOT NULL DEFAULT false,
+
+    -- Set while an invited site admin has registered but not yet enrolled a
+    -- second factor; portal_require_admin_second_factor below refuses to let
+    -- is_site_admin itself go true until one exists.
+    pending_site_admin boolean NOT NULL DEFAULT false,
 
     -- A deactivated account keeps every row it ever created (teams, jobs,
     -- credentials) intact; only login and role guards look at this.
@@ -42,9 +51,8 @@ CREATE TABLE portal_users (
         )
     ),
 
-    -- An administrator with a password and nothing else is one phished
-    -- credential away from owning the installation.
-    CONSTRAINT portal_site_admin_requires_mfa CHECK (NOT is_site_admin OR mfa_enabled),
+    CONSTRAINT portal_pending_site_admin_not_admin
+        CHECK (NOT (is_site_admin AND pending_site_admin)),
 
     CONSTRAINT portal_user_active_consistent CHECK (is_active = (deactivated_at IS NULL))
 );
@@ -63,6 +71,79 @@ CREATE TABLE portal_mfa_recovery_codes (
 CREATE INDEX portal_mfa_recovery_codes_unused_idx
     ON portal_mfa_recovery_codes (user_id)
     WHERE used_at IS NULL;
+
+-- credential_id is the natural key: a discoverable login has no user_id yet,
+-- only the assertion's credential id, and it must resolve to exactly one row
+-- across every user in the installation.
+CREATE TABLE portal_webauthn_credentials (
+    id uuid PRIMARY KEY,
+    user_id uuid NOT NULL REFERENCES portal_users(id) ON DELETE CASCADE,
+    credential_id bytea NOT NULL UNIQUE,
+    public_key bytea NOT NULL,
+    sign_count bigint NOT NULL DEFAULT 0 CHECK (sign_count >= 0),
+    transports text[] NOT NULL DEFAULT '{}',
+    label text NOT NULL CHECK (length(trim(label)) > 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    last_used_at timestamptz
+);
+
+CREATE INDEX portal_webauthn_credentials_user_idx
+    ON portal_webauthn_credentials (user_id);
+
+-- Registration/authentication challenges and pending (unconfirmed) TOTP
+-- secrets are single-use and short-lived, exactly what portal_ephemeral's
+-- OneTimeTokens already are for pending-mfa login tokens, so they live there
+-- instead of a bespoke table.
+
+-- A site administrator's second factor can be TOTP (mfa_enabled) or any row in
+-- portal_webauthn_credentials; a single CHECK on portal_users can't see across
+-- tables, so the invariant is a constraint trigger instead, mirroring
+-- portal_require_site_admin below.
+CREATE OR REPLACE FUNCTION portal_require_admin_second_factor()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    affected_user uuid;
+BEGIN
+    IF TG_TABLE_NAME = 'portal_webauthn_credentials' THEN
+        affected_user := OLD.user_id;
+    ELSE
+        affected_user := NEW.id;
+    END IF;
+
+    PERFORM 1 FROM portal_users WHERE id = affected_user AND is_site_admin FOR UPDATE;
+
+    IF FOUND AND NOT EXISTS (
+        SELECT 1 FROM portal_users WHERE id = affected_user AND mfa_enabled
+    ) AND NOT EXISTS (
+        SELECT 1 FROM portal_webauthn_credentials WHERE user_id = affected_user
+    ) THEN
+        RAISE EXCEPTION 'a site administrator must retain at least one second factor'
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF TG_TABLE_NAME = 'portal_webauthn_credentials' THEN
+        RETURN OLD;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER portal_admin_requires_second_factor
+    AFTER INSERT OR UPDATE OF is_site_admin, mfa_enabled
+    ON portal_users
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW
+    EXECUTE FUNCTION portal_require_admin_second_factor();
+
+CREATE CONSTRAINT TRIGGER portal_admin_requires_second_factor_on_passkey_removal
+    AFTER DELETE
+    ON portal_webauthn_credentials
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW
+    EXECUTE FUNCTION portal_require_admin_second_factor();
 
 -- Sessions, rate-limit counters, and single-use tokens. Never a system of
 -- record: dropping every row here logs everyone out and resets every counter,
@@ -83,7 +164,12 @@ CREATE TABLE portal_teams (
     slug text NOT NULL UNIQUE CHECK (slug ~ '^[a-z0-9][a-z0-9-]{1,62}$'),
     name text NOT NULL CHECK (length(trim(name)) > 0),
     created_by uuid NOT NULL REFERENCES portal_users(id),
-    created_at timestamptz NOT NULL DEFAULT now()
+    created_at timestamptz NOT NULL DEFAULT now(),
+
+    -- Entitlement, not a role: a team searching beyond what it scanned itself
+    -- is a paid capability, orthogonal to who administers the installation.
+    -- See portal.application.access.site_admin_or_global_search.
+    has_global_search boolean NOT NULL DEFAULT false
 );
 
 CREATE TABLE portal_team_memberships (
@@ -149,6 +235,28 @@ CREATE CONSTRAINT TRIGGER portal_team_must_have_leader
     DEFERRABLE INITIALLY DEFERRED
     FOR EACH ROW
     EXECUTE FUNCTION portal_require_team_leader();
+
+-- Self-service team invites: a leader or site admin invites by email and no
+-- account needs to exist yet. One live invite per (team_id, email); a
+-- re-invite replaces it in place rather than accumulating history, the same
+-- way portal_ephemeral treats a still-pending key on INSERT ... ON CONFLICT.
+-- History, when it matters, is in portal_audit_log (INVITE_SENT/INVITE_ACCEPTED).
+CREATE TABLE portal_team_invites (
+    id uuid PRIMARY KEY,
+    team_id uuid NOT NULL REFERENCES portal_teams(id) ON DELETE CASCADE,
+    email text NOT NULL CHECK (email = lower(email)),
+    role text NOT NULL CHECK (role IN ('team_leader', 'team_member')),
+    token_hash text NOT NULL UNIQUE CHECK (token_hash ~ '^[0-9a-f]{64}$'),
+    invited_by uuid NOT NULL REFERENCES portal_users(id),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    accepted_at timestamptz,
+    UNIQUE (team_id, email)
+);
+
+CREATE INDEX portal_team_invites_pending_idx
+    ON portal_team_invites (team_id)
+    WHERE accepted_at IS NULL;
 
 CREATE TABLE portal_object_references (
     id uuid PRIMARY KEY,
@@ -474,6 +582,45 @@ CREATE TRIGGER portal_jobs_set_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION portal_set_updated_at();
 
+-- The deduplicated, current-knowledge store: one row per (document, source),
+-- shared across every team that has ever scanned it. portal_job_items (below)
+-- is the append-only per-team ledger of who confirmed what, when; this table
+-- is what search and result views actually read.
+--
+-- columns/rows mirror the wire shape portal.worker.agent already sends
+-- (WorkerAgent._execute: {"columns": [...], "rows": [[...], ...]}), which
+-- itself mirrors fetch.domain.types.Site.columns and Result.rows. Storing
+-- that shape verbatim, rather than typed per-source columns, keeps this
+-- table ignorant of what a source's fields are named -- the same boundary
+-- portal.worker.routes already draws ("the payload is a fetch result whose
+-- shape belongs to the site"). A new fetch site never requires a migration
+-- here.
+CREATE TABLE portal_entries (
+    id uuid PRIMARY KEY,
+    document text NOT NULL CHECK (length(trim(document)) > 0),
+    source text NOT NULL CONSTRAINT portal_entries_source_known
+        REFERENCES portal_sites (code),
+
+    status text NOT NULL CHECK (status IN ('ok', 'not_found', 'failed')),
+    columns text[] NOT NULL,
+    rows jsonb NOT NULL,
+    error_code text,
+
+    first_seen_at timestamptz NOT NULL DEFAULT now(),
+    last_confirmed_at timestamptz NOT NULL DEFAULT now(),
+
+    -- Provenance only: which job most recently confirmed this value. Never a
+    -- visibility check -- a team's access to an entry runs through its own
+    -- portal_job_items rows, not through this column.
+    last_job_id uuid NOT NULL REFERENCES portal_jobs(id) ON DELETE RESTRICT,
+
+    UNIQUE (document, source)
+);
+
+CREATE INDEX portal_entries_document_trgm_idx
+    ON portal_entries
+    USING gin (document gin_trgm_ops);
+
 CREATE TABLE portal_job_items (
     id uuid PRIMARY KEY,
     job_id uuid NOT NULL REFERENCES portal_jobs(id) ON DELETE CASCADE,
@@ -506,6 +653,15 @@ CREATE TABLE portal_job_items (
     lease_fence bigint NOT NULL DEFAULT 0 CHECK (lease_fence >= 0),
     lease_expires_at timestamptz,
 
+    -- The queryable content this item confirmed. Set together with
+    -- result_object_id on a fresh fetch; set alone, pointing at a
+    -- pre-existing row, when the submission review step reused a fresh
+    -- entry instead of re-fetching (see portal.domain.planning).
+    entry_id uuid REFERENCES portal_entries(id) ON DELETE RESTRICT,
+
+    -- The raw captured payload for this specific run, kept only for audit
+    -- and replay. Optional even when published: a reused item sets entry_id
+    -- without ever making a fresh capture, so there is nothing to archive.
     result_object_id uuid,
     published_at timestamptz,
     finished_at timestamptz,
@@ -524,7 +680,7 @@ CREATE TABLE portal_job_items (
     CONSTRAINT portal_job_items_excluded_has_no_source
         CHECK ((state = 'excluded') = (source IS NULL)),
 
-    CHECK ((state = 'published') = (result_object_id IS NOT NULL))
+    CHECK ((state = 'published') = (entry_id IS NOT NULL))
 );
 
 CREATE UNIQUE INDEX portal_job_items_source_unique_idx
@@ -539,8 +695,16 @@ CREATE INDEX portal_job_items_claim_idx
     ON portal_job_items (job_id, ordinal)
     WHERE state = 'pending';
 
-CREATE INDEX portal_job_items_published_idx
-    ON portal_job_items (document, job_id)
+-- Search join: "everything this team has published", newest first.
+CREATE INDEX portal_job_items_team_entry_idx
+    ON portal_job_items (team_id, entry_id)
+    WHERE state = 'published';
+
+-- Submission-review reuse check: "has this team already confirmed
+-- (document, source) recently", scoped to that team alone. A cross-team
+-- match must never surface here -- see portal.repository.entries.
+CREATE INDEX portal_job_items_team_document_idx
+    ON portal_job_items (team_id, document, source)
     WHERE state = 'published';
 
 CREATE INDEX portal_job_items_lease_idx
@@ -635,6 +799,36 @@ CREATE TABLE portal_workers (
     current_job_id uuid REFERENCES portal_jobs(id) ON DELETE SET NULL
 );
 
+-- Fleet-wide circuit breaker state, keyed by (site, provider). Mirrors
+-- fetch.pipeline.breaker's threshold and cooldown formula (see
+-- portal/repository/breakers.py, which imports the constants rather than
+-- redefining them) but lives in Postgres instead of one agent process's
+-- memory: with N worker nodes each running their own in-process breaker,
+-- a systemic failure needed ~10*N wasted attempts fleet-wide before every
+-- lane actually stopped. This table is the shared backstop /claim filters
+-- against, so ten consecutive failures anywhere park every node's lanes for
+-- that pair, matching the single-process invariant docs/architecture.md
+-- describes.
+CREATE TABLE portal_circuit_breakers (
+    source text NOT NULL REFERENCES portal_sites (code),
+    provider text NOT NULL CONSTRAINT portal_circuit_breakers_provider_supported
+        CHECK (provider IN ('geonode', 'dataimpulse')),
+
+    consecutive_failures integer NOT NULL DEFAULT 0
+        CHECK (consecutive_failures >= 0),
+    level integer NOT NULL DEFAULT 0 CHECK (level >= 0),
+    open_until timestamptz,
+
+    updated_at timestamptz NOT NULL DEFAULT now(),
+
+    PRIMARY KEY (source, provider)
+);
+
+CREATE TRIGGER portal_circuit_breakers_set_updated_at
+    BEFORE UPDATE ON portal_circuit_breakers
+    FOR EACH ROW
+    EXECUTE FUNCTION portal_set_updated_at();
+
 CREATE TABLE portal_audit_log (
     id uuid PRIMARY KEY,
     occurred_at timestamptz NOT NULL DEFAULT now(),
@@ -677,12 +871,3 @@ CREATE TRIGGER portal_audit_log_immutable
     BEFORE UPDATE OR DELETE ON portal_audit_log
     FOR EACH ROW
     EXECUTE FUNCTION portal_reject_audit_log_mutation();
-
--- RUC-10 searches match an embedded DNI, which requires leading-wildcard
--- substring search.
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-
-CREATE INDEX portal_job_items_document_trgm_idx
-    ON portal_job_items
-    USING gin (document gin_trgm_ops)
-    WHERE state = 'published';
