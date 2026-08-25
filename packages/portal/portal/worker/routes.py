@@ -225,7 +225,13 @@ async def worker_publish(
         data.item_id,
         worker.worker_id,
         data.fence,
-        reference.id,
+        document=data.document,
+        source=data.source,
+        status=data.status,
+        columns=data.columns,
+        rows=data.rows,
+        error_code=data.error_code,
+        result_object_id=reference.id,
     )
 
     if published:

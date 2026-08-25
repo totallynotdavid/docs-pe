@@ -186,6 +186,9 @@ class Team:
     name: str
     role: TeamRole | None = None
 
+    # Paid capability, not a role: see AuthorizedService._require_global_search.
+    has_global_search: bool = False
+
 
 @dataclass(frozen=True)
 class TeamInvite:
@@ -268,6 +271,22 @@ class SubmissionPlan:
 
 
 @dataclass(frozen=True)
+class SubmissionReview:
+    """A submission plan plus which of its items this team already has a
+    fresh answer for. Shown to the leader before any job is created, so
+    reuse is a visible choice (see docs/architecture.md's search redesign),
+    never a silent skip."""
+
+    items: tuple[PlannedItem, ...]
+    exclusions: tuple[ExcludedInput, ...]
+    reusable: tuple[PlannedItem, ...]
+
+    @property
+    def to_fetch_count(self) -> int:
+        return len(self.items) - len(self.reusable)
+
+
+@dataclass(frozen=True)
 class SubmitJob:
     actor_id: UUID
     team_id: UUID
@@ -276,6 +295,7 @@ class SubmitJob:
     filename: str
     sources: tuple[str, ...]
     lines: tuple[InputLine, ...]
+    reuse: bool = True
 
 
 @dataclass
@@ -286,6 +306,7 @@ class JobItem:
     source: str = ""
     state: ItemState = ItemState.PENDING
     lease_fence: int = 0
+    entry_id: UUID | None = None
     result_object_id: UUID | None = None
 
 
@@ -365,10 +386,22 @@ class NotificationIntent:
 
 
 @dataclass(frozen=True)
-class SearchResult:
-    job_id: UUID
-    filename: str
+class Entry:
+    """What we currently know about one (document, source) pair, deduplicated
+    across every team that has ever confirmed it. columns/rows mirror the
+    fetch Result wire shape verbatim (see portal_entries in
+    001_portal.sql) rather than a typed per-source shape, so this type
+    never needs to change when a fetch site's fields do."""
+
+    id: UUID
     document: str
+    source: str
+    status: str
+    columns: tuple[str, ...]
+    rows: tuple[tuple[object, ...], ...]
+    error_code: str | None
+    first_seen_at: datetime
+    last_confirmed_at: datetime
 
 
 @dataclass(frozen=True)

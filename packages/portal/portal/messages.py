@@ -61,6 +61,9 @@ MESSAGES: dict[Reason, str] = {
     Reason.TOTP_CODE_INVALID: "el código no es válido",
     Reason.WEBAUTHN_VERIFICATION_FAILED: "no se pudo verificar la clave de acceso",
     Reason.PASSKEY_NOT_FOUND: "esa clave de acceso ya no existe",
+    Reason.ENTRY_NOT_FOUND: "documento no encontrado en el equipo",
+    Reason.INPUT_NOT_FOUND: "el archivo de la consulta ya no está disponible",
+    Reason.GLOBAL_SEARCH_REQUIRED: "la búsqueda global no está habilitada para su equipo",
 }
 
 FIELD_LABELS: dict[str, str] = {

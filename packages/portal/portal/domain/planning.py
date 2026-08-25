@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 from fetch.domain.types import Doc
 from fetch.sites.registry import SITES, STABLE_SITES
 
@@ -9,7 +11,27 @@ from portal.domain.models import (
     InputLine,
     PlannedItem,
     SubmissionPlan,
+    SubmissionReview,
 )
+
+
+# How long a team's own prior answer for (document, source) is offered back
+# to them as "already known" before the submission review step treats it as
+# stale and queues a fresh fetch. Only entries with status 'ok' or
+# 'not_found' count as an answer worth reusing; 'failed' never does, no
+# matter how recent, since it has nothing useful to hand back.
+#
+# osiptel's window is short because carrier assignment actually moves: see
+# docs/sites/portabilidad.md, which exists specifically to track carrier
+# changes. sunat identity (DNI <-> name) is close to permanent, so it is
+# cached far longer. These are starting points, not measurements; revisit
+# once actual entry-mutation rates are known (see docs/results.md, which
+# already tracks this system's outputs empirically rather than by guess).
+SOURCE_FRESHNESS: dict[str, timedelta] = {
+    "osiptel": timedelta(days=7),
+    "sunat": timedelta(days=90),
+    "sunat_reps": timedelta(days=30),
+}
 
 
 def plan_submission(
@@ -67,6 +89,28 @@ def plan_submission(
         )
 
     return SubmissionPlan(tuple(items), tuple(exclusions))
+
+
+def build_review(
+    plan: SubmissionPlan,
+    reusable_pairs: frozenset[tuple[str, str]],
+) -> SubmissionReview:
+    """Mark which planned items this team already has a fresh answer for.
+
+    `reusable_pairs` comes from PostgresEntryRepository.reusable_for_team,
+    which scopes the check to this team's own portal_job_items -- never the
+    shared portal_entries table directly, so one team's upload can never
+    reveal (or ride for free on) another team's scan.
+    """
+    reusable = tuple(
+        item for item in plan.items if (item.document, item.source) in reusable_pairs
+    )
+
+    return SubmissionReview(
+        items=plan.items,
+        exclusions=plan.exclusions,
+        reusable=reusable,
+    )
 
 
 def _validate_sources(sources: tuple[str, ...]) -> None:

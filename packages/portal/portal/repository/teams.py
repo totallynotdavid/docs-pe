@@ -15,7 +15,12 @@ if TYPE_CHECKING:
 
 
 def team_row(row: Record) -> Team:
-    return Team(row["id"], row["slug"], row["name"])
+    return Team(
+        row["id"],
+        row["slug"],
+        row["name"],
+        has_global_search=row["has_global_search"],
+    )
 
 
 def _invite_row(row: Record) -> TeamInvite:
@@ -53,7 +58,8 @@ class PostgresTeamRepository:
         async with self._pool.acquire() as connection:
             rows = await connection.fetch(
                 """
-                SELECT team.id, team.slug, team.name, membership.role
+                SELECT team.id, team.slug, team.name, team.has_global_search,
+                       membership.role
                   FROM portal_teams AS team
                   JOIN portal_team_memberships AS membership
                     ON membership.team_id = team.id
@@ -63,14 +69,20 @@ class PostgresTeamRepository:
                 actor_id,
             )
         return tuple(
-            Team(row["id"], row["slug"], row["name"], TeamRole(row["role"]))
+            Team(
+                row["id"],
+                row["slug"],
+                row["name"],
+                TeamRole(row["role"]),
+                has_global_search=row["has_global_search"],
+            )
             for row in rows
         )
 
     async def team(self, team_id: UUID) -> Team | None:
         async with self._pool.acquire() as connection:
             row = await connection.fetchrow(
-                "SELECT id, slug, name FROM portal_teams WHERE id = $1",
+                "SELECT id, slug, name, has_global_search FROM portal_teams WHERE id = $1",
                 team_id,
             )
         return team_row(row) if row else None
@@ -78,7 +90,7 @@ class PostgresTeamRepository:
     async def team_by_slug(self, slug: str) -> Team | None:
         async with self._pool.acquire() as connection:
             row = await connection.fetchrow(
-                "SELECT id, slug, name FROM portal_teams WHERE slug = $1",
+                "SELECT id, slug, name, has_global_search FROM portal_teams WHERE slug = $1",
                 slug,
             )
         return team_row(row) if row else None
@@ -86,9 +98,31 @@ class PostgresTeamRepository:
     async def all_teams(self) -> tuple[Team, ...]:
         async with self._pool.acquire() as connection:
             rows = await connection.fetch(
-                "SELECT id, slug, name FROM portal_teams ORDER BY name"
+                "SELECT id, slug, name, has_global_search FROM portal_teams ORDER BY name"
             )
         return tuple(team_row(row) for row in rows)
+
+    async def set_global_search(self, team_id: UUID, *, enabled: bool) -> None:
+        async with self._pool.acquire() as connection:
+            await connection.execute(
+                "UPDATE portal_teams SET has_global_search = $2 WHERE id = $1",
+                team_id,
+                enabled,
+            )
+
+    async def any_team_has_global_search(self, actor_id: UUID) -> bool:
+        async with self._pool.acquire() as connection:
+            flag = await connection.fetchval(
+                """
+                SELECT bool_or(team.has_global_search)
+                  FROM portal_teams AS team
+                  JOIN portal_team_memberships AS membership
+                    ON membership.team_id = team.id
+                 WHERE membership.user_id = $1
+                """,
+                actor_id,
+            )
+        return bool(flag)
 
     async def users(self) -> tuple[PortalUser, ...]:
         async with self._pool.acquire() as connection:
@@ -131,7 +165,7 @@ class PostgresTeamRepository:
         async with self._pool.acquire() as connection:
             rows = await connection.fetch(
                 """
-                SELECT team.id, team.slug, team.name
+                SELECT team.id, team.slug, team.name, team.has_global_search
                   FROM portal_teams AS team
                   JOIN portal_team_memberships AS membership
                     ON membership.team_id = team.id

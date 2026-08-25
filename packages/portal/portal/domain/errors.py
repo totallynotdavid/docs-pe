@@ -13,6 +13,9 @@ class Reason(StrEnum):
     TEAM_NOT_FOUND = "team_not_found"
     JOB_NOT_FOUND = "job_not_found"
     USER_NOT_FOUND = "user_not_found"
+    ENTRY_NOT_FOUND = "entry_not_found"
+    INPUT_NOT_FOUND = "input_not_found"
+    GLOBAL_SEARCH_REQUIRED = "global_search_required"
 
     SOURCE_REQUIRED = "source_required"
     SOURCE_DUPLICATED = "source_duplicated"

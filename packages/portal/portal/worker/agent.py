@@ -9,13 +9,13 @@ import logging
 import os
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 import httpx
 import msgspec
 import psutil
 
-from fetch.domain.types import Doc
+from fetch.domain.types import Cell, Doc
 from fetch.pipeline.breaker import CircuitBreaker
 from fetch.pipeline.fetch import fetch_one
 from fetch.pipeline.session import WorkerConfig, WorkerState, close_session
@@ -69,6 +69,18 @@ class LaneSession:
     provider: ProxyProvider | None = None
     key: tuple[str, UUID] | None = None
     idle_polls: int = 0
+
+
+class ExecuteResult(TypedDict):
+    """The shape sent to /publish, both as portal_entries' typed fields and,
+    unmodified, as the archived content blob."""
+
+    document: str
+    source: str
+    status: str
+    columns: list[str]
+    rows: list[list[Cell]]
+    error_code: str | None
 
 
 @dataclass(frozen=True)
@@ -259,7 +271,7 @@ class WorkerAgent:
         self,
         client: httpx.AsyncClient,
         lease: WorkLease,
-        result: dict[str, object],
+        result: ExecuteResult,
     ) -> None:
         content = base64.b64encode(
             json.dumps(result, separators=(",", ":")).encode()
@@ -274,6 +286,11 @@ class WorkerAgent:
                     source=lease.source,
                     provider=lease.credential.provider,
                     healthy_contact=result["status"] != "failed",
+                    document=result["document"],
+                    status=result["status"],
+                    columns=tuple(result["columns"]),
+                    rows=tuple(tuple(row) for row in result["rows"]),
+                    error_code=result["error_code"],
                     content=content,
                 )
             ),
@@ -283,7 +300,7 @@ class WorkerAgent:
 
     async def _execute(
         self, lane: LaneSession, lease: WorkLease, provider: ProxyProvider
-    ) -> dict[str, object]:
+    ) -> ExecuteResult:
         provider_name = lease.credential.provider
         site = SITES[lease.source]
 

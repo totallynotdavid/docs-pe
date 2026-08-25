@@ -112,6 +112,31 @@ def team_reader(
     return decorator
 
 
+def site_admin_or_global_search(
+    *,
+    actor_id: str | Callable[[Mapping[str, Any]], UUID] = "actor_id",
+) -> Callable[[F], F]:
+    """Requires site-admin standing, or membership on a team with the paid
+    global-search entitlement (portal_teams.has_global_search).
+
+    Deliberately not team_id-scoped: global search's whole point is looking
+    beyond one team, so there is no team_id parameter to resolve. The
+    entitlement check itself still runs per-actor, not per-request-team.
+    """
+
+    def decorator(fn: F) -> F:
+        @functools.wraps(fn)
+        async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+            arguments = _arguments(fn, self, args, kwargs)
+            await self._require_global_search(_resolve(actor_id, arguments))
+            return await fn(self, *args, **kwargs)
+
+        _mark(wrapper, fn, "site_admin_or_global_search")
+        return cast("F", wrapper)
+
+    return decorator
+
+
 def site_admin_or_leader(
     *,
     actor_id: str | Callable[[Mapping[str, Any]], UUID] = "actor_id",

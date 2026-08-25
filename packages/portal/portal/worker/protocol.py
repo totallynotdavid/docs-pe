@@ -4,6 +4,8 @@ from uuid import UUID
 
 import msgspec
 
+from fetch.domain.types import Row
+
 
 # The wire between portal-worker-api and the worker agent, defined once and
 # imported by both sides. When these two drifted apart they were a dict literal
@@ -57,8 +59,21 @@ class PublishRequest(msgspec.Struct, frozen=True):
     provider: str
     healthy_contact: bool
 
-    # Base64 rather than a nested object: the payload is a fetch result whose
-    # shape belongs to the site, and the API stores it without reading it.
+    # The queryable content this run confirmed for (document, source),
+    # upserted into portal_entries. Typed for the same reason as
+    # source/provider above: worker-api never parses `content` for this
+    # either. columns/rows stay a generic (names, cells) shape rather than a
+    # site-specific one, so this struct never needs to change when a fetch
+    # site's fields do -- see portal_entries in 001_portal.sql.
+    document: str
+    status: str
+    columns: tuple[str, ...]
+    rows: tuple[Row, ...]
+    error_code: str | None
+
+    # Base64: the complete raw result, kept as an opaque archive for audit
+    # and replay. Duplicates document/status/columns/rows above by content,
+    # never read back out to reconstruct them.
     content: str
 
 

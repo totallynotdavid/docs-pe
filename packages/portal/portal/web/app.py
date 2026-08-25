@@ -25,6 +25,7 @@ from portal.notify.mailer import open_mailer
 from portal.repository.audit import PostgresAuditLog
 from portal.repository.auth import PostgresAuthRepository
 from portal.repository.credentials import PostgresCredentialRepository
+from portal.repository.entries import PostgresEntryRepository
 from portal.repository.jobs import PostgresJobRepository
 from portal.repository.search_log import PostgresSearchLogRepository
 from portal.repository.teams import PostgresTeamRepository
@@ -99,6 +100,7 @@ def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
             PostgresTeamRepository(pool),
             PostgresCredentialRepository(pool),
             PostgresJobRepository(pool),
+            PostgresEntryRepository(pool),
             PostgresSearchLogRepository(pool),
             PostgresWorkerRegistry(pool),
         )

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
@@ -20,7 +22,6 @@ from portal.domain.models import (
     JobState,
     ProtectedSecret,
     QueueHealth,
-    SearchResult,
     SubmissionPlan,
     SubmitJob,
 )
@@ -138,7 +139,8 @@ RETURNING item.job_id
 _PUBLISH_FENCED = """
 UPDATE portal_job_items AS item
    SET state = 'published',
-       result_object_id = $4,
+       entry_id = $4,
+       result_object_id = $5,
        published_at = now(),
        finished_at = now(),
        lease_owner = NULL,
@@ -154,6 +156,24 @@ UPDATE portal_job_items AS item
 RETURNING item.job_id
 """
 
+_UPSERT_ENTRY = """
+INSERT INTO portal_entries (
+    id, document, source, status, columns, rows, error_code, last_job_id
+)
+VALUES (
+    $1, $2, $3, $4, $5, $6::jsonb, $7,
+    (SELECT job_id FROM portal_job_items WHERE id = $8)
+)
+ON CONFLICT (document, source) DO UPDATE
+    SET status = EXCLUDED.status,
+        columns = EXCLUDED.columns,
+        rows = EXCLUDED.rows,
+        error_code = EXCLUDED.error_code,
+        last_confirmed_at = now(),
+        last_job_id = EXCLUDED.last_job_id
+RETURNING id
+"""
+
 
 class PostgresJobRepository:
     """PostgreSQL job lifecycle and worker queue."""
@@ -165,20 +185,36 @@ class PostgresJobRepository:
         self,
         command: SubmitJob,
         plan: SubmissionPlan,
+        reusable: dict[tuple[str, str], UUID],
     ) -> Job:
+        """Create a job. Items in `reusable` (this team's own fresh answers,
+        see PostgresEntryRepository.reusable_for_team) are inserted already
+        published, pointing at the existing entry, and never reach a worker.
+        Everything else is inserted pending, exactly as before reuse existed.
+        """
         job_id = uuid4()
+        to_fetch = [
+            item for item in plan.items if (item.document, item.source) not in reusable
+        ]
+        reused = [
+            item for item in plan.items if (item.document, item.source) in reusable
+        ]
 
         async with self._pool.acquire() as connection, connection.transaction():
             max_active = await self._lock_queue_gate(connection)
             active = await connection.fetchval(_ACTIVE_COUNT)
 
+            # A job with nothing left to fetch is done the instant it's
+            # created, whether that's because every line was excluded or
+            # because this team already had a fresh answer for all of it.
             state = (
                 JobState.COMPLETED
-                if not plan.items
+                if not to_fetch
                 else JobState.RUNNING
                 if int(active) < max_active
                 else JobState.QUEUED
             )
+            terminal_reason = "all_records_excluded" if not plan.items else None
 
             row = await connection.fetchrow(
                 """
@@ -193,20 +229,7 @@ class PostgresJobRepository:
                     state,
                     terminal_reason
                 )
-                VALUES (
-                    $1,
-                    $2,
-                    $3,
-                    $4,
-                    $5,
-                    $6,
-                    $7,
-                    $8,
-                    CASE
-                        WHEN $8 = 'completed'
-                        THEN 'all_records_excluded'
-                    END
-                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 RETURNING queue_sequence
                 """,
                 job_id,
@@ -217,6 +240,7 @@ class PostgresJobRepository:
                 command.filename,
                 list(command.sources),
                 state.value,
+                terminal_reason,
             )
 
             await connection.executemany(
@@ -241,7 +265,37 @@ class PostgresJobRepository:
                         item.document,
                         item.source,
                     )
-                    for item in plan.items
+                    for item in to_fetch
+                ],
+            )
+
+            await connection.executemany(
+                """
+                INSERT INTO portal_job_items (
+                    id,
+                    job_id,
+                    team_id,
+                    ordinal,
+                    document,
+                    source,
+                    state,
+                    entry_id,
+                    published_at,
+                    finished_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, 'published', $7, now(), now())
+                """,
+                [
+                    (
+                        uuid4(),
+                        job_id,
+                        command.team_id,
+                        item.ordinal,
+                        item.document,
+                        item.source,
+                        reusable[item.document, item.source],
+                    )
+                    for item in reused
                 ],
             )
 
@@ -375,43 +429,6 @@ class PostgresJobRepository:
             await self._promote_locked(connection)
 
         return self._job(row)
-
-    async def search_published(
-        self,
-        team_id: UUID,
-        needle: str,
-        *,
-        limit: int,
-        offset: int,
-    ) -> tuple[tuple[SearchResult, ...], bool]:
-        rows = await self._pool.fetch(
-            """
-            SELECT item.job_id, job.filename, item.document
-              FROM portal_job_items AS item
-              JOIN portal_jobs AS job ON job.id = item.job_id
-             WHERE item.team_id = $1
-               AND item.state = 'published'
-               AND item.document ILIKE '%' || $2 || '%'
-             ORDER BY job.queue_sequence DESC, item.ordinal
-             LIMIT $3
-            OFFSET $4
-            """,
-            team_id,
-            needle,
-            limit + 1,
-            offset,
-        )
-
-        results = tuple(
-            SearchResult(
-                row["job_id"],
-                row["filename"],
-                row["document"],
-            )
-            for row in rows[:limit]
-        )
-
-        return results, len(rows) > limit
 
     async def recent_job_events(
         self,
@@ -567,6 +584,7 @@ class PostgresJobRepository:
                     source,
                     state,
                     lease_fence,
+                    entry_id,
                     result_object_id,
                     reason
                   FROM portal_job_items
@@ -597,11 +615,74 @@ class PostgresJobRepository:
                     source=item["source"],
                     state=ItemState(item["state"]),
                     lease_fence=int(item["lease_fence"]),
+                    entry_id=item["entry_id"],
                     result_object_id=item["result_object_id"],
                 )
             )
 
         return job
+
+    async def items_for_job(
+        self,
+        job_id: UUID,
+        team_id: UUID,
+        *,
+        page: int,
+        page_size: int,
+    ) -> tuple[tuple[JobItem, ...], int]:
+        """A job's items, paginated -- unlike job(), which loads every item
+        unconditionally and stays cheap only because nothing renders them.
+        This is what JobDetail's results list actually reads, so it must
+        stay paginated even for a job with hundreds of thousands of items.
+        """
+        offset = (page - 1) * page_size
+
+        async with self._pool.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT id, ordinal, document, source, state, lease_fence,
+                       entry_id, result_object_id
+                  FROM portal_job_items
+                 WHERE job_id = $1
+                   AND team_id = $2
+                   AND state != 'excluded'
+                 ORDER BY ordinal, source
+                 LIMIT $3
+                OFFSET $4
+                """,
+                job_id,
+                team_id,
+                page_size,
+                offset,
+            )
+
+            total = await connection.fetchval(
+                """
+                SELECT count(*)
+                  FROM portal_job_items
+                 WHERE job_id = $1
+                   AND team_id = $2
+                   AND state != 'excluded'
+                """,
+                job_id,
+                team_id,
+            )
+
+        items = tuple(
+            JobItem(
+                id=row["id"],
+                ordinal=int(row["ordinal"]),
+                document=row["document"],
+                source=row["source"],
+                state=ItemState(row["state"]),
+                lease_fence=int(row["lease_fence"]),
+                entry_id=row["entry_id"],
+                result_object_id=row["result_object_id"],
+            )
+            for row in rows
+        )
+
+        return items, int(total)
 
     async def item_counts(self, job_id: UUID, team_id: UUID) -> JobItemCounts:
         """Cheap state tally for progress display.
@@ -721,18 +802,44 @@ class PostgresJobRepository:
         item_id: UUID,
         worker_id: str,
         fence: int,
+        *,
+        document: str,
+        source: str,
+        status: str,
+        columns: tuple[str, ...],
+        rows: tuple[tuple[object, ...], ...],
+        error_code: str | None,
         result_object_id: UUID,
     ) -> bool:
-        """Publish only while the worker still owns both fences."""
+        """Publish only while the worker still owns both fences.
+
+        Upserts portal_entries first: it's a correct, useful answer for
+        (document, source) regardless of whether this particular item's
+        fence still holds, so there's no reason to gate it behind the
+        fencing check that follows.
+        """
 
         async with self._pool.acquire() as connection, connection.transaction():
             await self._lock_queue_gate(connection)
+
+            entry_id = await connection.fetchval(
+                _UPSERT_ENTRY,
+                uuid4(),
+                document,
+                source,
+                status,
+                list(columns),
+                json.dumps(rows),
+                error_code,
+                item_id,
+            )
 
             job_id = await connection.fetchval(
                 _PUBLISH_FENCED,
                 item_id,
                 worker_id,
                 fence,
+                entry_id,
                 result_object_id,
             )
 
@@ -773,6 +880,37 @@ class PostgresJobRepository:
                 wrapped_data_key=bytes(row["wrapped_data_key"]),
                 master_key_version=str(row["master_key_version"]),
             ),
+        )
+
+    async def object_reference(
+        self,
+        reference_id: UUID,
+        team_id: UUID,
+    ) -> ObjectReference | None:
+        row = await self._pool.fetchrow(
+            """
+            SELECT id, team_id, provider, container, object_key,
+                   sha256, size_bytes, content_type
+              FROM portal_object_references
+             WHERE id = $1
+               AND team_id = $2
+            """,
+            reference_id,
+            team_id,
+        )
+
+        if row is None:
+            return None
+
+        return ObjectReference(
+            id=row["id"],
+            team_id=row["team_id"],
+            provider=row["provider"],
+            container=row["container"],
+            object_key=row["object_key"],
+            sha256=row["sha256"],
+            size_bytes=int(row["size_bytes"]),
+            content_type=row["content_type"],
         )
 
     async def item_team(self, item_id: UUID) -> UUID | None:
