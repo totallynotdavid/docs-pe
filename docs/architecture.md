@@ -37,9 +37,15 @@ the web UI and worker that runs fetch jobs on behalf of a team
 ([packages/portal/readme.md](../packages/portal/readme.md)). Each package keeps
 its own copy of a site's parser, columns, and document vocabulary rather than
 sharing code: a site that works in `capture` might not yet work in `browser`,
-and might never need to move to `fetch`. Portal imports `fetch`, and only for
-types, not runtime logic. This independence is deliberate, and it's the one rule
-in this codebase worth never breaking: do not add cross-package imports.
+and might never need to move to `fetch`. Portal imports `fetch`: its web,
+application, and domain layers use it for types only (`SITES`, `Doc`, `Status`),
+but `portal/worker/agent.py` drives `fetch.pipeline` (`fetch_one`,
+`CircuitBreaker`, `WorkerState`, session management) directly as the worker
+fleet's execution engine — the same pipeline the standalone `fetch` CLI runs,
+just invoked one document at a time from a leased queue item instead of a full
+run's document list. `browser` and `capture` still never import `fetch` or each
+other; that independence is deliberate, and it's the one rule in this codebase
+worth never breaking: do not add cross-package imports.
 
 A job moves through input validation, planning, execution, state recording,
 export, and resume. Input validation reads a CSV with one identifier per row
@@ -59,9 +65,14 @@ them up, rotates its session on ban or budget exhaustion, and retries on hard
 error or repeated rejection. Each `(site, provider)` pair has its own circuit
 breaker: ten consecutive deterministic failures trips it, parking every lane for
 that pair until the next success, so one broken document can't burn retries
-meant for healthy providers. Provider mechanics (lane allocation, sticky
-sessions, per-provider tuning) are documented once, in [proxies.md](proxies.md);
-this file doesn't restate them.
+meant for healthy providers. That breaker is in-process, which is fleet-wide by
+construction for a single `fetch` run; `portal`'s worker fleet runs the same
+pipeline from multiple processes, so it backs the same threshold with a
+Postgres-shared breaker instead (`portal_circuit_breakers`, see
+[packages/portal/readme.md#how-jobs-run](../packages/portal/readme.md#how-jobs-run))
+so a trip parks every node's lanes, not just the one that hit ten failures.
+Provider mechanics (lane allocation, sticky sessions, per-provider tuning) are
+documented once, in [proxies.md](proxies.md); this file doesn't restate them.
 
 Every attempt, success, or failure is written to a SQLite database
 (`*.state.sqlite3`) as it happens; the `outcomes` table is the source of truth,

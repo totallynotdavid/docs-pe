@@ -26,6 +26,7 @@ from tests.portal.conftest import (
     object_reference,
     seed_site_admin,
     seed_team,
+    submit_command,
 )
 
 
@@ -215,6 +216,84 @@ async def test_a_repeatedly_expired_item_retires_and_fails_its_job(
     assert finished["terminal_reason"] == "no_results"
 
 
+async def test_claim_prefers_a_lane_s_held_session_over_plain_fifo(
+    pool: asyncpg.Pool,
+    service: PortalService,
+    job_repository: PostgresJobRepository,
+) -> None:
+    """A lane already holding a (source, credential) session should keep
+    draining that pair's work, so its session gets reused across claims
+    instead of being closed after one lookup and reopened for the next."""
+    team_earlier = await seed_team(pool)
+    team_later = await seed_team(pool)
+
+    earlier_input = await object_reference(pool, team_earlier.team_id, "e.csv")
+    later_input = await object_reference(pool, team_later.team_id, "l.csv")
+
+    earlier_job = await service.submit(submit_command(team_earlier, earlier_input))
+    later_job = await service.submit(submit_command(team_later, later_input))
+
+    assert earlier_job.queue_sequence < later_job.queue_sequence
+
+    claimed = await job_repository.claim(
+        "trabajador",
+        ("osiptel",),
+        affinity_source="osiptel",
+        affinity_credential_version_id=team_later.credential_id,
+    )
+
+    assert claimed is not None
+    assert claimed.job_id == later_job.id
+    assert claimed.credential_version_id == team_later.credential_id
+
+
+async def test_claim_falls_back_to_fifo_without_a_matching_affinity(
+    pool: asyncpg.Pool,
+    service: PortalService,
+    job_repository: PostgresJobRepository,
+) -> None:
+    team_earlier = await seed_team(pool)
+    team_later = await seed_team(pool)
+
+    earlier_input = await object_reference(pool, team_earlier.team_id, "e.csv")
+    later_input = await object_reference(pool, team_later.team_id, "l.csv")
+
+    earlier_job = await service.submit(submit_command(team_earlier, earlier_input))
+    await service.submit(submit_command(team_later, later_input))
+
+    claimed = await job_repository.claim("trabajador", ("osiptel",))
+
+    assert claimed is not None
+    assert claimed.job_id == earlier_job.id
+
+
+async def test_claim_skips_a_pair_whose_circuit_breaker_is_open(
+    pool: asyncpg.Pool,
+    service: PortalService,
+    job_repository: PostgresJobRepository,
+) -> None:
+    job = await _submit_one(pool, service)
+
+    await pool.execute(
+        """
+        INSERT INTO portal_circuit_breakers
+            (source, provider, consecutive_failures, level, open_until)
+        VALUES ('osiptel', 'geonode', 0, 1, now() + interval '1 hour')
+        """
+    )
+
+    assert await job_repository.claim("trabajador", ("osiptel",)) is None
+
+    await pool.execute(
+        "UPDATE portal_circuit_breakers SET open_until = now() - interval '1 second'"
+    )
+
+    claimed = await job_repository.claim("trabajador", ("osiptel",))
+
+    assert claimed is not None
+    assert claimed.job_id == job.id
+
+
 async def test_published_search_finds_a_dni_inside_a_ruc_and_paginates(
     pool: asyncpg.Pool,
     service: PortalService,
@@ -303,6 +382,7 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
     claimed = response.json()
 
     assert claimed["document"] == "10412345678"
+    assert claimed["credential_version_id"] == str(job.credential_version_id)
     assert claimed["credential"]["config"] == {
         "username": "equipo",
         "password": "clave",
@@ -313,6 +393,9 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
         json={
             "item_id": claimed["item_id"],
             "fence": claimed["fence"],
+            "source": claimed["source"],
+            "provider": claimed["credential"]["provider"],
+            "healthy_contact": True,
             "content": base64.b64encode(b'{"lineas": []}').decode("ascii"),
         },
         headers=headers,
@@ -327,6 +410,18 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
     )
 
     assert finished["state"] == "completed"
+
+    breaker = await pool.fetchrow(
+        "SELECT consecutive_failures, level, open_until "
+        "FROM portal_circuit_breakers WHERE source = $1 AND provider = $2",
+        claimed["source"],
+        claimed["credential"]["provider"],
+    )
+
+    assert breaker is not None
+    assert breaker["consecutive_failures"] == 0
+    assert breaker["level"] == 0
+    assert breaker["open_until"] is None
 
 
 async def test_a_heartbeat_updates_status_and_staleness_flips_it_offline(

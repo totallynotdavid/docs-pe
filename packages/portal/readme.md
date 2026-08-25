@@ -274,34 +274,52 @@ authenticator.
 
 ## How jobs run
 
+The unit of work is one `(doc, site)` pair (`portal_job_items`), not one job:
+this is what lets a single job's documents fan out across the whole fleet
+automatically, with no per-job worker assignment anywhere.
+
 1. Submit: the user uploads a CSV, selects sites and proxy credentials, and
    clicks submit. The portal stores the file, plans the job (routes documents to
-   sites), and queues it.
-2. Claim: a worker polls the worker API over the tailnet and claims a queued job
-   with a 30-minute lease. Its bearer credential is checked against
-   `portal_workers`, and the claim is the only place a stored proxy credential
-   is decrypted.
-3. Run: the worker spawns a fetch subprocess with the document CSV and
-   configuration; fetch runs to completion (or Ctrl+C).
-4. Publish: the worker moves result files from the fetch output to cloud storage
-   (configurable), records metadata in the database, and marks the job as
-   published.
-5. Recover: if a worker crashes or the lease expires, another worker claims the
-   job (an incremented lease fence prevents lost writes).
+   sites), and queues its items.
+2. Claim: every worker node runs a fixed number of concurrent lanes
+   (`--concurrency`, `WorkerAgent._loop`), each polling `/claim` independently.
+   `/claim` leases one pending item, from any running job, to whichever lane
+   asks first (`FOR UPDATE SKIP LOCKED`, ordered by `queue_sequence, ordinal`),
+   filtered to the lane's `--sources` and to `(site, provider)` pairs whose
+   circuit breaker isn't currently open. Its bearer credential is checked
+   against `portal_workers`, and the claim is the only place a stored proxy
+   credential is decrypted.
+3. Run: the lane looks the document up in-process via `fetch.pipeline.fetch_one`
+   (not a subprocess). A lane keeps its provider session open across
+   consecutive claims that land on the same `(source, credential_version_id)` —
+   passed back to `/claim` as an affinity hint so the queue prefers handing the
+   lane more of the same pair's work — so `fetch.pipeline.session`'s
+   `session_budget` amortizes the way it does in the standalone `fetch` CLI,
+   instead of every claimed document paying full session-open cost. The lane
+   releases the session on a source/credential change, after a run of idle
+   polls, or on lane shutdown.
+4. Publish: `/publish` stores the result, marks the item published, and (via
+   `portal_circuit_breakers`) records the outcome against that
+   `(site, provider)` pair's fleet-wide circuit breaker — the shared backstop
+   ten consecutive failures anywhere trips, parking every node's lanes for that
+   pair, not just the node that hit the threshold.
+5. Recover: if a lane crashes or its item's lease expires, another lane claims
+   it (an incremented lease fence prevents lost writes).
 
 Every queue transition locks the singleton `portal_queue_control` row, which
-enforces a global limit of five active jobs across all web and worker processes.
-Cancellation increments the lease fence before retiring active items, so writes
-from older leases are rejected and you can cancel a job without racing against a
-slow worker. Expired leases are recovered while claiming work; jobs that
-repeatedly expire, or that finish without publishing a result, are marked
-failed. See [operations.md](operations.md) for the SQL to inspect or manually
-cancel a job.
+enforces a global limit of five active jobs across all web and worker processes
+— jobs beyond that wait `queued` even if the fleet has idle lane capacity, since
+only a running job's items are claimable. Cancellation increments the job's
+lease fence before retiring active items, so writes from older leases are
+rejected and you can cancel a job without racing against a slow worker. Expired
+item leases are recovered while claiming work; items that repeatedly expire, or
+jobs that finish without every item published, are marked failed. See
+[operations.md](operations.md) for the SQL to inspect or manually cancel a job.
 
 The worker agent holds no database credentials. That is the reason the claim and
 publish API exists at all rather than letting workers take work from Postgres
-directly: a compromised browser automation node gets the job it is holding and
-the proxy credential for that job, and nothing else.
+directly: a compromised browser automation node gets the item it is holding and
+the proxy credential for that item's job, and nothing else.
 
 ## Audit log
 

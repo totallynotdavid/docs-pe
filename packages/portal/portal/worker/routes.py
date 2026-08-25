@@ -22,6 +22,7 @@ from portal.domain.errors import (
 )
 from portal.domain.models import AuditAction, AuditEvent, WorkerIdentity
 from portal.repository.audit import PostgresAuditLog
+from portal.repository.breakers import PostgresCircuitBreakers
 from portal.repository.jobs import PostgresJobRepository
 from portal.repository.workers import PostgresWorkerRegistry
 from portal.security import new_worker_credential
@@ -75,6 +76,10 @@ def provide_protector(state: State) -> EnvelopeProtector:
 
 def provide_audit(state: State) -> PostgresAuditLog:
     return state.audit
+
+
+def provide_breakers(state: State) -> PostgresCircuitBreakers:
+    return state.breakers
 
 
 def provide_storage(state: State) -> ObjectStorage:
@@ -189,6 +194,7 @@ async def worker_publish(
     data: PublishRequest,
     worker: NamedDependency[WorkerIdentity],
     worker_jobs: NamedDependency[PostgresJobRepository],
+    breakers: NamedDependency[PostgresCircuitBreakers],
     storage: NamedDependency[ObjectStorage],
 ) -> PublishResult:
     try:
@@ -221,6 +227,13 @@ async def worker_publish(
         data.fence,
         reference.id,
     )
+
+    if published:
+        await breakers.record_outcome(
+            source=data.source,
+            provider=data.provider,
+            healthy_contact=data.healthy_contact,
+        )
 
     return PublishResult(published=published)
 

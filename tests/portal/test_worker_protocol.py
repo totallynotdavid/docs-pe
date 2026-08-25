@@ -44,7 +44,14 @@ def test_a_lease_missing_a_field_is_refused_rather_than_guessed() -> None:
 
 
 def test_a_publish_request_survives_the_wire_unchanged() -> None:
-    request = PublishRequest(item_id=uuid4(), fence=7, content="Y29udGVuaWRv")
+    request = PublishRequest(
+        item_id=uuid4(),
+        fence=7,
+        source="osiptel",
+        provider="geonode",
+        healthy_contact=True,
+        content="Y29udGVuaWRv",
+    )
 
     assert (
         msgspec.json.decode(msgspec.json.encode(request), type=PublishRequest)

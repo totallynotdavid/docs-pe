@@ -48,6 +48,15 @@ class PublishRequest(msgspec.Struct, frozen=True):
     item_id: UUID
     fence: int
 
+    # Named separately from `content` rather than left inside it: worker-api
+    # stores the opaque blob without reading it (see below), but circuit
+    # breaker accounting needs exactly these two fields, so they travel as
+    # typed protocol fields instead of requiring worker-api to parse a
+    # site-shaped payload it otherwise never looks inside.
+    source: str
+    provider: str
+    healthy_contact: bool
+
     # Base64 rather than a nested object: the payload is a fetch result whose
     # shape belongs to the site, and the API stores it without reading it.
     content: str

@@ -64,9 +64,15 @@ WITH candidate AS (
     SELECT item.id, job.lease_fence, job.credential_version_id
       FROM portal_job_items AS item
       JOIN portal_jobs AS job ON job.id = item.job_id
+      JOIN portal_team_proxy_credential_versions AS version
+        ON version.id = job.credential_version_id
+      LEFT JOIN portal_circuit_breakers AS breaker
+        ON breaker.source = item.source
+       AND breaker.provider = version.provider
      WHERE item.state = 'pending'
        AND job.state = 'running'
        AND item.source = ANY($2::text[])
+       AND (breaker.open_until IS NULL OR breaker.open_until <= now())
      ORDER BY
        -- A lane that already holds a session for (source, credential) keeps
        -- draining that pair's work before spilling to anything else, so the
