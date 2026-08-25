@@ -9,7 +9,7 @@
   <SecondaryBar>
     <SearchForm :action="'/teams/' ~ team.id ~ '/search'"
                 :query="query"
-                hx-get="/teams/{{ team.id }}/search"
+                :hx-get="'/teams/' ~ team.id ~ '/search'"
                 hx-target="#search-results"
                 hx-push-url="true" />
   </SecondaryBar>
