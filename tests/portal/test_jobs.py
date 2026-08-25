@@ -463,3 +463,89 @@ async def test_confirming_with_rescan_forces_a_fresh_fetch(
     [item] = second_job.items
     assert item.state is ItemState.PENDING
     assert item.entry_id is None
+
+
+async def test_leader_can_download_job_results_as_csv(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    job_repository: PostgresJobRepository,
+    app: Litestar,
+) -> None:
+    people = await build_experience(pool, team_repository)
+
+    with sync_client(app) as client:
+        assert login(client, "lider@osiptel.test").status_code == 303
+        job_id = submit_job(
+            client,
+            people.team_id,
+            people.credential_id,
+            "10412345678",
+        )
+        claimed = await job_repository.claim("trabajador", ("osiptel",))
+        assert claimed is not None
+        assert await publish_claimed(
+            pool,
+            job_repository,
+            claimed,
+            columns=("Modalidad", "Número"),
+            rows=(("Postpago", "98765"),),
+        )
+
+        download = client.get(f"/teams/{people.team_id}/jobs/{job_id}/download")
+
+    assert download.status_code == 200
+    assert download.headers["content-type"].startswith("text/csv")
+    assert 'attachment; filename="' in download.headers["content-disposition"]
+    lines = download.text.splitlines()
+    assert lines[0] == "Documento,Fuente,Estado,Resultado,Modalidad,Número"
+    assert lines[1] == "10412345678,osiptel,Publicado,Encontrado,Postpago,98765"
+
+
+async def test_site_admin_can_download_job_results_without_membership(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    app: Litestar,
+) -> None:
+    people = await build_experience(pool, team_repository)
+
+    with sync_client(app) as leader_client:
+        assert login(leader_client, "lider@osiptel.test").status_code == 303
+        job_id = submit_job(
+            leader_client,
+            people.team_id,
+            people.credential_id,
+            "no-es-documento",
+        )
+
+    with sync_client(app) as admin_client:
+        assert login(admin_client, "admin@osiptel.test").status_code == 303
+        download = admin_client.get(
+            f"/teams/{people.team_id}/jobs/{job_id}/download",
+        )
+
+    assert download.status_code == 200
+
+
+async def test_team_member_cannot_download_job_results(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    app: Litestar,
+) -> None:
+    people = await build_experience(pool, team_repository)
+
+    with sync_client(app) as leader_client:
+        assert login(leader_client, "lider@osiptel.test").status_code == 303
+        job_id = submit_job(
+            leader_client,
+            people.team_id,
+            people.credential_id,
+            "no-es-documento",
+        )
+
+    with sync_client(app) as member_client:
+        assert login(member_client, "miembro@osiptel.test").status_code == 303
+        download = member_client.get(
+            f"/teams/{people.team_id}/jobs/{job_id}/download",
+        )
+
+    assert download.status_code == 403

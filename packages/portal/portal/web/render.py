@@ -54,8 +54,8 @@ def component_catalog() -> Catalog:
     environment.filters["notification"] = _notification_label
     environment.filters["credential_state"] = _credential_state_label
     environment.filters["exclusion_reason"] = _exclusion_reason_label
-    environment.filters["item_state"] = _item_state_label
-    environment.filters["entry_status"] = _entry_status_label
+    environment.filters["item_state"] = item_state_label
+    environment.filters["entry_status"] = entry_status_label
 
     environment.globals["is_terminal"] = _is_terminal
     environment.globals["job_summary"] = _job_summary
@@ -94,7 +94,7 @@ def _state_label(state: JobState) -> str:
     }[state]
 
 
-def _item_state_label(state: ItemState) -> str:
+def item_state_label(state: ItemState) -> str:
     return {
         ItemState.PENDING: "Pendiente",
         ItemState.RUNNING: "En ejecución",
@@ -105,7 +105,7 @@ def _item_state_label(state: ItemState) -> str:
     }[state]
 
 
-def _entry_status_label(status: str) -> str:
+def entry_status_label(status: str) -> str:
     return {
         "ok": "Encontrado",
         "not_found": "No encontrado",

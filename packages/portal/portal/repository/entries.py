@@ -141,6 +141,20 @@ class PostgresEntryRepository:
 
         return entry_row(row) if row is not None else None
 
+    async def entries_by_ids(self, entry_ids: tuple[UUID, ...]) -> dict[UUID, Entry]:
+        """Batch lookup for a job's results export. Unscoped like
+        entry_by_id: callers already know these ids through their own team's
+        job items, so there is nothing left to gate here."""
+        if not entry_ids:
+            return {}
+
+        rows = await self._pool.fetch(
+            "SELECT * FROM portal_entries WHERE id = ANY($1::uuid[])",
+            list(entry_ids),
+        )
+
+        return {row["id"]: entry_row(row) for row in rows}
+
     async def reusable_for_team(
         self,
         team_id: UUID,

@@ -7,6 +7,14 @@
   <TopBar :title="job.filename"
           icon="file"
           :breadcrumb="[{'label': 'Equipos', 'href': '/'}, {'label': team.name, 'href': '/teams/' ~ team.id}]">
+    {% if team.role.value == 'team_leader' or user.is_site_admin %}
+      <ActionButton variant="secondary"
+                    size="sm"
+                    :href="'/teams/' ~ team.id ~ '/jobs/' ~ job.id ~ '/download'">
+        <Icon name="download" :size="14" />
+        Descargar resultados
+      </ActionButton>
+    {% endif %}
     {% if team.role.value == 'team_leader' and not is_terminal(job) %}
       <Submission :action="'/teams/' ~ team.id ~ '/jobs/' ~ job.id ~ '/cancel'"
                   :csrf_token="csrf_token">

@@ -601,18 +601,7 @@ class PostgresJobRepository:
                 )
                 continue
 
-            job.items.append(
-                JobItem(
-                    id=item["id"],
-                    ordinal=int(item["ordinal"]),
-                    document=item["document"],
-                    source=item["source"],
-                    state=ItemState(item["state"]),
-                    lease_fence=int(item["lease_fence"]),
-                    entry_id=item["entry_id"],
-                    result_object_id=item["result_object_id"],
-                )
-            )
+            job.items.append(self._job_item(item))
 
         return job
 
@@ -658,21 +647,33 @@ class PostgresJobRepository:
                 team_id,
             )
 
-        items = tuple(
-            JobItem(
-                id=row["id"],
-                ordinal=int(row["ordinal"]),
-                document=row["document"],
-                source=row["source"],
-                state=ItemState(row["state"]),
-                lease_fence=int(row["lease_fence"]),
-                entry_id=row["entry_id"],
-                result_object_id=row["result_object_id"],
-            )
-            for row in rows
-        )
+        items = tuple(self._job_item(row) for row in rows)
 
         return items, int(total)
+
+    async def all_items_for_job(
+        self,
+        job_id: UUID,
+        team_id: UUID,
+    ) -> tuple[JobItem, ...]:
+        """Every non-excluded item for a job, unpaginated. Used for the full
+        results export, where a leader needs every row, not one page."""
+        async with self._pool.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT id, ordinal, document, source, state, lease_fence,
+                       entry_id, result_object_id
+                  FROM portal_job_items
+                 WHERE job_id = $1
+                   AND team_id = $2
+                   AND state != 'excluded'
+                 ORDER BY ordinal, source
+                """,
+                job_id,
+                team_id,
+            )
+
+        return tuple(self._job_item(row) for row in rows)
 
     async def item_counts(self, job_id: UUID, team_id: UUID) -> JobItemCounts:
         """Count non-excluded item states without loading item details."""
@@ -1084,4 +1085,17 @@ class PostgresJobRepository:
             lease_fence=int(row["lease_fence"]),  # type: ignore[index]
             terminal_reason=row["terminal_reason"],  # type: ignore[index]
             created_at=row["created_at"],  # type: ignore[index]
+        )
+
+    @staticmethod
+    def _job_item(row: object) -> JobItem:
+        return JobItem(
+            id=row["id"],  # type: ignore[index]
+            ordinal=int(row["ordinal"]),  # type: ignore[index]
+            document=row["document"],  # type: ignore[index]
+            source=row["source"],  # type: ignore[index]
+            state=ItemState(row["state"]),  # type: ignore[index]
+            lease_fence=int(row["lease_fence"]),  # type: ignore[index]
+            entry_id=row["entry_id"],  # type: ignore[index]
+            result_object_id=row["result_object_id"],  # type: ignore[index]
         )

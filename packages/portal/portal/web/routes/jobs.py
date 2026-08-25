@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
+import re
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
@@ -22,13 +26,21 @@ from portal.domain.errors import PortalError
 from portal.domain.models import (
     TERMINAL_JOB_STATES,
     BrowserSession,
+    Entry,
+    JobItem,
     JobItemCounts,
     SubmissionReview,
 )
 from portal.settings import PortalSettings
 from portal.storage.port import ObjectStorage
 from portal.web.deps import require_verified_session
-from portal.web.render import render, render_fragment, render_hx
+from portal.web.render import (
+    entry_status_label,
+    item_state_label,
+    render,
+    render_fragment,
+    render_hx,
+)
 from portal.web.uploads import (
     MAX_CSV_UPLOAD_BYTES,
     MAX_CSV_UPLOAD_MB,
@@ -333,6 +345,73 @@ async def job_items_page(
     )
 
 
+_RESULT_HEADER = ("Documento", "Fuente", "Estado", "Resultado")
+_UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+@get("/{job_id:uuid}/download")
+async def job_download(
+    page_session: NamedDependency[BrowserSession],
+    service: NamedDependency[PortalService],
+    team_id: FromPath[UUID],
+    job_id: FromPath[UUID],
+) -> Response:
+    job, results = await service.job_results(page_session.user.id, team_id, job_id)
+
+    return Response(
+        _results_csv(results),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{_download_filename(job.filename)}"'
+            ),
+        },
+    )
+
+
+def _download_filename(job_filename: str) -> str:
+    stem = Path(job_filename).stem or "tarea"
+    safe = _UNSAFE_FILENAME_CHARS.sub("_", stem).strip("_") or "tarea"
+
+    return f"{safe[:80]}-resultados.csv"
+
+
+def _results_csv(results: tuple[tuple[JobItem, Entry | None], ...]) -> str:
+    """One row per item, expanded to one row per entry.rows line for an item
+    whose entry carries several (a RUC's several legal representatives, for
+    example). Columns are the union of every entry's columns in this job, in
+    first-seen order, since a job can mix sources with different shapes."""
+    columns: list[str] = []
+    seen: set[str] = set()
+
+    for _item, entry in results:
+        for column in entry.columns if entry else ():
+            if column not in seen:
+                seen.add(column)
+                columns.append(column)
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow((*_RESULT_HEADER, *columns))
+
+    for item, entry in results:
+        prefix = (item.document, item.source, item_state_label(item.state))
+
+        if entry is None or not entry.rows:
+            writer.writerow((*prefix, "", *([""] * len(columns))))
+            continue
+
+        status = entry_status_label(entry.status)
+
+        for row in entry.rows:
+            values = dict(zip(entry.columns, row, strict=True))
+            writer.writerow(
+                (*prefix, status, *(values.get(column, "") for column in columns))
+            )
+
+    return buffer.getvalue()
+
+
 @dataclass
 class CancelJobForm:
     csrf_token: str
@@ -461,6 +540,7 @@ router = Router(
         confirm_job_post,
         job_detail,
         job_items_page,
+        job_download,
         cancel_job,
         job_progress,
     ],

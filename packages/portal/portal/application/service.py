@@ -180,6 +180,36 @@ class PortalService(AuthorizedService):
             page_size=page_size,
         )
 
+    @site_admin_or_leader()
+    async def job_results(
+        self,
+        actor_id: UUID,
+        team_id: UUID,
+        job_id: UUID,
+    ) -> tuple[Job, tuple[tuple[JobItem, Entry | None], ...]]:
+        """Every non-excluded item for a job paired with the entry it
+        resolved to, for the results download. Restricted to leaders and
+        site admins: job_items is member-readable, but a full export is a
+        bulk data-handling action, not a progress check."""
+        job = await self._jobs.job(job_id, team_id)
+
+        if job is None:
+            raise NotFound(Reason.JOB_NOT_FOUND)
+
+        items = await self._jobs.all_items_for_job(job_id, team_id)
+        entry_ids = tuple(
+            {item.entry_id for item in items if item.entry_id is not None}
+        )
+        entries = await self._entries.entries_by_ids(entry_ids)
+
+        return job, tuple(
+            (
+                item,
+                entries.get(item.entry_id) if item.entry_id is not None else None,
+            )
+            for item in items
+        )
+
     @team_reader()
     async def job_progress_counts(
         self,
