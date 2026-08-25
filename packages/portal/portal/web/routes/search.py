@@ -10,7 +10,7 @@ from litestar_htmx import HTMXRequest
 from portal.application.service import PortalService
 from portal.domain.models import BrowserSession
 from portal.web.deps import is_search_only
-from portal.web.render import render_hx
+from portal.web.render import render, render_hx
 
 
 @get("/search")
@@ -51,7 +51,32 @@ async def search(
     )
 
 
+@get("/entries/{entry_id:uuid}")
+async def entry_detail(
+    page_session: NamedDependency[BrowserSession],
+    service: NamedDependency[PortalService],
+    team_id: FromPath[UUID],
+    entry_id: FromPath[UUID],
+) -> Response:
+    entry = await service.entry(page_session.user.id, team_id, entry_id)
+    team = await service.team(page_session.user.id, team_id)
+    minimal = is_search_only(
+        page_session.user,
+        await service.teams(page_session.user.id),
+    )
+
+    return render(
+        "EntryDetail",
+        user=page_session.user,
+        csrf_token=page_session.csrf_token,
+        team=team,
+        entry=entry,
+        minimal=minimal,
+        back_href=f"/teams/{team_id}/search?q={entry.document}",
+    )
+
+
 router = Router(
     path="/teams/{team_id:uuid}",
-    route_handlers=[search],
+    route_handlers=[search, entry_detail],
 )

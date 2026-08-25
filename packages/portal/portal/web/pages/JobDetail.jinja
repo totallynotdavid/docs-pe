@@ -1,4 +1,4 @@
-{#def user, csrf_token, team, job, counts #}
+{#def user, csrf_token, team, job, counts, items, total_items, page #}
 <Layout :title="job.filename"
         :user="user"
         :csrf_token="csrf_token"
@@ -25,6 +25,20 @@
              aria-atomic="true"
              {% if not is_terminal(job) %} data-sse-url="/teams/{{ team.id }}/jobs/{{ job.id }}/progress" {% endif %}>
           <JobProgress :job="job" :counts="counts" />
+        </div>
+      </PanelBody>
+    </Panel>
+    <Panel aria-labelledby="job-items-title">
+      <PanelHeader title="Resultados"
+                   description="Cada documento publicado enlaza a lo que encontramos."
+                   title_id="job-items-title" />
+      <PanelBody>
+        <div id="job-items">
+          <JobItemsFragment :team="team"
+                            :job_id="job.id"
+                            :items="items"
+                            :total_items="total_items"
+                            :page="page" />
         </div>
       </PanelBody>
     </Panel>

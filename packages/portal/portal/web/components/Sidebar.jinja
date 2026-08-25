@@ -27,6 +27,12 @@
                        :active="active == 'team-settings'" />
             {% endif %}
           {% endif %}
+          {% if user.is_site_admin or (active_team and active_team.has_global_search) %}
+            <NavItem href="/admin/search"
+                     label="Búsqueda global"
+                     icon="search"
+                     :active="active == 'global-search'" />
+          {% endif %}
           <NavItem href="/notifications"
                    label="Actividad"
                    icon="activity"

@@ -18,7 +18,7 @@ from portal.domain.errors import PortalError, StepUpRequired
 from portal.domain.models import BrowserSession, RequestTrace
 from portal.settings import PortalSettings
 from portal.web.deps import require_verified_session
-from portal.web.render import render
+from portal.web.render import render, render_hx
 
 
 @get("")
@@ -297,6 +297,82 @@ async def admin_teams_post(
     return Redirect(f"/teams/{team.id}/settings/proxy", status_code=303)
 
 
+@dataclass
+class TeamGlobalSearchForm:
+    csrf_token: str
+    enabled: str
+
+
+@post("/teams/{team_id:uuid}/global-search", status_code=200)
+async def admin_team_global_search_post(
+    request: HTMXRequest,
+    service: NamedDependency[PortalService],
+    settings: NamedDependency[PortalSettings],
+    team_id: FromPath[UUID],
+    data: Annotated[
+        TeamGlobalSearchForm,
+        Body(media_type=RequestEncodingType.URL_ENCODED),
+    ],
+) -> Response:
+    session = await require_verified_session(
+        request,
+        settings,
+        data.csrf_token,
+    )
+
+    await service.set_global_search(
+        session.user.id,
+        team_id,
+        enabled=data.enabled == "true",
+    )
+
+    return Redirect("/admin/teams", status_code=303)
+
+
+@get("/search")
+async def admin_search_get(
+    request: HTMXRequest,
+    page_session: NamedDependency[BrowserSession],
+    service: NamedDependency[PortalService],
+    q: FromQuery[str] = "",
+    page: FromQuery[int] = 1,
+) -> Response:
+    current_page = max(page, 1)
+    results, has_more = await service.global_search(
+        page_session.user.id,
+        q,
+        page=current_page,
+    )
+
+    return render_hx(
+        request,
+        "AdminSearch",
+        "AdminSearchResultsFragment",
+        user=page_session.user,
+        csrf_token=page_session.csrf_token,
+        query=q,
+        results=results,
+        page=current_page,
+        has_more=has_more,
+    )
+
+
+@get("/search/entries/{entry_id:uuid}")
+async def admin_entry_detail_get(
+    page_session: NamedDependency[BrowserSession],
+    service: NamedDependency[PortalService],
+    entry_id: FromPath[UUID],
+) -> Response:
+    entry = await service.global_entry(page_session.user.id, entry_id)
+
+    return render(
+        "AdminEntryDetail",
+        user=page_session.user,
+        csrf_token=page_session.csrf_token,
+        entry=entry,
+    )
+
+
 @get("/search-activity")
 async def admin_search_activity_get(
     page_session: NamedDependency[BrowserSession],
@@ -333,6 +409,9 @@ router = Router(
         admin_user_action_post,
         admin_teams_get,
         admin_teams_post,
+        admin_team_global_search_post,
+        admin_search_get,
+        admin_entry_detail_get,
         admin_search_activity_get,
         admin_system_get,
     ],

@@ -47,6 +47,15 @@
                                 :href="'/teams/' ~ team.id ~ '/settings/proxy'">
                     Gestionar
                   </ActionButton>
+                  <Submission :action="'/admin/teams/' ~ team.id ~ '/global-search'"
+                              :csrf_token="csrf_token">
+                    <input type="hidden"
+                           name="enabled"
+                           value="{{ 'false' if team.has_global_search else 'true' }}">
+                    <ActionButton type="submit" variant="ghost" size="sm">
+                      {{ 'Quitar búsqueda global' if team.has_global_search else 'Dar búsqueda global' }}
+                    </ActionButton>
+                  </Submission>
                 </TableCell>
               </TableRow>
             {% endfor %}

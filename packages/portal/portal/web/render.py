@@ -8,7 +8,7 @@ from litestar.enums import MediaType
 from litestar.response import Response
 
 from portal.branding import PRODUCT_MARK, PRODUCT_NAME
-from portal.domain.models import CredentialState, Job, JobState, TeamRole
+from portal.domain.models import CredentialState, ItemState, Job, JobState, TeamRole
 from portal.messages import choice_label, field_label, provider_label
 from portal.security import totp_qr_svg
 from portal.web.assets import (
@@ -54,6 +54,8 @@ def component_catalog() -> Catalog:
     environment.filters["notification"] = _notification_label
     environment.filters["credential_state"] = _credential_state_label
     environment.filters["exclusion_reason"] = _exclusion_reason_label
+    environment.filters["item_state"] = _item_state_label
+    environment.filters["entry_status"] = _entry_status_label
 
     environment.globals["is_terminal"] = _is_terminal
     environment.globals["job_summary"] = _job_summary
@@ -90,6 +92,25 @@ def _state_label(state: JobState) -> str:
         JobState.FAILED: "Con error",
         JobState.CANCELLED: "Cancelado",
     }[state]
+
+
+def _item_state_label(state: ItemState) -> str:
+    return {
+        ItemState.PENDING: "Pendiente",
+        ItemState.RUNNING: "En ejecución",
+        ItemState.PUBLISHED: "Publicado",
+        ItemState.EXCLUDED: "Excluido",
+        ItemState.FAILED: "Con error",
+        ItemState.CANCELLED: "Cancelado",
+    }[state]
+
+
+def _entry_status_label(status: str) -> str:
+    return {
+        "ok": "Encontrado",
+        "not_found": "No encontrado",
+        "failed": "Con error",
+    }.get(status, status)
 
 
 def _role_label(role: TeamRole | None) -> str:

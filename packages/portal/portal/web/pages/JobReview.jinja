@@ -1,0 +1,70 @@
+{#def user, csrf_token, team, review, by_source, filename, sources, input_object_id, credential_version_id #}
+<Layout :title="'Revisar consulta · ' ~ team.name"
+        :user="user"
+        :csrf_token="csrf_token"
+        active="team-jobs"
+        :active_team="team">
+  <TopBar title="Revisar antes de consultar" icon="list" />
+  <MainContent>
+    <Panel>
+      <PanelHeader title="Tu equipo ya conoce parte de esta lista"
+                   :description="'Encontramos resultados recientes para ' ~ review.reusable|length ~ ' de ' ~ review.items|length ~ ' documentos. Puedes reutilizarlos sin gastar tu proxy, o volver a consultarlos todos.'" />
+      <PanelBody>
+        <DataTable>
+          <TableHeader>
+            <TableRow>
+              <TableHead>
+                Fuente
+              </TableHead>
+              <TableHead align="right">
+                Ya conocidos
+              </TableHead>
+              <TableHead align="right">
+                Se consultarán
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {% for row in by_source %}
+              <TableRow>
+                <TableCell>
+                  {{ row.name }}
+                </TableCell>
+                <TableCell align="right">
+                  {{ row.reusable }} de {{ row.total }}
+                </TableCell>
+                <TableCell align="right">
+                  {{ row.total - row.reusable }}
+                </TableCell>
+              </TableRow>
+            {% endfor %}
+          </TableBody>
+        </DataTable>
+        {% if review.exclusions %}
+          <MetaText>
+            {{ review.exclusions|length }} líneas excluidas (documento inválido o duplicado).
+          </MetaText>
+        {% endif %}
+        <Submission :action="'/teams/' ~ team.id ~ '/jobs/confirm'"
+                    :csrf_token="csrf_token">
+          <input type="hidden" name="input_object_id" value="{{ input_object_id }}">
+          <input type="hidden"
+                 name="credential_version_id"
+                 value="{{ credential_version_id }}">
+          <input type="hidden" name="filename" value="{{ filename }}">
+          {% for source in sources %}
+            <input type="hidden" name="sources" value="{{ source }}">
+          {% endfor %}
+          <QueryAction>
+            <ActionButton type="submit" name="reuse" value="reuse">
+              Reutilizar y consultar solo lo nuevo
+            </ActionButton>
+            <ActionButton type="submit" name="reuse" value="rescan" variant="secondary">
+              Consultar todo de nuevo
+            </ActionButton>
+          </QueryAction>
+        </Submission>
+      </PanelBody>
+    </Panel>
+  </MainContent>
+</Layout>

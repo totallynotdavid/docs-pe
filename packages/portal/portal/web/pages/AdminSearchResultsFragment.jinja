@@ -1,4 +1,4 @@
-{#def team, query, results, page, has_more #}
+{#def query, results, page, has_more #}
 {% if query %}
   {% if results %}
     <DataTable>
@@ -19,7 +19,7 @@
         {% for result in results %}
           <TableRow>
             <TableCell ellipsis>
-              <a href="/teams/{{ team.id }}/entries/{{ result.id }}">{{ result.document }}</a>
+              <a href="/admin/search/entries/{{ result.id }}">{{ result.document }}</a>
             </TableCell>
             <TableCell>
               <MetaText>
@@ -38,25 +38,25 @@
   {% else %}
     <EmptyState icon="search"
                 title="Sin resultados"
-                :description="'Ningún documento de este equipo coincide con “' ~ query ~ '”.'" />
+                :description="'Ningún documento coincide con “' ~ query ~ '”.'" />
   {% endif %}
 {% else %}
   <EmptyState icon="search"
               title="Busca un documento"
-              description="Escribe un DNI o RUC para ver en qué tareas aparece." />
+              description="Escribe un DNI o RUC para buscar en todos los equipos." />
 {% endif %}
 {% if page > 1 or has_more %}
   <Pagination label="Paginación de búsqueda">
     {% if page > 1 %}
-      <a hx-get="/teams/{{ team.id }}/search?q={{ query }}&page={{ page - 1 }}"
-         hx-target="#search-results">
+      <a hx-get="/admin/search?q={{ query }}&page={{ page - 1 }}"
+         hx-target="#admin-search-results">
         <Icon name="chevron-left" :size="14" />
         Anterior
       </a>
     {% endif %}
     {% if has_more %}
-      <a hx-get="/teams/{{ team.id }}/search?q={{ query }}&page={{ page + 1 }}"
-         hx-target="#search-results">
+      <a hx-get="/admin/search?q={{ query }}&page={{ page + 1 }}"
+         hx-target="#admin-search-results">
         Siguiente
         <Icon name="chevron-right" :size="14" />
       </a>

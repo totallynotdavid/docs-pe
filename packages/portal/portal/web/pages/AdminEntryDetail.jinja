@@ -1,0 +1,41 @@
+{#def user, csrf_token, entry #}
+<Layout :title="entry.document ~ ' · Búsqueda global'"
+        :user="user"
+        :csrf_token="csrf_token"
+        active="global-search">
+  <TopBar :title="entry.document"
+          icon="file"
+          :breadcrumb="[{'label': 'Búsqueda global', 'href': '/admin/search'}]">
+    <Status :value="entry.status">
+      {{ entry.status|entry_status }}
+    </Status>
+  </TopBar>
+  <MainContent>
+    <Panel>
+      <PanelHeader :title="entry.source"
+                   :description="'Actualizado ' ~ entry.last_confirmed_at.strftime('%d/%m/%Y %H:%M') ~ '. Primera consulta ' ~ entry.first_seen_at.strftime('%d/%m/%Y') ~ '.'" />
+      <PanelBody>
+        {% if entry.rows %}
+          <DataTable>
+            <TableHeader>
+              <TableRow>
+                {% for column in entry.columns %}<TableHead>{{ column }}</TableHead>{% endfor %}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {% for row in entry.rows %}
+                <TableRow>
+                  {% for cell in row %}<TableCell>{{ cell }}</TableCell>{% endfor %}
+                </TableRow>
+              {% endfor %}
+            </TableBody>
+          </DataTable>
+        {% else %}
+          <EmptyState icon="file"
+                      title="Sin registros"
+                      :description="entry.error_code or 'La fuente no devolvió información para este documento.'" />
+        {% endif %}
+      </PanelBody>
+    </Panel>
+  </MainContent>
+</Layout>

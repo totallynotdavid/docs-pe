@@ -1,0 +1,23 @@
+{#def user, csrf_token, query, results, page, has_more #}
+<Layout title="Búsqueda global"
+        :user="user"
+        :csrf_token="csrf_token"
+        active="global-search">
+  <TopBar title="Búsqueda global" icon="search" />
+  <SecondaryBar>
+    <SearchForm action="/admin/search"
+                :query="query"
+                hx-get="/admin/search"
+                hx-target="#admin-search-results"
+                hx-push-url="true" />
+  </SecondaryBar>
+  <MainContent>
+    <Panel>
+      <PanelBody>
+        <div id="admin-search-results">
+          <AdminSearchResultsFragment :query="query" :results="results" :page="page" :has_more="has_more" />
+        </div>
+      </PanelBody>
+    </Panel>
+  </MainContent>
+</Layout>
