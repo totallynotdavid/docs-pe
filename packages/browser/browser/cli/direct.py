@@ -16,7 +16,11 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
     )
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
-    parser.add_argument("--state", type=Path)
+    parser.add_argument(
+        "--state",
+        type=Path,
+        help="state database path (default: <output>.state.sqlite3)",
+    )
     parser.add_argument("--site", required=True, choices=sorted(SITES))
     parser.add_argument(
         "--control",
@@ -39,18 +43,26 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
         type=Path,
         help="append redacted diagnostics as JSON Lines",
     )
-    parser.add_argument("--max-session-restarts", type=int, default=0)
+    parser.add_argument(
+        "--max-session-restarts",
+        type=int,
+        default=0,
+        help="session restarts allowed per run (default: %(default)s)",
+    )
     parser.add_argument(
         "--reject-retries",
         type=int,
         default=12,
-        help="extra token mints after a rejected lookup",
+        help="extra token mints after a rejected lookup (default: %(default)s)",
     )
     parser.add_argument(
         "--reject-restart-threshold",
         type=int,
         default=4,
-        help="restart after this many consecutive exhausted subjects",
+        help=(
+            "restart after this many consecutive exhausted subjects "
+            "(default: %(default)s)"
+        ),
     )
 
     args = parser.parse_args(argv)
