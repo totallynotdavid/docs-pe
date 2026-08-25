@@ -1,4 +1,10 @@
 {#def codes #}
-<ul {{ attrs.render(class="recovery-codes") }}>
-  {% for code in codes %}<li>{{ code }}</li>{% endfor %}
-</ul>
+<div class="recovery-codes__container">
+  <ul {{ attrs.render(class="recovery-codes") }}>
+    {% for code in codes %}<li data-recovery-code>{{ code }}</li>{% endfor %}
+  </ul>
+  <ActionButton variant="secondary" size="sm" type="button" data-recovery-copy>
+    <Icon name="copy" :size="14" />
+    <span data-recovery-copy-label>Copiar códigos</span>
+  </ActionButton>
+</div>

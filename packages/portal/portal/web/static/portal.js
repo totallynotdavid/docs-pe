@@ -247,6 +247,34 @@ function setupNavSections() {
   }
 }
 
+function setupRecoveryCodes() {
+  const button = document.querySelector("[data-recovery-copy]");
+  const label = document.querySelector("[data-recovery-copy-label]");
+  const codes = document.querySelectorAll("[data-recovery-code]");
+
+  if (!button || !label || !codes.length) {
+    return;
+  }
+
+  const initialLabel = label.textContent.trim();
+  let resetTimer;
+
+  button.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(
+        Array.from(codes, (code) => code.textContent.trim()).join("\n"),
+      );
+    } catch {
+      return;
+    }
+
+    label.textContent = "Códigos copiados";
+    clearTimeout(resetTimer);
+    resetTimer = setTimeout(() => {
+      label.textContent = initialLabel;
+    }, 1500);
+  });
+}
 
 // --- WebAuthn/passkeys -------------------------------------------------
 //
@@ -461,5 +489,6 @@ setupAccountMenu();
 setupNavSections();
 setupCsvDropzone();
 setupProgressStream();
+setupRecoveryCodes();
 setupPasskeyLogin();
 setupPasskeyEnrollment();
