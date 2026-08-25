@@ -278,9 +278,15 @@ The unit of work is one `(doc, site)` pair (`portal_job_items`), not one job:
 this is what lets a single job's documents fan out across the whole fleet
 automatically, with no per-job worker assignment anywhere.
 
-1. Submit: the user uploads a CSV, selects sites and proxy credentials, and
-   clicks submit. The portal stores the file, plans the job (routes documents to
-   sites), and queues its items.
+1. Submit: the user uploads a CSV, selects sites and proxy credentials. The
+   portal stores the file and plans the job (routes documents to sites), then
+   checks which `(document, source)` pairs this team already has a fresh
+   answer for (`PostgresEntryRepository.reusable_for_team`, windowed per
+   source by `domain/planning.SOURCE_FRESHNESS`). If any are reusable, the
+   leader sees a review step (`JobReview.jinja`) before anything is created,
+   choosing to reuse them or force a full rescan. Reused items are inserted
+   already published, pointing at the existing entry, and never reach a
+   worker; everything else queues pending as before.
 2. Claim: every worker node runs a fixed number of concurrent lanes
    (`--concurrency`, `WorkerAgent._loop`), each polling `/claim` independently.
    `/claim` leases one pending item, from any running job, to whichever lane
@@ -298,7 +304,10 @@ automatically, with no per-job worker assignment anywhere.
    instead of every claimed document paying full session-open cost. The lane
    releases the session on a source/credential change, after a run of idle
    polls, or on lane shutdown.
-4. Publish: `/publish` stores the result, marks the item published, and (via
+4. Publish: `/publish` upserts `portal_entries` (the queryable content: status,
+   columns, rows, keyed by `(document, source)` and deduplicated across every
+   team that has ever confirmed it), archives the raw result to object storage
+   for audit/replay, marks the item published pointing at that entry, and (via
    `portal_circuit_breakers`) records the outcome against that
    `(site, provider)` pair's fleet-wide circuit breaker — the shared backstop
    ten consecutive failures anywhere trips, parking every node's lanes for that
@@ -320,6 +329,39 @@ The worker agent holds no database credentials. That is the reason the claim and
 publish API exists at all rather than letting workers take work from Postgres
 directly: a compromised browser automation node gets the item it is holding and
 the proxy credential for that item's job, and nothing else.
+
+## Search and entries
+
+`portal_entries` is the deduplicated, cross-team store of what the portal
+currently knows: one row per `(document, source)`, holding `columns`/`rows` in
+the same generic shape the worker agent already sends over the wire
+(`{document, source, status, columns, rows, error_code}`, mirroring
+`fetch.domain.types.Site.columns` and `Result.rows`). Storing that shape
+verbatim, instead of a typed per-source schema, keeps this table ignorant of
+what a source's fields are named or mean — the same boundary
+`portal.worker.routes` already draws for the raw result blob — so a new fetch
+site never requires a portal migration.
+
+`portal_job_items` is the separate, append-only per-team ledger: who confirmed
+what, when, in which job. The two combine into the two searches the UI offers:
+
+- Team search (`PostgresEntryRepository.search_team`) joins through this
+  team's own `portal_job_items` rows, so a team only ever sees entries it
+  itself has confirmed — even though the underlying row may be physically
+  shared with other teams that scanned the same document. Storage dedup and
+  reuse rights are deliberately separate: a document only counts as "already
+  known" for the submission review step (above) if *this* team's own ledger
+  confirms it, never another team's.
+- Global search (`PostgresEntryRepository.search_global`) reads `portal_entries`
+  directly, no team filter. Gated by `@site_admin_or_global_search` (site
+  admins, or any team with the paid `portal_teams.has_global_search`
+  entitlement, toggled from `/admin/teams`) — a customer entitlement, not a
+  platform role, so it is checked separately from `is_site_admin`.
+
+Both render through the same `EntryDetail`/`AdminEntryDetail` pages: a generic
+table over `entry.columns`/`entry.rows`, so a document with several rows (an
+OSIPTEL DNI with multiple lines, a RUC-20 with several legal reps) shows them
+together rather than one at a time.
 
 ## Audit log
 
