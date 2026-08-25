@@ -20,7 +20,7 @@
           <Metric label="En espera">
             {{ health.queue.queued_jobs }}
           </Metric>
-          <Metric label="Trabajadores en línea">
+          <Metric label="Servidores en línea">
             {{ health.workers|selectattr("online") |list|length }} / {{ health.workers|length }}
           </Metric>
         </Metrics>

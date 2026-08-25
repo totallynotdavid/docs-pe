@@ -29,6 +29,7 @@
   padding: 0 var(--spacing-4);
   text-align: left;
   vertical-align: middle;
+  white-space: nowrap;
 }
 
 /* Cells size to their content and the ellipsis column takes whatever is

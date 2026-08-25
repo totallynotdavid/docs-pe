@@ -22,14 +22,14 @@
       </PanelBody>
     </Panel>
     <Panel>
-      <PanelHeader title="Trabajadores"
-                   description="Estado y consumo de recursos de cada nodo del clúster." />
+      <PanelHeader title="Servidores"
+                   description="Estado y consumo de recursos de cada servidor del clúster." />
       {% if health.workers %}
         <DataTable>
           <TableHeader>
             <TableRow>
               <TableHead>
-                Nodo
+                Servidor
               </TableHead>
               <TableHead>
                 Proceso
@@ -94,8 +94,8 @@
         </DataTable>
       {% else %}
         <EmptyState icon="package"
-                    title="Aún no hay trabajadores"
-                    description="Los nodos aparecen aquí en cuanto se registran con su token de arranque." />
+                    title="Aún no hay servidores"
+                    description="Los servidores aparecen aquí en cuanto se registran con su token de arranque." />
       {% endif %}
     </Panel>
   </MainContent>
