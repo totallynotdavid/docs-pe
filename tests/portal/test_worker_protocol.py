@@ -50,6 +50,11 @@ def test_a_publish_request_survives_the_wire_unchanged() -> None:
         source="osiptel",
         provider="geonode",
         healthy_contact=True,
+        document="10412345678",
+        status="ok",
+        columns=("documento",),
+        rows=(("10412345678",),),
+        error_code=None,
         content="Y29udGVuaWRv",
     )
 

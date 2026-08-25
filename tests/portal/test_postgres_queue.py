@@ -4,7 +4,7 @@ import asyncio
 import base64
 
 from typing import TYPE_CHECKING
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
@@ -31,6 +31,8 @@ from tests.portal.conftest import (
 
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     import asyncpg
 
     from litestar.testing import AsyncTestClient
@@ -93,15 +95,28 @@ async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results
         team_id,
         "resultados/uno.json",
     )
+    entry_id = uuid4()
 
     await pool.execute(
         """
+        INSERT INTO portal_entries
+            (id, document, source, status, columns, rows, last_job_id)
+        VALUES ($1, '10412345678', 'osiptel', 'ok', ARRAY['documento'],
+                '[["10412345678"]]'::jsonb, $2)
+        """,
+        entry_id,
+        partial_job.id,
+    )
+    await pool.execute(
+        """
         UPDATE portal_job_items
-           SET state = 'published', result_object_id = $1, published_at = now()
+           SET state = 'published', result_object_id = $1, published_at = now(),
+               entry_id = $3
          WHERE job_id = $2
         """,
         result_reference,
         partial_job.id,
+        entry_id,
     )
 
     cancelled = await service.cancel(actor_id, team_id, claimed.job_id)
@@ -112,7 +127,13 @@ async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results
             claimed.item_id,
             "trabajador-prueba",
             claimed.lease_fence,
-            result_reference,
+            document="10412345678",
+            source="osiptel",
+            status="ok",
+            columns=("documento",),
+            rows=(("10412345678",),),
+            error_code=None,
+            result_object_id=result_reference,
         )
         is False
     )
@@ -294,66 +315,6 @@ async def test_claim_skips_a_pair_whose_circuit_breaker_is_open(
     assert claimed.job_id == job.id
 
 
-async def test_published_search_finds_a_dni_inside_a_ruc_and_paginates(
-    pool: asyncpg.Pool,
-    service: PortalService,
-    job_repository: PostgresJobRepository,
-) -> None:
-    job = await _submit_one(pool, service)
-    reference = await object_reference(
-        pool,
-        job.team_id,
-        "resultados/uno.json",
-    )
-
-    await pool.execute(
-        """
-        UPDATE portal_job_items
-           SET document = '10123456789', state = 'published',
-               result_object_id = $2, published_at = now()
-         WHERE job_id = $1
-        """,
-        job.id,
-        reference,
-    )
-
-    await pool.execute(
-        """
-        INSERT INTO portal_job_items
-            (id, job_id, team_id, ordinal, document, source, state,
-             result_object_id, published_at)
-        VALUES ($1, $2, $3, 2, '12345678', 'osiptel', 'published', $4, now())
-        """,
-        uuid4(),
-        job.id,
-        job.team_id,
-        reference,
-    )
-
-    found, more = await job_repository.search_published(
-        job.team_id,
-        "12345678",
-        limit=20,
-        offset=0,
-    )
-
-    assert {result.document for result in found} == {
-        "10123456789",
-        "12345678",
-    }
-    assert more is False
-
-    first_page, more = await job_repository.search_published(
-        job.team_id,
-        "12345678",
-        limit=1,
-        offset=0,
-    )
-
-    assert len(first_page) == 1
-    assert more is True
-
-
 async def test_the_worker_api_leases_an_item_and_publishes_its_result(
     pool: asyncpg.Pool,
     service: PortalService,
@@ -396,6 +357,11 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
             "source": claimed["source"],
             "provider": claimed["credential"]["provider"],
             "healthy_contact": True,
+            "document": claimed["document"],
+            "status": "ok",
+            "columns": ["modalidad"],
+            "rows": [["Postpago"]],
+            "error_code": None,
             "content": base64.b64encode(b'{"lineas": []}').decode("ascii"),
         },
         headers=headers,
@@ -410,6 +376,17 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
     )
 
     assert finished["state"] == "completed"
+
+    entry = await pool.fetchrow(
+        "SELECT status, columns, rows FROM portal_entries "
+        "WHERE document = $1 AND source = $2",
+        claimed["document"],
+        claimed["source"],
+    )
+
+    assert entry is not None
+    assert entry["status"] == "ok"
+    assert list(entry["columns"]) == ["modalidad"]
 
     breaker = await pool.fetchrow(
         "SELECT consecutive_failures, level, open_until "

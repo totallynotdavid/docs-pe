@@ -16,6 +16,7 @@ from portal.domain.models import DeliveryChannel, JobState, TeamRole
 
 from tests.portal.conftest import (
     object_reference,
+    publish_claimed,
     seed_site_admin,
     seed_team,
     seed_user,
@@ -98,17 +99,10 @@ async def test_members_only_search_their_team_published_results(
         submit_command(team_b, await create_input(pool, team_b.team_id))
     )
 
-    for job in (job_a, job_b):
+    for _job in (job_a, job_b):
         claimed = await job_repository.claim("trabajador", ("osiptel",))
         assert claimed is not None
-
-        published = await job_repository.publish(
-            claimed.item_id,
-            "trabajador",
-            claimed.lease_fence,
-            await object_reference(pool, job.team_id, f"salida/{job.id}.json"),
-        )
-        assert published
+        assert await publish_claimed(pool, job_repository, claimed)
 
     results = await service.published_results(member_a, team_a.team_id)
 
@@ -252,17 +246,10 @@ async def test_searching_logs_the_query_and_result_count_for_the_team(
     member_id = await seed_user(pool)
     await team_repository.add_member(team.team_id, member_id, TeamRole.TEAM_MEMBER)
 
-    job = await service.submit(
-        submit_command(team, await create_input(pool, team.team_id))
-    )
+    await service.submit(submit_command(team, await create_input(pool, team.team_id)))
     claimed = await job_repository.claim("trabajador", ("osiptel",))
     assert claimed is not None
-    await job_repository.publish(
-        claimed.item_id,
-        "trabajador",
-        claimed.lease_fence,
-        await object_reference(pool, team.team_id, f"salida/{job.id}.json"),
-    )
+    assert await publish_claimed(pool, job_repository, claimed)
 
     results, _ = await service.search(member_id, team.team_id, "10412345678", page=1)
     assert len(results) == 1

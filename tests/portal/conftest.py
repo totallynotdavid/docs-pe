@@ -22,6 +22,7 @@ from portal.application.sessions import BrowserSessions, OneTimeTokens
 from portal.credentials.masterkey import MasterKeyring
 from portal.credentials.secrets import EnvelopeProtector
 from portal.domain.models import (
+    ClaimedWork,
     InputLine,
     ProtectedSecret,
     SubmitJob,
@@ -33,6 +34,7 @@ from portal.notify.mailer import ConsoleMailer
 from portal.repository.audit import PostgresAuditLog
 from portal.repository.auth import PostgresAuthRepository
 from portal.repository.credentials import PostgresCredentialRepository
+from portal.repository.entries import PostgresEntryRepository
 from portal.repository.jobs import PostgresJobRepository
 from portal.repository.search_log import PostgresSearchLogRepository
 from portal.repository.teams import PostgresTeamRepository
@@ -192,6 +194,11 @@ def job_repository(portal_db: PortalDatabase) -> PostgresJobRepository:
 
 
 @pytest.fixture
+def entry_repository(portal_db: PortalDatabase) -> PostgresEntryRepository:
+    return PostgresEntryRepository(portal_db.pool)
+
+
+@pytest.fixture
 def audit_repository(portal_db: PortalDatabase) -> PostgresAuditLog:
     return PostgresAuditLog(portal_db.pool)
 
@@ -211,6 +218,7 @@ def service(
     team_repository: PostgresTeamRepository,
     credential_repository: PostgresCredentialRepository,
     job_repository: PostgresJobRepository,
+    entry_repository: PostgresEntryRepository,
     search_log_repository: PostgresSearchLogRepository,
     worker_registry: PostgresWorkerRegistry,
 ) -> PortalService:
@@ -218,6 +226,7 @@ def service(
         team_repository,
         credential_repository,
         job_repository,
+        entry_repository,
         search_log_repository,
         worker_registry,
     )
@@ -443,8 +452,62 @@ async def object_reference(
     return reference_id
 
 
+async def publish_claimed(
+    pool: asyncpg.Pool,
+    job_repository: PostgresJobRepository,
+    claimed: ClaimedWork,
+    *,
+    status: str = "ok",
+    columns: tuple[str, ...] = ("documento",),
+    rows: tuple[tuple[object, ...], ...] | None = None,
+    error_code: str | None = None,
+    worker_id: str = "trabajador",
+) -> bool:
+    """Publish a claimed item with a real entry payload, the shape every
+    worker-api caller must supply since publish() started upserting
+    portal_entries. rows defaults to the claimed document itself so a test
+    asserting search/entry content has something to match on."""
+    team_id = await job_repository.item_team(claimed.item_id)
+    assert team_id is not None
+
+    return await job_repository.publish(
+        claimed.item_id,
+        worker_id,
+        claimed.lease_fence,
+        document=claimed.document,
+        source=claimed.source,
+        status=status,
+        columns=columns,
+        rows=rows if rows is not None else ((claimed.document,),),
+        error_code=error_code,
+        result_object_id=await object_reference(
+            pool,
+            team_id,
+            f"salida/{claimed.item_id}.json",
+        ),
+    )
+
+
 def csrf_token(html: str) -> str:
     found = re.search(r'name="csrf_token" value="([^"]+)"', html)
+
+    assert found is not None
+
+    return found.group(1)
+
+
+def hidden_value(html: str, name: str) -> str:
+    """A single hidden <input>'s value, e.g. JobReview's input_object_id.
+
+    djlint wraps a tag with several attributes onto multiple lines and
+    reorders them, so this matches name= and value= independently within
+    one <input ...> tag rather than assuming they are adjacent.
+    """
+    found = re.search(
+        rf'<input\b(?=[^>]*\bname="{re.escape(name)}")'
+        rf'(?=[^>]*\bvalue="([^"]*)")[^>]*>',
+        html,
+    )
 
     assert found is not None
 
