@@ -14,17 +14,10 @@ if TYPE_CHECKING:
     from uuid import UUID
 
 
-# OWASP Authorization Cheat Sheet: "adopt a deny-by-default mentality... whenever
-# new functionality or resources are exposed" and prefer centralized, framework-
-# level enforcement over a check a handler has to remember to call.
+# Authorization is declared on service methods instead of being left to each
+# handler. The class hook below rejects an undeclared public method at import
+# time, so a new operation cannot silently omit its access rule.
 # https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html
-#
-# A manual `await self._require_site_admin(actor_id)` at the top of a method is
-# exactly the pattern that guidance warns about: present today, but nothing
-# stops a new method from shipping without it. These decorators make the check
-# part of the method's declared shape instead. AuthorizedService.__init_subclass__
-# then makes the omission a TypeError at import time (a class that defines an
-# undeclared public method fails to define), not a silent hole in production.
 _MARKER = "_portal_access_control"
 
 # OWASP Multifactor Authentication Cheat Sheet calls for step-up MFA on sensitive
@@ -193,9 +186,7 @@ def is_step_up_fresh(
     *,
     within: timedelta = STEP_UP_WINDOW,
 ) -> bool:
-    """The freshness rule @site_admin_step_up enforces, factored out so there
-    is one place that defines "recent" rather than the constant getting
-    copied wherever something needs to ask the same question."""
+    """Return whether the step-up proof is still fresh."""
     return verified_at is not None and datetime.now(UTC) - verified_at <= within
 
 
@@ -275,8 +266,7 @@ class AuthorizedService:
             msg = (
                 f"{cls.__qualname__} defines {joined} without an access-control "
                 "decorator (@site_admin, @site_admin_step_up(...), "
-                "@team_leader(...), @team_reader(...), or @public). "
-                "See portal/application/access.py."
+                "@team_leader(...), @team_reader(...), or @public)."
             )
             raise TypeError(msg)
 

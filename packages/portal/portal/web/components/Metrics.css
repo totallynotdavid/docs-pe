@@ -1,14 +1,9 @@
-/* Only the inter-cell hairlines (the 1px gap showing the background through)
-   frame this: it's always inside a Panel already, so its own outer border
-   would just be a box drawn inside a box. */
 .metrics {
   background: var(--border);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   display: grid;
   gap: 1px;
-  /* auto-fit, not a fixed three: a two-metric panel used to leave a third
-     empty cell showing the hairline background as a grey block. */
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   overflow: hidden;
 }

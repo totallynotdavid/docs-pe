@@ -130,7 +130,6 @@ async def test_reuse_offers_back_a_fresh_answer_but_not_a_stale_one(
     )
     assert len(fresh_review.reusable) == 1
 
-    # osiptel's reuse window is 7 days (see domain.planning.SOURCE_FRESHNESS).
     await pool.execute(
         "UPDATE portal_entries SET last_confirmed_at = now() - interval '8 days'"
         " WHERE document = '10412345678'"

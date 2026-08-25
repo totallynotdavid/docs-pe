@@ -440,8 +440,8 @@ async def test_deleting_a_user_requires_zero_history(
     team = await seed_team(pool)
     unused = await seed_user(pool, email="sin-uso@osiptel.test")
 
-    # A second leader clears the sole-leader guard, isolating the assertion
-    # below to the history check it's meant to exercise.
+    # Keep another active leader so the assertion below exercises user-history
+    # protection, not the sole-leader guard.
     second_leader = await seed_user(pool, email="segunda-lider@osiptel.test")
     await team_repository.add_member(
         team.team_id,
@@ -600,8 +600,8 @@ async def test_a_deactivated_persons_session_stops_working_immediately(
     with sync_client(app) as replay_client:
         replay_client.cookies.set(settings.session_cookie, session_cookie)
 
-        # Same cookie as before, now dead: the session is re-read from
-        # Postgres on every request, not cached at login.
+        # The previously issued cookie is now invalid. Sessions re-read the
+        # account on every request instead of caching it at login.
         blocked = replay_client.get("/", follow_redirects=False)
         assert blocked.status_code == 303
         assert blocked.headers["location"] == "/login"

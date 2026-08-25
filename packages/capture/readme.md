@@ -10,12 +10,11 @@ uv run capture --input docs.csv --output debts.csv --site entel
 ```
 
 Capture is the first step when adding a new site: drive it manually in your own
-Chrome, capture requests via an injected script, learn the wire protocol. No
-proxy configuration needed; uses only the Python standard library. Sites are
-defined in `packages/capture/capture/sites/`, each specifying its origin
-(domain) and capture strategy; `entel` is the only one implemented so far. See
-[docs/adding-a-site.md](../../docs/adding-a-site.md) for the full workflow (site
-definition, then implementing in browser or fetch) and
+Chrome, capture requests via an injected script, and learn the wire protocol. No
+proxy configuration is needed. Sites are defined in
+`packages/capture/capture/sites/`, each specifying its origin and capture
+strategy. See [docs/adding-a-site.md](../../docs/adding-a-site.md) for the full
+workflow (site definition, then implementing in browser or fetch) and
 [docs/sites/entel.md](../../docs/sites/entel.md#why-automation-fails) for why
 capture can end up being a site's permanent home rather than a first step.
 
@@ -35,13 +34,14 @@ capture can end up being a site's permanent home rather than a first step.
    relay.
 6. The relay parses responses and stores outcomes in SQLite.
 
-Durability matches [browser](../browser/readme.md): `<output>.state.sqlite3` is
-the source of truth, the CSV is the latest verified row per document, and
-re-running retries anything that hasn't succeeded. Add
-`--diagnostics <file>.jsonl` for per-request timing and structure (redacted).
+`<output>.state.sqlite3` records observations, and the CSV is the latest
+verified row per document. Re-running retries anything that has not succeeded.
+Add `--diagnostics <file>.jsonl` for per-request timing and structure
+(redacted).
 
-This package shares no code with `browser` or `fetch`: see
-[docs/architecture.md](../../docs/architecture.md) ("do not add cross-package
-imports"). Sites move between packages by copying knowledge, not code, which
-lets a site be reliable here while still broken in `browser`, or reliable in
+Package boundaries and the site workflow are in
+[ARCHITECTURE.md](../../ARCHITECTURE.md) and
+[Adding a site](../../docs/adding-a-site.md). Capture shares no code with
+`browser` or `fetch`: a site moves between packages by copying knowledge, not
+code, so it can be reliable here while still broken in `browser`, or working in
 `browser` while it doesn't exist yet in `fetch`.

@@ -20,8 +20,6 @@
   padding: var(--spacing-1) 2px var(--spacing-1) var(--spacing-1);
 }
 
-/* Only <summary> (the collapsible variant) is a control; the plain <p>
-   variant below has nothing to hover or click. */
 summary.nav-section__title {
   cursor: pointer;
 }
@@ -45,8 +43,6 @@ summary.nav-section__title::-webkit-details-marker {
   transform: rotate(-90deg);
 }
 
-/* 2px, not a spacing step: drawer rows sit almost flush so the column reads
-   as one list rather than a stack of separate buttons. */
 .nav-section__items {
   display: flex;
   flex-direction: column;
@@ -89,9 +85,6 @@ summary.nav-section__title::-webkit-details-marker {
   white-space: nowrap;
 }
 
-/* The sub-nav's tree elbow: an L dropping from the parent row into this one,
-   carrying on past it for every row but the last. Same 9px hairline geometry
-   as the shared drawer's breadcrumb. */
 .nav-item--sub {
   padding-left: calc(var(--spacing-1) + 9px + 7.5px + var(--spacing-2));
   position: relative;
@@ -119,12 +112,6 @@ summary.nav-section__title::-webkit-details-marker {
   width: 1px;
 }
 
-/* The icon-only rail (see .app-shell[data-sidebar-collapsed] in Sidebar.css).
-   Sub-items carry no icon today (see Sidebar.jinja), so they'd render as
-   blank clickable rows at rail width; hiding them is a deliberate scope cut,
-   not an oversight -- expand the drawer to reach team/admin sub-navigation.
-   The label stays in the DOM (clipped, not display:none) so it's still an
-   accessible name for the icon-only link, same technique as .skip-link. */
 .app-shell[data-sidebar-collapsed] .nav-section__title,
 .app-shell[data-sidebar-collapsed] .nav-item--sub {
   display: none;
@@ -147,11 +134,6 @@ summary.nav-section__title::-webkit-details-marker {
   width: 1px;
 }
 
-/* A closed section (setupNavSections's own remembered state) must not also
-   blank out the rail: the two collapse mechanisms are independent, and the
-   rail's icons take priority over a section the user happened to leave
-   closed. details' UA stylesheet hides non-summary children by plain
-   display:none, so a same-specificity-family override here is enough. */
 .app-shell[data-sidebar-collapsed] details.nav-section:not([open]) .nav-section__items {
   display: flex;
 }

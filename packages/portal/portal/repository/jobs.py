@@ -75,9 +75,7 @@ WITH candidate AS (
        AND item.source = ANY($2::text[])
        AND (breaker.open_until IS NULL OR breaker.open_until <= now())
      ORDER BY
-       -- A lane that already holds a session for (source, credential) keeps
-       -- draining that pair's work before spilling to anything else, so the
-       -- session it opened gets reused instead of closed after one lookup.
+       -- Prefer work matching the lane's current provider session.
        CASE
            WHEN item.source = $3 AND job.credential_version_id = $4 THEN 0
            ELSE 1
@@ -187,11 +185,7 @@ class PostgresJobRepository:
         plan: SubmissionPlan,
         reusable: dict[tuple[str, str], UUID],
     ) -> Job:
-        """Create a job. Items in `reusable` (this team's own fresh answers,
-        see PostgresEntryRepository.reusable_for_team) are inserted already
-        published, pointing at the existing entry, and never reach a worker.
-        Everything else is inserted pending, exactly as before reuse existed.
-        """
+        """Create a job with reusable items already published."""
         job_id = uuid4()
         to_fetch = [
             item for item in plan.items if (item.document, item.source) not in reusable
@@ -630,11 +624,7 @@ class PostgresJobRepository:
         page: int,
         page_size: int,
     ) -> tuple[tuple[JobItem, ...], int]:
-        """A job's items, paginated -- unlike job(), which loads every item
-        unconditionally and stays cheap only because nothing renders them.
-        This is what JobDetail's results list actually reads, so it must
-        stay paginated even for a job with hundreds of thousands of items.
-        """
+        """Return a page of non-excluded items and the total count."""
         offset = (page - 1) * page_size
 
         async with self._pool.acquire() as connection:
@@ -685,12 +675,7 @@ class PostgresJobRepository:
         return items, int(total)
 
     async def item_counts(self, job_id: UUID, team_id: UUID) -> JobItemCounts:
-        """Cheap state tally for progress display.
-
-        Unlike job(), this never reads document, source, or lease columns,
-        so it stays affordable to poll while a job with tens of thousands
-        of items is running.
-        """
+        """Count non-excluded item states without loading item details."""
 
         rows = await self._pool.fetch(
             """

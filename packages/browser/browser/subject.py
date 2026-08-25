@@ -18,7 +18,6 @@ class SubjectKind(Enum):
 
 
 class Subject(UserString):
-    # Deliberately mirrors fetch's Doc for the subject kinds browser sites accept.
     def __init__(self, value: str) -> None:
         normalized = value.strip()
 

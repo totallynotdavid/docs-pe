@@ -18,8 +18,7 @@ if TYPE_CHECKING:
 
 WORKER_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
-# 3x the agent's heartbeat interval (worker/agent.py: HEARTBEAT_INTERVAL_SECONDS),
-# so one delayed beat doesn't flip a healthy worker to "offline".
+# Allow a delayed heartbeat without marking a healthy worker offline.
 HEARTBEAT_STALE_AFTER = timedelta(seconds=45)
 
 

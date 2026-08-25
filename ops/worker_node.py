@@ -5,10 +5,9 @@
     uv run ops/worker_node.py add <name> <tailnet-ip> [--dry-run]
     uv run ops/worker_node.py remove <name> [--dry-run] [--yes]
 
-See docs/worker-fleet-bringup.md for the fleet model and the one manual
-prerequisite this script cannot do for you: a fresh box needs a human to
-place dubu's SSH key on it and grant dubu NOPASSWD sudo before `add` can run
-against it non-interactively.
+See docs/operations/worker-fleet.md for the fleet model and the prerequisite
+that a fresh box needs dubu's SSH key and NOPASSWD sudo before `add` can run
+non-interactively.
 """
 
 from __future__ import annotations
@@ -234,7 +233,7 @@ def preflight(node: Node) -> None:
         msg = (
             f"cannot SSH to {SSH_USER}@{node.hostname}: {reachable.stderr.strip()}\n"
             "A fresh box needs a human to place dubu's SSH key on it first. "
-            "See docs/worker-fleet-bringup.md."
+            "See docs/operations/worker-fleet.md."
         )
         raise SystemExit(msg)
 
@@ -413,7 +412,7 @@ def build_application_steps(node: Node, state: AddState) -> list[Step]:
                 "name": node.app_name,
                 "description": (
                     f"Worker fleet agent on {node.name}. Outbound-only, no "
-                    "domain/port. See docs/worker-fleet-bringup.md."
+                    "domain/port. See docs/operations/worker-fleet.md."
                 ),
                 "environmentId": DOKPLOY_ENVIRONMENT_ID,
                 "serverId": state.server_id,

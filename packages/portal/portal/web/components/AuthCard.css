@@ -1,5 +1,3 @@
-/* A real surface, not fields floating on the page: signed out there is no
-   app shell behind this, so the card has to supply its own edge. */
 .auth-card {
   align-items: center;
   background: var(--background);
@@ -34,8 +32,6 @@
   margin-top: var(--spacing-4);
 }
 
-/* A single control stack, so the submit spans the card rather than sitting
-   at whatever width its label happens to be. */
 .auth-card .form > .button {
   justify-self: stretch;
 }

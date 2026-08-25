@@ -25,14 +25,8 @@
         </PanelBody>
       </Panel>
     {% endif %}
-    {# Once codes are up, whatever just granted them (passkey or TOTP) is
-       done: showing the pitch panel for it again would repeat, in past
-       tense, what the codes panel above already just confirmed. #}
     {% set choosing = setup and not recovery_codes and not user.mfa_enabled and not totp_setup_token and not passkeys %}
     {% if choosing %}
-      {# During first-time setup, before any factor exists, lead with the
-         faster option instead of two equally-weighted panels forcing a
-         choice: a passkey is one tap, TOTP means installing an app first. #}
       <Panel>
         <PanelHeader title="Clave de acceso"
                      description="La forma más rápida: usa la huella, el rostro o una llave física de tu dispositivo." />

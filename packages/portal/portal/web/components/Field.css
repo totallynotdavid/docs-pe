@@ -6,8 +6,6 @@
   gap: var(--spacing-1);
 }
 
-/* One definition for every text control in the portal. The search form and
-   the connection picker used to carry their own near-copies of this block. */
 .control,
 .field input,
 .field select,
@@ -33,9 +31,6 @@
   font-weight: var(--font-weight-medium);
 }
 
-/* Blue border on focus and nothing else. The base layer's focus ring marks
-   where keyboard traversal has landed on things that don't otherwise change;
-   a text control already reads as focused, and wearing both looks doubled. */
 .control:focus,
 .field input:focus,
 .field select:focus,

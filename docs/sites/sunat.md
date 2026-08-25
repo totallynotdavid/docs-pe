@@ -31,6 +31,6 @@ have no representatives by law, and that's a valid empty result, not a failure.
 It also produces more rows than input documents (one row per representative).
 
 Unlike OSIPTEL, SUNAT requires every accepted document to produce output; see
-[results.md](../results.md) for the reconciliation formula, measured job data,
-and the residual error rate before/after the 2026-08-01 parser fixes for the two
-response shapes above.
+[results.md](../reports/results.md) for the reconciliation formula, measured job
+data, and the residual error rate before/after the 2026-08-01 parser fixes for
+the two response shapes above.

@@ -1,5 +1,3 @@
-/* No fill and no border: the drawer sits directly on the app background and
-   the page card beside it supplies all the contrast there is. */
 .drawer {
   flex-shrink: 0;
   height: 100%;
@@ -62,8 +60,6 @@
   white-space: nowrap;
 }
 
-/* Only the nav scrolls: the brand above it and the account menu below stay
-   put however long the list of teams gets. */
 .drawer__scroll {
   flex: 1;
   min-height: 0;
@@ -78,8 +74,6 @@
   position: relative;
 }
 
-/* A search-only session has nothing to navigate, so the drawer collapses to
-   the strip above the page card: brand at one end, account at the other. */
 .drawer--minimal {
   height: auto;
   overflow: visible;
@@ -99,14 +93,6 @@
   max-width: 220px;
 }
 
-/* A remembered preference (setupSidebarCollapse in portal.js), not the
-   search-only .drawer--minimal above: that one has no nav to show at all,
-   this one still has the full nav, just as an icon-only rail. The two never
-   overlap in practice, but the guard keeps a collapsed minimal session (a
-   stale localStorage value from a prior non-minimal visit) from fighting
-   .drawer--minimal's own width. .app-shell--transitioning is opt-in so the
-   width only animates on a click, never on the page-load correction that
-   applies a remembered collapsed state. */
 .app-shell[data-sidebar-collapsed] .drawer:not(.drawer--minimal) {
   width: var(--nav-drawer-collapsed-width);
 }

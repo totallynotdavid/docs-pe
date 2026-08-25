@@ -230,8 +230,6 @@ class PostgresAuthRepository:
         recovery_code_hashes: tuple[str, ...] | None,
         promote_to_site_admin: bool,
     ) -> None:
-        """See enable_totp: recovery_code_hashes is None unless this passkey
-        is the user's first second factor."""
         async with self._pool.acquire() as connection, connection.transaction():
             await connection.execute(
                 """

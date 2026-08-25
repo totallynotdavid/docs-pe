@@ -62,8 +62,6 @@
   font-size: var(--font-size-caption);
 }
 
-/* The sample table is the answer to "what will I actually get back", so it
-   only earns its space once the source is picked. */
 .source-option__preview {
   border-top: 1px solid var(--border);
   display: none;

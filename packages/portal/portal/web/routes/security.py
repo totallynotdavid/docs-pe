@@ -39,9 +39,6 @@ async def _security_context(
         "csrf_token": session.csrf_token,
         "setup": session.user.pending_site_admin,
         "passkeys": passkeys,
-        # Same progressive-disclosure idiom as proxy settings: an account
-        # with passkeys already sees the list first, an empty one goes
-        # straight to the form.
         "show_form": add or not passkeys,
         "error": error,
         "recovery_codes": recovery_codes,
@@ -65,9 +62,7 @@ async def security_totp_setup_get(
     page_session: NamedDependency[BrowserSession],
     provisioning: NamedDependency[ProvisioningService],
 ) -> Response:
-    # A GET with a side effect: it only ever writes a fresh, short-lived
-    # setup token nobody but this browser will see the response for, the
-    # same reasoning that lets /login/mfa read cookie state without a body.
+    # The setup token is short-lived and returned only to this browser.
     setup = await provisioning.begin_totp_setup(page_session.user.id)
     context = await _security_context(
         page_session,
@@ -208,12 +203,9 @@ async def security_passkey_register_post(
         )
         return render("Security", **context)
 
-    # The registration ceremony itself is fresh second-factor proof.
+    # Registering a factor provides fresh second-factor proof.
     await sessions.mark_step_up_verified(request.cookies.get(settings.session_cookie))
 
-    # Mirrors /totp/confirm: recovery codes exist only in this response
-    # (never persisted), so a first factor renders them now; a later one has
-    # nothing new to show and settles back on the plain page.
     if recovery_codes is None:
         return Redirect("/security", status_code=303)
 

@@ -18,7 +18,7 @@ def test_strips_surrounding_whitespace() -> None:
 
 
 def test_pads_a_seven_digit_dni_to_the_canonical_width() -> None:
-    # Old 7-digit DNIs are the modern 8-digit form with a dropped leading zero.
+    # Seven-digit DNIs omit the leading zero used by canonical eight-digit values.
     doc = Doc("2953322")
 
     assert str(doc) == "02953322"

@@ -1,10 +1,4 @@
 {#def action, csrf_token, css_class="", enctype=None, id=None #}
-{# jinjax resolves a custom component tag's attributes from source text at
-   compile time, so {{ attrs.render() }} (a runtime expression) can't forward
-   unknown attrs into another component tag the way it can onto a plain HTML
-   element. enctype and id have to be declared params, passed through
-   explicitly. id lets a header button outside the form submit it via the
-   HTML form="..." attribute, instead of moving the button into the body. #}
 <Submission :action="action"
             :csrf_token="csrf_token"
             :class="('form ' ~ css_class)|trim"

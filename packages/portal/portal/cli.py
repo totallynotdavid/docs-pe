@@ -6,14 +6,6 @@ from collections.abc import Callable, Sequence
 from importlib import import_module
 
 
-# One command with subcommands rather than seven console scripts. The workspace
-# shares a virtualenv with fetch, so unprefixed names like `migrate` or `worker`
-# would be ambiguous on PATH, and `portal-` repeated seven times is the same
-# word said seven times.
-#
-# Each entry is imported only when it is the one being run: `portal migrate`
-# should not pay for litestar, and `portal web` should not pay for the fetch
-# pipeline the agent pulls in.
 COMMANDS: dict[str, tuple[str, str]] = {
     "web": ("portal.web.app", "Serve the browser-facing app."),
     "worker-api": ("portal.worker.api", "Serve the tailnet-only worker API."),

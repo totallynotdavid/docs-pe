@@ -44,13 +44,7 @@ if TYPE_CHECKING:
 
 
 async def provide_worker(request: Request, state: State) -> WorkerIdentity:
-    """Authorize the worker itself.
-
-    Reaching this handler already proves the connection came from the tailnet,
-    because portal-worker-api is published on the tailnet address alone. That
-    says a worker node called; the bearer credential says which one, and whether
-    it is still allowed to.
-    """
+    """Authorize a worker by its identity header and bearer credential."""
     authorization = request.headers.get("authorization", "")
 
     if not authorization.startswith("Bearer "):
@@ -94,16 +88,7 @@ async def worker_enroll(
     workers: NamedDependency[PostgresWorkerRegistry],
     audit: NamedDependency[PostgresAuditLog],
 ) -> EnrollResponse:
-    """Self-service credential issuance for the fixed set of worker nodes.
-
-    Reaching this handler already proves the connection came from the tailnet
-    (see provide_worker). The bootstrap token is a second, shared secret every
-    enrolled node holds, and it authorizes minting a worker-scoped credential
-    only. Issuing is idempotent by worker_id (PostgresWorkerRegistry.issue), so
-    a restarted node just re-mints its own credential on every start instead of
-    a human running `portal enroll-worker` and copying a value that is shown
-    once.
-    """
+    """Issue an idempotent, worker-scoped credential."""
     authorization = request.headers.get("authorization", "")
     presented = (
         authorization.removeprefix("Bearer ")

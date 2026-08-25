@@ -6,8 +6,6 @@
   width: 5px;
 }
 
-/* Only the states that are still moving get a live dot: on a list of
-   finished jobs a blinking row is noise, not information. */
 .status--running .status__dot,
 .status--validating .status__dot,
 .status--cancelling .status__dot {
@@ -28,8 +26,6 @@
   }
 }
 
-/* Offline is a neutral badge with the label greyed rather than a red one:
-   a node that is simply not running is not a failure. */
 .status--offline {
   color: var(--foreground-tertiary);
 }

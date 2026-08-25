@@ -284,10 +284,7 @@ class PortalService(AuthorizedService):
         lines: tuple[InputLine, ...],
         sources: tuple[str, ...],
     ) -> SubmissionReview:
-        """What a submission would do, before any job exists: which lines
-        are valid, which are excluded, and which this team already has a
-        fresh answer for. The leader chooses reuse or a full rescan from
-        this before anything is created -- see confirm_submission."""
+        """Preview validation and reusable answers before creating a job."""
         plan = plan_submission(lines, sources)
 
         if not plan.items:
@@ -329,10 +326,7 @@ class PortalService(AuthorizedService):
         sources: tuple[str, ...],
         reuse: bool,
     ) -> Job:
-        """Create the job after the leader has seen preview_submission's
-        review (or immediately, when that review had nothing to show:
-        see routes/jobs.py). The upload itself already happened -- this
-        never touches storage."""
+        """Create a job after the leader confirms the submission."""
         await self._require_active_credential(credential_version_id, team_id)
 
         return await self._admit(
@@ -409,10 +403,7 @@ class PortalService(AuthorizedService):
         content_type: str,
         storage: ObjectStorage,
     ) -> ObjectReference:
-        """Store an uploaded CSV and record it, ahead of knowing whether the
-        submission will proceed as-is or go through a reuse review first
-        (see routes/jobs.py). Storing early is harmless even if the leader
-        never confirms: an orphaned object costs disk, nothing else."""
+        """Store an uploaded CSV and record its object reference."""
         del actor_id
 
         reference = ObjectReference(

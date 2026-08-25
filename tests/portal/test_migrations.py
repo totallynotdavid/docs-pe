@@ -48,8 +48,7 @@ async def test_a_site_admin_cannot_exist_without_a_second_factor(
 async def test_a_passkey_alone_satisfies_the_site_admin_invariant(
     portal_db: PortalDatabase,
 ) -> None:
-    """portal_admin_requires_second_factor accepts TOTP OR a passkey row,
-    unlike the single mfa_enabled column the old CHECK constraint read."""
+    """A passkey satisfies the site-admin second-factor constraint."""
     pool = portal_db.pool
     user_id = uuid4()
 

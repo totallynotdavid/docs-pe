@@ -13,7 +13,7 @@ services:
       - ${PORTAL_OBJECT_ROOT_HOST}:/app/.data/objects
       - ${PORTAL_MASTER_KEY_HOST_PATH}:/run/secrets/portal-master-key:ro
     ports:
-      # The host's tailnet address, never 0.0.0.0: see docs/portal-deployment.md.
+      # Bind the published port to the host's tailnet address.
       - "${PORTAL_WORKER_API_BIND_IP}:8443:8443"
     networks: [dokploy-network]
     restart: unless-stopped

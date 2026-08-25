@@ -9,18 +9,17 @@ up to 5,000 rows.
 
 ## WAF and Peru-exit requirement
 
-OSIPTEL geo-gates by exit IP. Set both explicitly in every `.env`:
-
-```env
-GEONODE_COUNTRY=PE
-DATAIMPULSE_COUNTRY=pe
-```
+OSIPTEL geo-gates by exit IP. `GEONODE_COUNTRY` and `DATAIMPULSE_COUNTRY`
+control the exit country; see
+[Proxy configuration](../proxies.md#peru-exits-are-mandatory-for-osiptel) for
+the variables and their defaults. A different, validly formatted country code
+set by hand passes that validation, opens a working proxy session, and still
+gets blocked by the WAF here.
 
 A non-Peru exit gets a `status=500` block page during the home-page warmup,
-classified as `BanSignalError`. An empty `GEONODE_COUNTRY` is especially
-dangerous: GeoNode then falls back to its global residential pool, and OSIPTEL
-blocks 85-95% of those exits: identical code produced roughly 10% success with
-the global pool versus 98.6% with Peru exits.
+classified as `BanSignalError`. Against GeoNode's global residential pool,
+identical code produced roughly 10% success versus 98.6% with Peru exits:
+OSIPTEL blocks 85-95% of non-Peru exits.
 
 Suspicious exits can also receive HTTP 200 with a CAPTCHA wall instead of a
 clean block, so the readiness check inspects the response body for a success
@@ -40,7 +39,7 @@ dominated:
 - `upstream_not_ready`: a `ConnectError` with `status=0`, caused by dead exits
   in the DataImpulse pool. This is _not_ a `407` and does _not_ indicate
   exhausted account traffic. See
-  [troubleshooting.md](../troubleshooting.md#distinguishing-provider-failure-from-document-failure)
+  [troubleshooting.md](../operations/troubleshooting.md#separate-provider-failures-from-document-failures)
   for that distinction.
 - `ban_signal`: OSIPTEL returned `status=500` because DataImpulse supplied a
   non-Peru exit despite `DATAIMPULSE_COUNTRY=pe` being set. The country field is
@@ -58,12 +57,12 @@ Sample size matters: an earlier 20-failure sample split 9 DataImpulse to 11
 GeoNode and suggested the opposite conclusion. At four-digit scale the real
 ratio is roughly 1000:1. Don't attribute a provider failure from a sample under
 ~1000 attempts (see
-[troubleshooting.md](../troubleshooting.md#distinguishing-provider-failure-from-document-failure)).
+[troubleshooting.md](../operations/troubleshooting.md#separate-provider-failures-from-document-failures)).
 
 ## Empty results
 
 A document with no registered phone lines is a valid, non-error result. In
 practice empty-result share ranges from about 4% to 30% of a DNI job depending
-on province; see [results.md](../results.md) for measured job distributions and
-the reconciliation formula that accounts for empty results. A job outside that
-range deserves investigation, not a retry.
+on province; see [results.md](../reports/results.md) for measured job
+distributions and the reconciliation formula that accounts for empty results. A
+job outside that range deserves investigation, not a retry.

@@ -19,8 +19,6 @@
   padding: 0 var(--spacing-1);
 }
 
-/* A form's submit sits on its own row rather than stretching to the grid
-   column it was placed in. */
 .form > .button {
   justify-self: start;
 }

@@ -338,8 +338,7 @@ async def test_confirming_a_single_source_review_reuses_without_refetching(
     """Regression: Litestar's URL-encoded body binding decodes a single-value
     `sources` field as a scalar, not a list, so a structured Body(URL_ENCODED)
     form here 400s whenever a leader picks (or has cached) exactly one
-    source. confirm_job_post reads request.form() raw specifically to avoid
-    this -- see routes/jobs.py."""
+    source. confirm_job_post reads request.form() raw to accept that input."""
     people = await build_experience(pool, team_repository)
 
     with sync_client(app) as client:

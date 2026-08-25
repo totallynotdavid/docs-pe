@@ -158,9 +158,7 @@ class PostgresTeamRepository:
     async def teams_where_sole_leader(self, user_id: UUID) -> tuple[Team, ...]:
         """Teams that would lose their last leader if user_id were removed.
 
-        Used to block deactivating an account before another leader is in
-        place, the same guarantee _check_not_last_leader already gives
-        membership changes.
+        Prevents deactivating an account while it is the team's last leader.
         """
         async with self._pool.acquire() as connection:
             rows = await connection.fetch(

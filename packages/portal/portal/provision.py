@@ -114,10 +114,6 @@ async def provision(args: argparse.Namespace) -> None:
         _print_setup_status(administrator.email, needs_setup=needs_setup)
 
         if needs_setup:
-            # create_first_team is @site_admin: nothing but a real admin can
-            # call it, and this account is still only pending_site_admin.
-            # Rerun `portal provision`/bootstrap after it completes
-            # /security/setup, which every `mise run dev` restart does.
             print("Team and proxy setup deferred until enrollment completes.")
             return
 

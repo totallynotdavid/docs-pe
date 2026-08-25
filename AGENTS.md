@@ -25,8 +25,8 @@ uv run ruff check packages/portal
 
 Read these before changing code
 
-Start with `docs/architecture.md` to understand system structure, job lifecycle,
-and shared concepts. Then read the package readme you're working on.
+Start with `ARCHITECTURE.md` to understand system structure, job lifecycle, and
+shared concepts. Then read the package readme you're working on.
 
 Each package readme covers its own domain:
 
@@ -41,14 +41,15 @@ Each package readme covers its own domain:
 restate its content in a package readme:
 
 - `docs/proxies.md`: provider tuning and behavior
-- `docs/troubleshooting.md`: runbook, log interpretation
+- `docs/operations/troubleshooting.md`: runbook, log interpretation
 - `docs/sites/`: per-site wire protocol, gates, failure modes (entel, osiptel,
   sunat, portabilidad)
 - `docs/adding-a-site.md`: capture → browser → fetch workflow
-- `docs/results.md`: historical job data and reconciliation
-- `docs/portal-deployment.md`: Dokploy topology, cloudflared edge, master key, tailnet
+- `docs/reports/results.md`: historical job data and reconciliation
+- `docs/operations/portal-deployment.md`: Dokploy topology, cloudflared edge,
+  master key, tailnet
 
-See `docs/architecture.md` for:
+See `ARCHITECTURE.md` for:
 
 - Package boundaries and why cross-imports are forbidden
 - Circuit breaker behavior and its role in preventing cascading failures
@@ -83,26 +84,18 @@ so an async test is a plain async def test_* with no decorator.
 
 Rules that break things silently when ignored
 
-Do not add cross-package imports. See `docs/architecture.md`. Browser, capture,
-and fetch each keep their own copy of a site's parser, columns, and document
-vocabulary. Portal imports fetch only.
+Do not add cross-package imports between `capture`, `browser`, and `fetch`. See
+`ARCHITECTURE.md#package-boundaries`.
 
-Do not classify faults inside a site. See `docs/architecture.md`.
-`domain/policy.py` owns the mapping from fault to retry action. A site that
-grows its own retry rule silently escapes circuit breaker accounting.
+Do not classify faults inside a site. See `ARCHITECTURE.md`. `domain/policy.py`
+owns the mapping from fault to retry action. A site that grows its own retry
+rule silently escapes circuit breaker accounting.
 
-Do not read progress from a CSV or log tail. See `docs/architecture.md` and
-`docs/troubleshooting.md`. The state database is the source of truth. Output
-CSVs don't exist until a run ends; a mid-run empty directory is normal. A
+Do not read progress from a CSV or log tail. See `ARCHITECTURE.md` and
+`docs/operations/troubleshooting.md`. The state database is the source of truth.
+Output CSVs don't exist until a run ends; a mid-run empty directory is normal. A
 relaunch retries known-bad documents first, so logs open with a burst that looks
 like collapse. Query outcomes instead.
-
-`GEONODE_COUNTRY=PE` and `DATAIMPULSE_COUNTRY=pe` must be set explicitly. See
-`docs/proxies.md#peru-exits-are-mandatory-for-osiptel`. OSIPTEL's WAF blocks
-non-Peru exits. An empty country causes GeoNode to fall back to global pool,
-blocking 85-95% of requests. Provider variables are derived as
-`<PROVIDER>_<FIELD>` from the field schema, so renaming a field renames the
-variable.
 
 Ruff runs with a wide extend-select and fix = true. portal has a deliberate
 per-file ignore list in the root pyproject.toml; extend that list rather than

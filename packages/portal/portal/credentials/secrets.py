@@ -24,11 +24,6 @@ class EnvelopeProtector:
 
     A payload is encrypted under a key that exists only for the duration of the
     call, and only the wrapped form of that key is stored beside the ciphertext.
-
-    Rotating a master key re-wraps the stored data keys and leaves payload
-    ciphertext alone, so rotation is a pass over 60-byte blobs rather than a
-    re-encryption of every credential. Without the envelope, rotation would mean
-    decrypting and rewriting every secret in the database.
     """
 
     def __init__(self, keyring: MasterKeyring) -> None:

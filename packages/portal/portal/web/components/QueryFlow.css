@@ -10,8 +10,6 @@
   line-height: var(--line-height-lg);
 }
 
-/* The steps supply their own rhythm and run the full width of the flow, so
-   this form drops the stacked-field grid it would otherwise inherit. */
 .form.query-form {
   gap: 0;
   max-width: none;

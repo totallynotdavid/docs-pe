@@ -105,10 +105,7 @@ async def _form_context(
 def _review_by_source(
     review: SubmissionReview,
 ) -> tuple[dict[str, object], ...]:
-    """Per-source (total, reusable) counts for the review screen -- a team
-    picking multiple sources sees each one's own reuse rate, not one
-    lumped-together total (see UX guideline: group related things
-    together)."""
+    """Return per-source totals and reusable counts for the review screen."""
     reusable_pairs = {(item.document, item.source) for item in review.reusable}
     totals: dict[str, int] = {}
     reused: dict[str, int] = {}
@@ -198,10 +195,7 @@ async def new_job_post(
 
         return render("JobForm", **context)
 
-    # Nothing to decide: every valid line is new to this team, so there is no
-    # reuse-or-rescan choice worth interrupting the leader for (UX guideline:
-    # reduce unnecessary decisions). Admit immediately, same as before this
-    # review step existed.
+    # A review is useful only when at least one item can be reused.
     if not review.reusable:
         job = await service.confirm_submission(
             actor_id=session.user.id,
@@ -238,10 +232,8 @@ async def confirm_job_post(
     storage: NamedDependency[ObjectStorage],
     team_id: FromPath[UUID],
 ) -> Response:
-    # Read raw rather than a dataclass body, like proxy_settings_post: a
-    # msgspec-bound `sources: list[str]` field only decodes as an array
-    # when the form repeats the key more than once, so a leader who picked
-    # (or has cached) just one source would 400 on the structured form.
+    # Repeated form keys are required for msgspec to decode a list. Accept a
+    # single selected source as well.
     form = await request.form()
 
     session = await require_verified_session(
@@ -250,9 +242,8 @@ async def confirm_job_post(
         str(form.get("csrf_token", "")),
     )
 
-    # Re-derived from the stored upload rather than round-tripped through
-    # hidden form fields: a submission can be hundreds of thousands of
-    # lines, and the object is already durably stored from new_job_post.
+    # The upload is already durable. Do not trust a hidden field for the
+    # document count or contents.
     reference = await service.input_reference(
         session.user.id,
         team_id,
@@ -439,12 +430,8 @@ async def _progress_events(
             yield ServerSentEventMessage(event="done", data="")
             return
 
-        # There is no per-item event: portal_job_events only ever records
-        # job-level transitions (see JobsRepository._event). Items keep
-        # moving through pending, running, and published in between, so this
-        # cheap state-count aggregate, not the full item list, is what a
-        # viewer watching a job with tens of thousands of documents actually
-        # needs polled.
+        # Events cover job-level transitions. Poll state counts for item
+        # progress between those transitions.
         counts = await service.job_progress_counts(actor_id, team_id, job_id)
 
         if counts != last_counts:

@@ -10,7 +10,6 @@ if TYPE_CHECKING:
     from browser.sites.base import BrowserSite
 
 
-# Adding a site is one new sites/<name>/ module plus one entry here.
 SITES: dict[str, BrowserSite] = {
     PORTABILIDAD.name: PORTABILIDAD,
     ENTEL.name: ENTEL,

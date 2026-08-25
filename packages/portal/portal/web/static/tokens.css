@@ -57,8 +57,6 @@
   --nav-drawer-collapsed-width: 40px;
   --topbar-height: 39px;
   --z-modal: 100;
-  /* The page-width ladder, matching the shared Page component's narrow and
-     medium variants. A page picks one; nothing hardcodes a width. */
   --layout-narrow: 640px;
   --layout-content: 960px;
   --background-transparent-lighter: color(display-p3 0 0 0 / 0.02);
@@ -188,9 +186,7 @@
   }
 }
 
-/* The reset and base rules live in layers so component CSS, which is
-   unlayered, always outranks them. Before this, components fought the
-   element selectors here with `!important` and doubled-up class names. */
+/* Component CSS is unlayered, so it outranks the reset and base layers. */
 @layer reset {
   *,
   *::before,

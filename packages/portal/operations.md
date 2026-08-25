@@ -1,11 +1,10 @@
 # Portal operations
 
-SQL for inspecting or manually intervening on portal state directly, for when
-the web UI isn't enough. Table names are prefixed `portal_`; there's no bare
-`teams`, `jobs`, or `users`. Membership `role` is `team_leader` or
-`team_member`.
+Manual SQL for inspecting or changing portal state when the web UI cannot do it.
+Run these commands from a trusted host. Portal tables use the `portal_` prefix.
+Membership roles are `team_leader` and `team_member`.
 
-To add a user to a team:
+## Add a team member
 
 ```bash
 psql postgresql://postgres@127.0.0.1/postgres -c "
@@ -17,7 +16,7 @@ psql postgresql://postgres@127.0.0.1/postgres -c "
 "
 ```
 
-To list jobs for a team:
+## Inspect jobs
 
 ```bash
 psql postgresql://postgres@127.0.0.1/postgres -c "
@@ -30,12 +29,10 @@ psql postgresql://postgres@127.0.0.1/postgres -c "
 "
 ```
 
-To manually cancel a running job, don't set `state = 'cancelled'` directly: that
-bypasses lease fencing, and a worker holding the old lease can still write
-results after you think you've stopped it. Do what `JobsRepository.cancel` does
-instead: move to `cancelling` and bump the fence so writes from the current
-lease are rejected. The worker retires the item and moves it to `cancelled`
-itself.
+## Cancel a job
+
+Move a job to `cancelling` and advance its lease fence. A worker holding the
+previous lease then rejects its writes and retires the item itself.
 
 ```bash
 psql postgresql://postgres@127.0.0.1/postgres -c "

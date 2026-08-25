@@ -49,21 +49,13 @@ IDLE_POLL_SECONDS = 2
 # sitting on a sticky proxy session indefinitely while nothing needs it.
 IDLE_SESSION_CLOSE_AFTER = 5
 
-# 1/3 of repository/workers.py's HEARTBEAT_STALE_AFTER, so a single missed
-# beat (network blip, slow request) doesn't flip a healthy worker offline.
+# Keep the heartbeat shorter than the worker staleness window.
 HEARTBEAT_INTERVAL_SECONDS = 15
 
 
 @dataclass
 class LaneSession:
-    """One lane's held session, if any, across consecutive claims.
-
-    A lane is one concurrent slot in the fleet, not one document: it keeps a
-    provider session open across consecutive claims of the same
-    (source, credential_version_id) so fetch.pipeline.session's session_budget
-    is actually amortized the way the standalone fetch CLI amortizes it,
-    instead of every claimed document paying full session-open cost.
-    """
+    """Provider session held by a concurrent lane across compatible claims."""
 
     state: WorkerState = field(default_factory=WorkerState)
     provider: ProxyProvider | None = None
@@ -93,17 +85,10 @@ class AgentOptions:
 
 
 class WorkerAgent:
-    """Claims documents from portal-worker-api, one at a time, and publishes them.
+    """Claim, execute, and publish work through the worker API.
 
-    Each concurrent lane keeps its own LaneSession across claims: as long as
-    consecutive claims stay within the same (source, credential_version_id),
-    the lane's provider session lives on instead of being closed and reopened
-    per document, so fetch.pipeline.session's session_budget rotation applies
-    the same way it does in the standalone fetch CLI.
-
-    The agent holds no database credentials by design: a compromised browser
-    automation node gets the job it is holding and the proxy credential for that
-    job, and nothing else in the installation.
+    Each lane keeps a provider session for compatible claims. Workers hold no
+    database credentials.
     """
 
     def __init__(self, options: AgentOptions) -> None:
@@ -345,17 +330,9 @@ async def self_enroll(
     worker_id: str,
     tailscale_hostname: str,
 ) -> str:
-    """Mint a fresh credential from portal-worker-api's /enroll endpoint.
-
-    Called on every start, not just the first: issuing is idempotent by
-    worker_id, so this replaces `portal enroll-worker` and a copy-pasted,
-    shown-once credential with a value that never has to be persisted on the
-    node at all.
-    """
-    # Same connection-retry as WorkerAgent.run(): this runs fresh on every
-    # process start, including every restart of a crash-looping container, so
-    # it can't afford to be the one call with no resilience to a torn-down
-    # keep-alive connection.
+    """Mint a worker credential from the enrollment endpoint."""
+    # Enrollment is a control-plane request. Retry transient connection
+    # failures, including after a worker restart.
     transport = httpx.AsyncHTTPTransport(retries=2)
 
     async with httpx.AsyncClient(

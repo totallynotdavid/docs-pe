@@ -7,18 +7,10 @@ import msgspec
 from fetch.domain.types import Row
 
 
-# The wire between portal-worker-api and the worker agent, defined once and
-# imported by both sides. When these two drifted apart they were a dict literal
-# in the handler and a TypedDict in the agent, with nothing to make them agree.
-
-
 class ClaimRequest(msgspec.Struct, frozen=True):
     sources: tuple[str, ...] = ()
 
-    # The (source, credential_version_id) of the session the requesting lane
-    # currently holds open, if any. /claim prefers handing back a matching
-    # item so the lane can keep using that session instead of opening a new
-    # one; absent (or non-matching) just falls back to plain FIFO.
+    # The session currently held by the requesting lane, if any.
     affinity_source: str | None = None
     affinity_credential_version_id: UUID | None = None
 
@@ -50,30 +42,19 @@ class PublishRequest(msgspec.Struct, frozen=True):
     item_id: UUID
     fence: int
 
-    # Named separately from `content` rather than left inside it: worker-api
-    # stores the opaque blob without reading it (see below), but circuit
-    # breaker accounting needs exactly these two fields, so they travel as
-    # typed protocol fields instead of requiring worker-api to parse a
-    # site-shaped payload it otherwise never looks inside.
+    # These fields drive fleet circuit-breaker accounting. `content` is opaque.
     source: str
     provider: str
     healthy_contact: bool
 
-    # The queryable content this run confirmed for (document, source),
-    # upserted into portal_entries. Typed for the same reason as
-    # source/provider above: worker-api never parses `content` for this
-    # either. columns/rows stay a generic (names, cells) shape rather than a
-    # site-specific one, so this struct never needs to change when a fetch
-    # site's fields do -- see portal_entries in 001_portal.sql.
+    # The queryable result for this (document, source) pair.
     document: str
     status: str
     columns: tuple[str, ...]
     rows: tuple[Row, ...]
     error_code: str | None
 
-    # Base64: the complete raw result, kept as an opaque archive for audit
-    # and replay. Duplicates document/status/columns/rows above by content,
-    # never read back out to reconstruct them.
+    # Base64-encoded raw result for audit and replay.
     content: str
 
 
@@ -82,8 +63,7 @@ class PublishResult(msgspec.Struct, frozen=True):
 
 
 class HeartbeatRequest(msgspec.Struct, frozen=True):
-    """Point-in-time resource usage, not a time series: the admin health page
-    only needs to know whether the fleet is healthy right now."""
+    """Resource snapshot shown on the admin health page."""
 
     cpu_percent: float | None = None
     memory_mb: float | None = None

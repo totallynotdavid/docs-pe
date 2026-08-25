@@ -14,8 +14,6 @@
   white-space: nowrap;
 }
 
-/* Secondary and outline carry a border because their fill is a hair off the
-   surface behind them; without one the badge disappears into the row. */
 .badge--secondary {
   background: var(--secondary);
   border-color: var(--border);
@@ -41,5 +39,4 @@
   background: var(--info);
   color: var(--info-foreground);
 }
-
 

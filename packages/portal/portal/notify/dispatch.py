@@ -28,10 +28,8 @@ _ESTADO_LABELS = {
     "cancelled": "cancelada",
 }
 
-# Claim and mark 'sending' in one short transaction, so the row lock is not
-# held across the network call that follows: portal_notification_outbox_claim_idx
-# is exactly the FOR UPDATE SKIP LOCKED shape PostgresJobRepository.claim already
-# uses for worker leases.
+# Claim rows before the network call so the transaction does not hold a lock
+# while the mail provider responds.
 _CLAIM_PENDING_EMAIL = """
 WITH claimed AS (
     SELECT id

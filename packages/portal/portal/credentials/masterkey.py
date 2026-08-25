@@ -38,21 +38,8 @@ class MasterKeyring:
     The file holds one key per line as `<version> <urlsafe-base64 32 bytes>`.
     The first line is the active key and wraps every new data key; the rest stay
     loaded so payloads written before a rotation can still be opened. Rotation
-    is therefore: prepend a line, restart, re-wrap stored data keys at leisure,
-    then drop the old line. It never touches payload ciphertext, which is the
-    whole reason the envelope is worth having.
-
-    The key comes from a file rather than the environment because on a container
-    host the environment is not private: it appears in `docker inspect`, in the
-    deployment UI, in /proc/<pid>/environ, and it is inherited by every
-    subprocess, which here includes the fetch process running site code.
-
-    What this protects is a leaked database dump or backup archive, since the
-    key is in neither. What it cannot protect against is someone who already has
-    the host, because the host must be able to read the key to serve a request.
-    A hosted key service would narrow that case and add a per-decrypt audit
-    trail; neither is reachable on a single-host deployment where the
-    application and the database share a machine.
+    prepends a key, reloads the application, re-wraps stored data keys, and
+    removes the retired key.
     """
 
     def __init__(self, active_version: str, keys: dict[str, AESGCM]) -> None:

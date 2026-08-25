@@ -30,9 +30,6 @@
   min-width: 0;
 }
 
-/* Hidden unless the drawer is collapsed (Sidebar.css's
-   .app-shell[data-sidebar-collapsed]): the drawer's own collapse button
-   covers the expanded case, so only one of the two ever shows. */
 .page-header__expand {
   align-items: center;
   background: transparent;
@@ -55,11 +52,6 @@
   display: inline-flex;
 }
 
-/* Chrome, not content: without this the app's global h1 default
-   (heading-md/semibold/tight tracking, meant for real page headings) wins
-   over the ancestor's font-size, since that ancestor rule targets the div,
-   not the h1 itself. Matches crm's PageCardHeader title exactly, which
-   sidesteps the whole issue by using a span instead of an h1. */
 .page-header__title h1 {
   font-size: inherit;
   font-weight: inherit;
@@ -70,8 +62,6 @@
   white-space: nowrap;
 }
 
-/* Ancestor trail, not the current page: dimmer than the title and never the
-   last thing before it truncates when the row runs out of room. */
 .page-header__breadcrumb {
   align-items: center;
   color: var(--foreground-tertiary);

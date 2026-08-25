@@ -34,12 +34,6 @@ if TYPE_CHECKING:
 
 
 def create_worker_api(settings: PortalSettings | None = None) -> Litestar:
-    """The listener workers talk to. Never reachable from the public internet.
-
-    Same package as the web app, different process, different route table, and
-    no shared listener: nothing here is exposed by the public app, and nothing
-    the public app serves is reachable here.
-    """
     resolved = settings or PortalSettings.from_environment()
     resolved.validate()
 
@@ -92,11 +86,8 @@ def run(argv: Sequence[str]) -> None:
     settings = PortalSettings.from_environment()
     settings.validate()
 
-    # Inside a container this is the container's own interface, and what keeps
-    # the API off the internet is the host publishing it on the tailnet address
-    # alone (see docs/portal-deployment.md). Outside a container, set
-    # PORTAL_WORKER_API_HOST to the tailscale0 address so the process cannot
-    # accept a connection that did not arrive over Tailscale.
+    # In a container, the host port binding supplies the tailnet boundary.
+    # Outside one, bind directly to the Tailscale interface.
     uvicorn.run(
         create_worker_api(settings),
         host=settings.worker_api_host,

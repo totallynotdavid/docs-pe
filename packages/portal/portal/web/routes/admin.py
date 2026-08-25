@@ -235,9 +235,6 @@ async def _teams_context(
         "teams": teams,
         "users": await provisioning.users(session.user.id),
         "status": await provisioning.installation_status(session.user.id),
-        # Same idiom as proxy settings and /security: the list is the common
-        # case, the form is a deliberate "+ Add" action, except when there's
-        # nothing to list yet.
         "show_form": add or not teams,
         "error": error,
     }

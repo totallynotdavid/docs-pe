@@ -14,8 +14,6 @@
   <body class="{{ 'signed-out' if not user else ('onboarding' if setup else '') }}">
     <a class="skip-link" href="#content">Saltar al contenido</a>
     {% if user and setup %}
-      {# No nav to show mid-setup: a bare brand and a way out, not a sidebar
-         with an empty middle. #}
       <header class="onboarding-topbar">
         <a class="onboarding-topbar__brand" href="/">
           <Brand />

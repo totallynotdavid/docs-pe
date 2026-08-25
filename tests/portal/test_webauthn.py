@@ -46,8 +46,7 @@ def _secret_from_uri(enrollment_uri: str) -> str:
 
 
 class VirtualAuthenticator:
-    """A minimal FIDO2 authenticator: one EC P-256 keypair, none of the
-    ceremony a real device does beyond what verification actually checks."""
+    """A minimal FIDO2 authenticator for the verification tests."""
 
     def __init__(self) -> None:
         self.credential_id = f"virtual-{id(self)}".encode()

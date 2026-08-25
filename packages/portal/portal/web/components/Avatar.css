@@ -1,6 +1,3 @@
-/* Squared, not a circle: the shared avatar defaults to a 2px corner and only
-   opts into a round one, so a round avatar here would read as a different
-   product. */
 .avatar {
   align-items: center;
   background: var(--avatar-bg);

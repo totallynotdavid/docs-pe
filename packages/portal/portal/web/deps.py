@@ -30,10 +30,7 @@ if TYPE_CHECKING:
 
 
 def is_search_only(user: PortalUser, teams: Sequence[Team]) -> bool:
-    """True when this session has nothing to manage: not a site admin, and
-    not a team_leader anywhere. Drives the minimal, sidebar-less shell:
-    someone whose entire job is searching results shouldn't see a nav built
-    for managing teams and jobs they can't touch."""
+    """Whether this session has no team or installation management access."""
     if user.is_site_admin:
         return False
 

@@ -143,8 +143,6 @@ class PortalUser:
     has_passkey: bool = False
     is_active: bool = True
 
-    # Promotion is waiting on this user completing their own enrollment: see
-    # ProvisioningService.promote_to_site_admin.
     pending_site_admin: bool = False
 
     @property
@@ -186,7 +184,7 @@ class Team:
     name: str
     role: TeamRole | None = None
 
-    # Paid capability, not a role: see AuthorizedService._require_global_search.
+    # Paid capability, not a role.
     has_global_search: bool = False
 
 
@@ -274,7 +272,7 @@ class SubmissionPlan:
 class SubmissionReview:
     """A submission plan plus which of its items this team already has a
     fresh answer for. Shown to the leader before any job is created, so
-    reuse is a visible choice (see docs/architecture.md's search redesign),
+    reuse is a visible choice,
     never a silent skip."""
 
     items: tuple[PlannedItem, ...]
@@ -387,11 +385,7 @@ class NotificationIntent:
 
 @dataclass(frozen=True)
 class Entry:
-    """What we currently know about one (document, source) pair, deduplicated
-    across every team that has ever confirmed it. columns/rows mirror the
-    fetch Result wire shape verbatim (see portal_entries in
-    001_portal.sql) rather than a typed per-source shape, so this type
-    never needs to change when a fetch site's fields do."""
+    """The current result for one (document, source) pair."""
 
     id: UUID
     document: str

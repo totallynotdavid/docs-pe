@@ -57,7 +57,6 @@ if TYPE_CHECKING:
 
 
 def create_web_app(settings: PortalSettings | None = None) -> Litestar:
-    """The public listener. Worker traffic is served by portal-worker-api."""
     resolved = settings or PortalSettings.from_environment()
     resolved.validate()
 

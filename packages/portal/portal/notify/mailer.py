@@ -22,11 +22,7 @@ class Mailer(Protocol):
 
 
 class ResendMailer:
-    """Talks to Resend's REST API directly, the same way CloudflareTurnstile
-    calls siteverify directly rather than pulling in a vendor SDK.
-
-    https://resend.com/docs/api-reference/emails/send-email
-    """
+    """Send messages through Resend."""
 
     def __init__(self, api_key: str, mail_from: str, client: httpx.AsyncClient) -> None:
         self._api_key = api_key
@@ -55,11 +51,7 @@ class ResendMailer:
 
 
 class ConsoleMailer:
-    """Prints instead of sending. Development default, the same role
-    HumanCheckDisabled plays for Turnstile: bootstrap already prints where to
-    finish enrollment instead of emailing it, so a printed invite link is
-    consistent with how this app already behaves locally.
-    """
+    """Print messages for local development."""
 
     async def send(self, *, to: str, subject: str, body: str) -> None:
         print(f"--- mail to {to} ---\nSubject: {subject}\n\n{body}\n---")

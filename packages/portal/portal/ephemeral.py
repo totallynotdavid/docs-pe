@@ -28,10 +28,7 @@ class EphemeralStore:
     them: every access is by exact key, so a column per caller would buy schema
     churn and no capability.
 
-    Every operation is a single statement, which is what makes them atomic
-    without a transaction: an expired row is indistinguishable from a missing
-    one in the same statement that replaces it, so two requests racing on the
-    same key cannot both win.
+    Expiry-aware writes make a live key have one winner when requests race.
     """
 
     def __init__(self, pool: Pool) -> None:

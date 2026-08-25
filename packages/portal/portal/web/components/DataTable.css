@@ -32,9 +32,6 @@
   white-space: nowrap;
 }
 
-/* Cells size to their content and the ellipsis column takes whatever is
-   left. Without this every column gets an equal share, so a two-column table
-   puts its rule down the middle no matter what is in it. */
 .table__cell {
   border-bottom: 1px solid var(--border);
   border-right: 1px solid var(--border);
@@ -52,8 +49,6 @@
   border-right: 0;
 }
 
-/* A table is always the full width of the panel it sits in, so the last row's
-   rule would land on top of the panel's own bottom edge and read as 2px. */
 .table tbody tr:last-child .table__cell {
   border-bottom: 0;
 }
@@ -84,15 +79,11 @@
 }
 
 
-/* A right-aligned cell holding controls rather than text: text-align does
-   nothing to a flex row, so the row has to be told which end to sit at. */
 .table__cell[data-align="right"] .actions,
 .table__cell[data-align="right"] .inline-action {
   justify-content: flex-end;
 }
 
-/* Takes the slack like the ellipsis column, but keeps its content intact:
-   for a cell holding a control rather than a value to truncate. */
 .table__cell--grow {
   white-space: normal;
   width: 100%;

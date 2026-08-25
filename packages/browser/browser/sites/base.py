@@ -21,7 +21,6 @@ class BrowserSite:
     url: str
     export_header: tuple[str, ...]
 
-    # The site decides which subjects it accepts.
     accepts: Callable[[Subject], bool]
 
     open_page: Callable[..., SitePage]

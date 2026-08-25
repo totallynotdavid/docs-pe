@@ -427,9 +427,7 @@ function setupPasskeyLogin() {
   });
 }
 
-// Security.jinja: add a passkey to the signed-in account. Same shape as
-// setupPasskeyLogin above: the WebAuthn ceremony is async client code, but
-// fills a real form and submits it for real once it resolves.
+// Add a passkey to the signed-in account and submit the WebAuthn result.
 function setupPasskeyEnrollment() {
   const form = document.querySelector('form[action="/security/passkey/register"]');
 

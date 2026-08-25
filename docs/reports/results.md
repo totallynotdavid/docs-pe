@@ -1,31 +1,29 @@
 # Results ledger
 
-Historical, empirical data from completed jobs. Use it to calibrate expectations
-for new runs and to sanity-check a job in progress. This is a log, not a
-reference doc: add new rows as jobs complete, don't fold new mechanism
-explanations in here. If you're explaining _why_ something behaves a certain
-way, that belongs in [architecture.md](architecture.md),
-[proxies.md](proxies.md), or [sites/](sites/); link to it instead of re-deriving
-it here.
+Historical measurements from completed jobs. Use these numbers to calibrate a
+new run, not to define runtime behavior. Normative contracts belong in
+[Architecture](../../ARCHITECTURE.md), [proxy configuration](../proxies.md), or
+the matching [site note](../sites/).
 
-All output files live in `results/<job>/`, which is gitignored. The state
-database `*.state.sqlite3` is the source of truth; CSVs are disposable
-projections.
+Output files live in `results/<job>/`, which is gitignored. CSVs are disposable
+projections of the recorded outcomes.
 
 ## Reconciliation rules
 
-OSIPTEL allows empty results (see [sites/osiptel.md](sites/osiptel.md)):
+OSIPTEL permits an empty result:
 
-```
-documents with >= 1 line + documents with 0 lines + terminal failures = input rows
+```text
+documents with lines + documents without lines + terminal failures = input rows
 ```
 
-SUNAT and SUNAT reps require output for every accepted document (see
-[sites/sunat.md](sites/sunat.md)):
+SUNAT requires an identity outcome for each accepted document:
 
-```
+```text
 result rows + error rows + not_found rows = input rows
 ```
+
+SUNAT representatives are different. An entity may have no representative, so a
+successful empty result is valid. See [the SUNAT site note](../sites/sunat.md).
 
 ## OSIPTEL
 
@@ -59,13 +57,12 @@ Phone lines per document. Input is DNIs unless noted.
 | tacna_dni             |  35,545 |     31,212 |     4,333 |    81,387 |      0 |
 | junin_con_negocio_dni |  48,724 |     41,883 |     6,841 |    99,873 |      0 |
 
-Zero-line share is a useful sanity check for new DNI jobs. Across these
-2,268,027 documents, it's 16.7%, ranging from 4.5% (Ancash) to 30.0% (La
-Molina). Jobs outside roughly 4-30% deserve investigation; results near 0% or
-100% usually indicate a bug, not real data.
+Across these 2,268,027 documents, 16.7% returned no lines. The observed range is
+4.5% in Ancash to 30.0% in La Molina. Values near 0% or 100% usually point to a
+bug.
 
-Carrier distribution across 3,208,834 lines (pre-2026-08-23 jobs; the five
-districts above haven't been folded into this breakdown yet):
+Carrier distribution across 3,208,834 lines, before the five district jobs above
+were folded into the breakdown:
 
 | Carrier                   |   Lines |  Share |
 | ------------------------- | ------: | -----: |
@@ -78,7 +75,7 @@ districts above haven't been folded into this breakdown yet):
 
 ## SUNAT
 
-Identity records for RUC-10 (natural persons).
+Identity records for RUC-10 natural persons.
 
 | Job               |   Input |    Rows | Errors | Not found |
 | ----------------- | ------: | ------: | -----: | --------: |
@@ -108,25 +105,20 @@ Identity records for RUC-10 (natural persons).
 | tacna             |  35,583 |  35,583 |      0 |         0 |
 | junin_con_negocio |  48,768 |  48,767 |      0 |         1 |
 
-Jobs before 2026-08-01 had residual error rates ranging from 0.03% to 0.07%,
-entirely explained by two parser gaps (sucesión indivisa handling and non-DNI
-`tipo_doc` values, see [sites/sunat.md](sites/sunat.md)) fixed after that date.
-`surco` was the first rerun after those fixes and reached zero errors.
+Jobs before 2026-08-01 had residual error rates from 0.03% to 0.07%. Two parser
+gaps explained them: sucesión indivisa handling and non-DNI `tipo_doc` values.
+See [the SUNAT site note](../sites/sunat.md).
 
-## SUNAT reps
-
-Legal representatives for RUC-20 (entities).
+## SUNAT representatives
 
 | Job        |   Input |    Rows | Errors |
 | ---------- | ------: | ------: | -----: |
 | ruc20_reps | 846,047 | 931,419 |      9 |
 
-More rows than input is expected: entities have multiple representatives, some
-have none.
+More rows than input is expected because entities can have multiple
+representatives. Some entities have none.
 
 ## Throughput
-
-Proven lane configurations per box (two boxes typical):
 
 | Site    | Configuration               | Throughput                           |
 | ------- | --------------------------- | ------------------------------------ |
@@ -134,28 +126,23 @@ Proven lane configurations per box (two boxes typical):
 | SUNAT   | `geonode:20,dataimpulse:20` | 74 documents/s                       |
 | SUNAT   | `geonode:25`                | 30.6 documents/s                     |
 
-GeoNode showed no meaningful per-lane degradation between 15 and 60 lanes (9.5
-s/lookup at 15 lanes, 7.9 s/lookup at 60 lanes): its 901-slot sticky-port
-allocation was not the limiting factor at this scale. DataImpulse stayed stable
-at 20 lanes even with every lane sharing `gw.dataimpulse.com:823`: a
-600-document OSIPTEL probe completed 600 of 600 with `attempt_count=0`.
+GeoNode showed no meaningful degradation between 15 and 60 lanes: 9.5 seconds
+per lookup at 15 lanes and 7.9 seconds at 60 lanes. DataImpulse stayed stable at
+20 lanes in a 600-document OSIPTEL probe.
 
-These are empirical measurements from 2026-08-01 runs; expect drift as provider
+These measurements came from 2026-08-01 runs and will drift as provider
 infrastructure changes.
 
 ## Cost per lookup
 
-Measured against the origin, 2026-08-01.
+Measured against the origin on 2026-08-01. Providers bill one request per
+proxied session, not per lookup. A session budget above one spreads that cost
+across several lookups.
 
-Proxy dashboards overestimate: both providers bill one request per proxied
-session, not per lookup. With `session_budget > 1`, one session serves many
-lookups.
+| Site    | Per lookup   | Notes                                               |
+| ------- | ------------ | --------------------------------------------------- |
+| OSIPTEL | ~16 KB, ~6 s | `session_budget=1`                                  |
+| SUNAT   | ~26 KB       | `session_budget=50`; home GET paid once per session |
 
-| Site    | Per lookup   | Notes                                                             |
-| ------- | ------------ | ----------------------------------------------------------------- |
-| OSIPTEL | ~16 KB, ~6 s | `session_budget=1` (1:1 sessions to lookups); dashboard is honest |
-| SUNAT   | ~26 KB       | `session_budget=50`; the ~23 KB home GET is paid once per session |
-
-A 235,000-document SUNAT job transfers ~6 GB; the dashboard reported 937-982 KB
-per billed request (~36 lookups' worth of traffic per billed request). In
-practice, throughput is limited by latency and lane count, not bandwidth.
+A 235,000-document SUNAT job transferred about 6 GB. Throughput was limited by
+latency and lane count, not bandwidth.

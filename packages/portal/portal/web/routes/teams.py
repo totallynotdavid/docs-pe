@@ -76,9 +76,6 @@ async def team_settings_overview(
     team_id: FromPath[UUID],
 ) -> Response:
     del page_session
-    # The sidebar's Configuración item now expands to the three settings
-    # sub-pages directly (see Sidebar.jinja); this bare path just lands
-    # somewhere concrete instead of listing them again.
     return Redirect(f"/teams/{team_id}/settings/proxy", status_code=303)
 
 

@@ -4,7 +4,8 @@
 geographic exits. `capture` doesn't use proxies; it uses your own Chrome. This
 doc covers provider mechanics and tuning: stable reference, not measurements.
 For why a given site needs a given provider, see [sites/](sites/); for
-throughput and cost numbers from real jobs, see [results.md](results.md).
+throughput and cost numbers from real jobs, see
+[the results ledger](reports/results.md).
 
 ## Providers
 
@@ -29,8 +30,10 @@ ID: `proxy-1-port-10023`). It allocates 901 sticky-port slots total, so with
 more than 900 concurrent lanes across all sites, ports collide and sessions
 interfere: reduce concurrency or split runs across boxes.
 
-DataImpulse is a rotating datacenter proxy, cheaper per request, but has a
-20-32% failure rate on OSIPTEL (see [sites/osiptel.md](sites/osiptel.md)).
+DataImpulse is a rotating datacenter proxy, cheaper per request, but fails often
+against OSIPTEL's geo-gated WAF (see
+[sites/osiptel.md](sites/osiptel.md#provider-failure-modes) for the measured
+rate).
 
 ```env
 DATAIMPULSE_USERNAME=<username>
@@ -87,30 +90,28 @@ the country setting is correct before running a large job.
 
 ## Peru exits are mandatory for OSIPTEL
 
-Set both explicitly in every `.env`:
-
 ```env
 GEONODE_COUNTRY=PE
 DATAIMPULSE_COUNTRY=pe
 ```
 
-OSIPTEL's WAF blocks most non-Peru exits, and an empty `GEONODE_COUNTRY` is
-especially dangerous since GeoNode silently falls back to its global pool. See
-[sites/osiptel.md](sites/osiptel.md#waf-and-peru-exit-requirement) for the
-measured failure rates and what a block actually looks like on the wire.
+Both fields default to a Peru code when unset and reject an explicitly empty
+value at startup (`fetch/proxy/load.py`). See
+[sites/osiptel.md](sites/osiptel.md#waf-and-peru-exit-requirement) for why Peru
+exits matter and the measured failure rates.
 
 ## Provider selection by site
 
-| Site       | Provider     | Why                                      |
-| ---------- | ------------ | ---------------------------------------- |
-| OSIPTEL    | GeoNode only | DataImpulse fails 20-32% (geo-gated WAF) |
-| SUNAT      | Both         | Not geo-gated; use both to split load    |
-| SUNAT reps | Both         | Same behavior as SUNAT                   |
+| Site       | Provider     | Why                                     |
+| ---------- | ------------ | --------------------------------------- |
+| OSIPTEL    | GeoNode only | DataImpulse fails often (geo-gated WAF) |
+| SUNAT      | Both         | Not geo-gated; use both to split load   |
+| SUNAT reps | Both         | Same behavior as SUNAT                  |
 
 Provider suitability is a property of the site, not the account: the same
 DataImpulse account that fails against OSIPTEL handles half a SUNAT run without
 issue. Details and measured failure rates: [sites/osiptel.md](sites/osiptel.md),
 [sites/sunat.md](sites/sunat.md). For lane and circuit-breaker mechanics in the
-pipeline, see [architecture.md](architecture.md); for diagnosing 407s, circuit
-breaker false alarms, or port exhaustion, see
-[troubleshooting.md](troubleshooting.md).
+pipeline, see [ARCHITECTURE.md](../ARCHITECTURE.md); for diagnosing 407s,
+circuit breaker false alarms, or port exhaustion, see
+[troubleshooting.md](operations/troubleshooting.md).

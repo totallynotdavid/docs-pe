@@ -70,9 +70,7 @@ _SLUGIFY = re.compile(r"[^a-z0-9]+")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _MIN_PASSWORD = 12
 
-# Purposes for ProvisioningService's own OneTimeTokens, distinct from
-# login.py's PENDING_MFA/LOGIN_CSRF: a secret or challenge generated here
-# is never valid to log in with by itself, only to confirm a setup step.
+# Setup tokens confirm enrollment. They are never valid login credentials.
 _TOTP_SETUP = "totp_setup"
 _TOTP_SETUP_TTL = timedelta(minutes=10)
 _PASSKEY_SETUP = "passkey_setup"
@@ -137,8 +135,7 @@ class ProvisioningService(AuthorizedService):
         self._credentials = credentials
         self._protector = protector
         self._audit = audit
-        # Also the WebAuthn RP ID: both must be the request's hostname for a
-        # ceremony to verify, and issuer already is (see settings.hostname).
+        # WebAuthn requires the RP ID and origin to use the request hostname.
         self._issuer = issuer
         self._public_origin = public_origin
         self._setup_tokens = setup_tokens
@@ -168,10 +165,8 @@ class ProvisioningService(AuthorizedService):
     ) -> tuple[PortalUser, bool]:
         """Create or verify the initial administrator.
 
-        Returns (user, needs_setup): needs_setup is True until the account
-        completes its own enrollment at /security/setup. Nothing here ever
-        generates a second factor: unlike the old flow, no secret is
-        available for an operator to see, only the account to sign into.
+        Returns (user, needs_setup). The account completes enrollment at
+        /security/setup.
         """
         user = await self._auth.create_account(email, password_hash)
 
@@ -485,11 +480,10 @@ class ProvisioningService(AuthorizedService):
         setup_token: str,
         code: str,
     ) -> tuple[str, ...] | None:
-        """Returns freshly issued recovery codes, shown once, only when this
-        was the caller's first second factor.
+        """Confirm the setup token without spending it on an invalid code.
 
-        Unlike login's pending-MFA token, a wrong code here does not spend
-        setup_token: the secret is a long-lived QR the user already has in
+        A wrong code does not spend setup_token: the secret is a long-lived QR
+        the user already has in
         front of them, not a guessable target, so a typo should mean "try
         again" rather than "scan a new code." Only a successful confirm (or
         the token's own TTL) retires it.
@@ -549,8 +543,6 @@ class ProvisioningService(AuthorizedService):
         response_json: str,
         label: str,
     ) -> tuple[str, ...] | None:
-        """Returns freshly issued recovery codes, shown once, only when this
-        was the caller's first second factor."""
         user = await self._reload(actor_id)
         pending = await self._consume_setup(_PASSKEY_SETUP, setup_token, user.id)
 

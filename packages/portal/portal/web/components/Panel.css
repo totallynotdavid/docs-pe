@@ -31,8 +31,6 @@
   padding: var(--spacing-4);
 }
 
-/* Panel bodies stack arbitrary blocks (prose, a form, a metric grid), so the
-   gap belongs to the container rather than to each thing that can land here. */
 .panel__body > * + * {
   margin-top: var(--spacing-4);
 }
