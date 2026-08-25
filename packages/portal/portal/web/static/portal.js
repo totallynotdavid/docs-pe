@@ -1,3 +1,43 @@
+function setupSidebarCollapse() {
+  const shell = document.querySelector(".app-shell");
+  const toggles = document.querySelectorAll("[data-sidebar-toggle]");
+  const key = "portal-sidebar-collapsed";
+
+  if (!shell || !toggles.length) {
+    return;
+  }
+
+  try {
+    if (localStorage.getItem(key) === "1") {
+      shell.dataset.sidebarCollapsed = "1";
+    }
+  } catch {
+    // No persisted preference to read; the shell stays expanded for this load.
+  }
+
+  for (const toggle of toggles) {
+    toggle.addEventListener("click", () => {
+      // Opt-in transition (see .app-shell--transitioning in Sidebar.css): only
+      // a click animates the width, never the page-load correction above.
+      shell.classList.add("app-shell--transitioning");
+
+      const collapsed = shell.dataset.sidebarCollapsed === "1";
+
+      if (collapsed) {
+        delete shell.dataset.sidebarCollapsed;
+      } else {
+        shell.dataset.sidebarCollapsed = "1";
+      }
+
+      try {
+        localStorage.setItem(key, collapsed ? "0" : "1");
+      } catch {
+        // Toggles for this load regardless; just doesn't persist.
+      }
+    });
+  }
+}
+
 function setupAccountMenu() {
   const account = document.querySelector("[data-account]");
   const button = document.querySelector("[data-account-trigger]");
@@ -182,6 +222,31 @@ function setupProgressStream() {
     source.close();
   });
 }
+
+function setupNavSections() {
+  const sections = document.querySelectorAll("[data-nav-section]");
+
+  for (const section of sections) {
+    const key = `portal-nav-section:${section.dataset.navSection}`;
+
+    try {
+      if (localStorage.getItem(key) === "closed") {
+        section.removeAttribute("open");
+      }
+    } catch {
+      continue;
+    }
+
+    section.addEventListener("toggle", () => {
+      try {
+        localStorage.setItem(key, section.open ? "open" : "closed");
+      } catch {
+        // Nothing to persist to; the section still toggles for this load.
+      }
+    });
+  }
+}
+
 
 // --- WebAuthn/passkeys -------------------------------------------------
 //
@@ -391,7 +456,9 @@ function setupPasskeyEnrollment() {
   });
 }
 
+setupSidebarCollapse();
 setupAccountMenu();
+setupNavSections();
 setupCsvDropzone();
 setupProgressStream();
 setupPasskeyLogin();

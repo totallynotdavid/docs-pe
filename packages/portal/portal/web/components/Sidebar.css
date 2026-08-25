@@ -20,9 +20,28 @@
   align-items: center;
   display: flex;
   flex-shrink: 0;
+  justify-content: space-between;
   min-height: var(--spacing-8);
   padding-right: var(--spacing-2);
   user-select: none;
+}
+
+.drawer__collapse {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--foreground-secondary);
+  display: inline-flex;
+  flex-shrink: 0;
+  height: var(--spacing-7);
+  justify-content: center;
+  width: var(--spacing-7);
+}
+
+.drawer__collapse:hover {
+  background: var(--background-transparent-light);
+  color: var(--foreground);
 }
 
 .drawer__brand {
@@ -78,6 +97,30 @@
 .drawer--minimal .drawer__footer {
   margin-left: auto;
   max-width: 220px;
+}
+
+/* A remembered preference (setupSidebarCollapse in portal.js), not the
+   search-only .drawer--minimal above: that one has no nav to show at all,
+   this one still has the full nav, just as an icon-only rail. The two never
+   overlap in practice, but the guard keeps a collapsed minimal session (a
+   stale localStorage value from a prior non-minimal visit) from fighting
+   .drawer--minimal's own width. .app-shell--transitioning is opt-in so the
+   width only animates on a click, never on the page-load correction that
+   applies a remembered collapsed state. */
+.app-shell[data-sidebar-collapsed] .drawer:not(.drawer--minimal) {
+  width: var(--nav-drawer-collapsed-width);
+}
+
+.app-shell--transitioning .drawer:not(.drawer--minimal) {
+  transition: width var(--motion-normal) var(--ease-standard);
+}
+
+.app-shell[data-sidebar-collapsed] .drawer__brand span {
+  display: none;
+}
+
+.app-shell[data-sidebar-collapsed] .drawer__collapse {
+  display: none;
 }
 
 @media (max-width: 720px) {

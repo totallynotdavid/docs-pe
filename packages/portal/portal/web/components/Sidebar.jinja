@@ -6,10 +6,18 @@
         <Brand />
         <span>{{ PRODUCT_NAME }}</span>
       </a>
+      {% if not minimal %}
+        <button class="drawer__collapse"
+                type="button"
+                data-sidebar-toggle
+                aria-label="Contraer barra lateral">
+          <Icon name="sidebar-collapse" :size="16" />
+        </button>
+      {% endif %}
     </header>
     {% if not minimal %}
       <nav class="drawer__scroll nav" aria-label="Navegación principal">
-        <NavSection label="Espacio de trabajo">
+        <NavSection label="Espacio de trabajo" id="workspace">
           <NavItem href="/" label="Equipos" icon="users" :active="active == 'teams'" />
           {% if active_team %}
             <NavItem :href="'/teams/' ~ active_team.id"
@@ -43,7 +51,7 @@
                    :active="active == 'security'" />
         </NavSection>
         {% if user.is_site_admin %}
-          <NavSection label="Administración">
+          <NavSection label="Administración" id="admin">
             <NavItem href="/admin"
                      label="Resumen"
                      icon="settings"

@@ -30,6 +30,31 @@
   min-width: 0;
 }
 
+/* Hidden unless the drawer is collapsed (Sidebar.css's
+   .app-shell[data-sidebar-collapsed]): the drawer's own collapse button
+   covers the expanded case, so only one of the two ever shows. */
+.page-header__expand {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--foreground-secondary);
+  display: none;
+  flex-shrink: 0;
+  height: var(--spacing-7);
+  justify-content: center;
+  width: var(--spacing-7);
+}
+
+.page-header__expand:hover {
+  background: var(--background-transparent-light);
+  color: var(--foreground);
+}
+
+.app-shell[data-sidebar-collapsed] .page-header__expand {
+  display: inline-flex;
+}
+
 /* Chrome, not content: without this the app's global h1 default
    (heading-md/semibold/tight tracking, meant for real page headings) wins
    over the ancestor's font-size, since that ancestor rule targets the div,

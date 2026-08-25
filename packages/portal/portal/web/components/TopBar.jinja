@@ -1,6 +1,12 @@
 {#def title, icon="", breadcrumb=None #}
 <header class="page-header">
   <div class="page-header__left">
+    <button class="page-header__expand"
+            type="button"
+            data-sidebar-toggle
+            aria-label="Expandir barra lateral">
+      <Icon name="sidebar-expand" :size="16" />
+    </button>
     <div class="page-header__title">
       {% if icon %}<Icon :name="icon" />{% endif %}
       {% if breadcrumb %}

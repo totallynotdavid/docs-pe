@@ -42,3 +42,22 @@
 .account__trigger[aria-expanded="true"] .account__chevron {
   transform: rotate(180deg);
 }
+
+/* Rail width: the trigger keeps only the avatar. The label stays clipped
+   rather than display:none so the button still has an accessible name. */
+.app-shell[data-sidebar-collapsed] .account__trigger {
+  justify-content: center;
+  width: auto;
+}
+
+.app-shell[data-sidebar-collapsed] .account__label {
+  clip: rect(0 0 0 0);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+
+.app-shell[data-sidebar-collapsed] .account__chevron {
+  display: none;
+}

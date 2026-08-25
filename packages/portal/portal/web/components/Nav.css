@@ -15,7 +15,34 @@
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
   height: var(--spacing-7);
+  justify-content: space-between;
+  list-style: none;
   padding: var(--spacing-1) 2px var(--spacing-1) var(--spacing-1);
+}
+
+/* Only <summary> (the collapsible variant) is a control; the plain <p>
+   variant below has nothing to hover or click. */
+summary.nav-section__title {
+  cursor: pointer;
+}
+
+summary.nav-section__title:hover {
+  color: var(--foreground);
+}
+
+summary.nav-section__title::-webkit-details-marker {
+  display: none;
+}
+
+.nav-section__chevron {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+
+.nav-section:not([open]) .nav-section__chevron {
+  transform: rotate(-90deg);
 }
 
 /* 2px, not a spacing step: drawer rows sit almost flush so the column reads
@@ -90,4 +117,41 @@
   position: absolute;
   top: 14px;
   width: 1px;
+}
+
+/* The icon-only rail (see .app-shell[data-sidebar-collapsed] in Sidebar.css).
+   Sub-items carry no icon today (see Sidebar.jinja), so they'd render as
+   blank clickable rows at rail width; hiding them is a deliberate scope cut,
+   not an oversight -- expand the drawer to reach team/admin sub-navigation.
+   The label stays in the DOM (clipped, not display:none) so it's still an
+   accessible name for the icon-only link, same technique as .skip-link. */
+.app-shell[data-sidebar-collapsed] .nav-section__title,
+.app-shell[data-sidebar-collapsed] .nav-item--sub {
+  display: none;
+}
+
+.app-shell[data-sidebar-collapsed] .nav-item {
+  justify-content: center;
+  padding: var(--spacing-1) 0;
+}
+
+.app-shell[data-sidebar-collapsed] .nav-item__icon {
+  margin-right: 0;
+}
+
+.app-shell[data-sidebar-collapsed] .nav-item__label {
+  clip: rect(0 0 0 0);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+
+/* A closed section (setupNavSections's own remembered state) must not also
+   blank out the rail: the two collapse mechanisms are independent, and the
+   rail's icons take priority over a section the user happened to leave
+   closed. details' UA stylesheet hides non-summary children by plain
+   display:none, so a same-specificity-family override here is enough. */
+.app-shell[data-sidebar-collapsed] details.nav-section:not([open]) .nav-section__items {
+  display: flex;
 }

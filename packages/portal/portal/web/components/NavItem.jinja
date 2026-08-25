@@ -6,7 +6,7 @@
 {% if active %}
   {% set classes = classes + ["nav-item--active"] %}
 {% endif %}
-<a {{ attrs.render(class=classes|join(" "), href=href) }}
+<a {{ attrs.render(class=classes|join(" "), href=href, title=label) }}
    {% if active %}aria-current="page"{% endif %}>
   {% if icon %}
     <span class="nav-item__icon">
