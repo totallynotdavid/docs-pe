@@ -30,9 +30,17 @@
                      :active="active == 'team-search'" />
             {% if (active_team.role and active_team.role.value == 'team_leader') or user.is_site_admin %}
               <NavItem :href="'/teams/' ~ active_team.id ~ '/settings/proxy'"
-                       label="Configuración"
+                       label="Proxy"
                        sub
-                       :active="active == 'team-settings'" />
+                       :active="active == 'team-settings-proxy'" />
+              <NavItem :href="'/teams/' ~ active_team.id ~ '/settings/members'"
+                       label="Miembros"
+                       sub
+                       :active="active == 'team-settings-members'" />
+              <NavItem :href="'/teams/' ~ active_team.id ~ '/settings/search-activity'"
+                       label="Actividad"
+                       sub
+                       :active="active == 'team-settings-activity'" />
             {% endif %}
           {% endif %}
           {% if user.is_site_admin or (active_team and active_team.has_global_search) %}

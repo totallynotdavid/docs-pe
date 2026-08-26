@@ -276,6 +276,7 @@ async def _proxy_context(
     *,
     provider: str,
     show_form: bool,
+    edit_credential_id: UUID | None = None,
     error: str = "",
 ) -> dict[str, object]:
     team = await service.team(session.user.id, team_id)
@@ -283,15 +284,30 @@ async def _proxy_context(
     readiness = await provisioning.team_readiness(session.user.id, team_id)
     connections = _latest_per_connection(credentials)
 
+    editing = next(
+        (
+            connection
+            for connection in connections
+            if connection.credential_id == edit_credential_id
+        ),
+        None,
+    )
+    # Editing keeps the connection's own provider: switching providers isn't
+    # "editing", it's replacing the connection, which "Añadir conexión" already does.
+    active_provider = editing.provider if editing else provider
+    fields = ProvisioningService.provider_fields(active_provider)
+
     return {
         "user": session.user,
         "csrf_token": session.csrf_token,
         "team": team,
         "connections": connections,
         "readiness": readiness,
-        "provider": provider,
+        "editing": editing,
+        "provider": active_provider,
         "providers": provider_names(),
-        "fields": ProvisioningService.provider_fields(provider),
+        "basic_fields": tuple(field for field in fields if not field.advanced),
+        "advanced_fields": tuple(field for field in fields if field.advanced),
         # Progressive disclosure: a team with connections already sees the
         # list first: the form is a deliberate "+ Add" action, not something
         # to fill in on every visit. A team with none goes straight to it.
@@ -308,6 +324,7 @@ async def proxy_settings_get(
     team_id: FromPath[UUID],
     provider: FromQuery[str] = "geonode",
     add: FromQuery[bool] = False,
+    edit: FromQuery[UUID | None] = None,
 ) -> Response:
     context = await _proxy_context(
         page_session,
@@ -315,7 +332,8 @@ async def proxy_settings_get(
         provisioning,
         team_id,
         provider=provider,
-        show_form=add,
+        show_form=add or edit is not None,
+        edit_credential_id=edit,
     )
 
     return render("ProxySettings", **context)
@@ -341,6 +359,8 @@ async def proxy_settings_post(
 
     provider = str(form.get("provider", ""))
     label = str(form.get("label", ""))
+    raw_edit_id = str(form.get("edit_credential_id", ""))
+    edit_credential_id = UUID(raw_edit_id) if raw_edit_id else None
     values = {
         field.name: str(form.get(field.name, ""))
         for field in ProvisioningService.provider_fields(provider)
@@ -363,6 +383,49 @@ async def proxy_settings_post(
             team_id,
             provider=provider,
             show_form=True,
+            edit_credential_id=edit_credential_id,
+            error=message_for(error),
+        )
+
+        return render("ProxySettings", **context)
+
+    return Redirect(f"/teams/{team_id}/settings/proxy", status_code=303)
+
+
+@dataclass
+class RetireCredentialForm:
+    csrf_token: str
+
+
+@post("/settings/proxy/{credential_id:uuid}/retire", status_code=200)
+async def proxy_credential_retire(
+    request: HTMXRequest,
+    service: NamedDependency[PortalService],
+    settings: NamedDependency[PortalSettings],
+    provisioning: NamedDependency[ProvisioningService],
+    team_id: FromPath[UUID],
+    credential_id: FromPath[UUID],
+    data: Annotated[
+        RetireCredentialForm,
+        Body(media_type=RequestEncodingType.URL_ENCODED),
+    ],
+) -> Response:
+    session = await require_verified_session(
+        request,
+        settings,
+        data.csrf_token,
+    )
+
+    try:
+        await service.retire_credential(session.user.id, team_id, credential_id)
+    except PortalError as error:
+        context = await _proxy_context(
+            session,
+            service,
+            provisioning,
+            team_id,
+            provider="geonode",
+            show_form=False,
             error=message_for(error),
         )
 
@@ -433,5 +496,6 @@ router = Router(
         proxy_settings_get,
         proxy_settings_post,
         proxy_credential_rename,
+        proxy_credential_retire,
     ],
 )

@@ -12,9 +12,10 @@ from portal.domain.errors import (
     Reason,
     SourceValidationError,
 )
-from portal.domain.models import DeliveryChannel, JobState, TeamRole
+from portal.domain.models import CredentialState, DeliveryChannel, JobState, TeamRole
 
 from tests.portal.conftest import (
+    UNREADABLE_SECRET,
     object_reference,
     publish_claimed,
     seed_site_admin,
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
     import asyncpg
 
     from portal.application.service import PortalService
+    from portal.repository.credentials import PostgresCredentialRepository
     from portal.repository.jobs import PostgresJobRepository
     from portal.repository.teams import PostgresTeamRepository
 
@@ -234,6 +236,76 @@ async def test_renaming_a_credential_cannot_cross_team_boundary(
         )
 
     assert raised.value.reason is Reason.CREDENTIAL_WRONG_TEAM
+
+
+async def test_retiring_a_credential_hides_it_from_the_team(
+    pool: asyncpg.Pool,
+    service: PortalService,
+) -> None:
+    team = await seed_team(pool)
+    [credential] = await service.credentials(team.actor_id, team.team_id)
+
+    await service.retire_credential(
+        team.actor_id,
+        team.team_id,
+        credential.credential_id,
+    )
+
+    assert await service.credentials(team.actor_id, team.team_id) == ()
+
+
+async def test_retiring_a_credential_cannot_cross_team_boundary(
+    pool: asyncpg.Pool,
+    service: PortalService,
+) -> None:
+    team_a = await seed_team(pool)
+    team_b = await seed_team(pool)
+    [credential_b] = await service.credentials(team_b.actor_id, team_b.team_id)
+
+    with pytest.raises(NotFound) as raised:
+        await service.retire_credential(
+            team_a.actor_id,
+            team_a.team_id,
+            credential_b.credential_id,
+        )
+
+    assert raised.value.reason is Reason.CREDENTIAL_WRONG_TEAM
+
+
+async def test_reconfiguring_a_retired_credential_revives_it(
+    pool: asyncpg.Pool,
+    service: PortalService,
+    credential_repository: PostgresCredentialRepository,
+) -> None:
+    """Reconfiguring under the same label is how "editing" and "reconnecting"
+    work: same identity, so it should undo an earlier retire, not collide
+    with it."""
+    team = await seed_team(pool)
+    [credential] = await service.credentials(team.actor_id, team.team_id)
+
+    await service.retire_credential(
+        team.actor_id,
+        team.team_id,
+        credential.credential_id,
+    )
+    assert await service.credentials(team.actor_id, team.team_id) == ()
+
+    started = await credential_repository.start_credential_validation(
+        team.team_id,
+        "Proxy Perú",
+        "geonode",
+        UNREADABLE_SECRET,
+        team.actor_id,
+    )
+    await credential_repository.finish_credential_validation(
+        started.id,
+        state=CredentialState.ACTIVE,
+        detail="",
+        actor_id=team.actor_id,
+    )
+
+    revived = await service.credentials(team.actor_id, team.team_id)
+    assert {version.credential_id for version in revived} == {credential.credential_id}
 
 
 async def test_searching_logs_the_query_and_result_count_for_the_team(

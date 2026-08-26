@@ -247,6 +247,18 @@ function setupNavSections() {
   }
 }
 
+function setupConfirmSubmit() {
+  const forms = document.querySelectorAll("[data-confirm]");
+
+  for (const form of forms) {
+    form.addEventListener("submit", (event) => {
+      if (!window.confirm(form.dataset.confirm)) {
+        event.preventDefault();
+      }
+    });
+  }
+}
+
 function setupRecoveryCodes() {
   const button = document.querySelector("[data-recovery-copy]");
   const label = document.querySelector("[data-recovery-copy-label]");
@@ -485,6 +497,7 @@ function setupPasskeyEnrollment() {
 setupSidebarCollapse();
 setupAccountMenu();
 setupNavSections();
+setupConfirmSubmit();
 setupCsvDropzone();
 setupProgressStream();
 setupRecoveryCodes();

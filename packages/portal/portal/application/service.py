@@ -475,6 +475,15 @@ class PortalService(AuthorizedService):
 
         await self._credentials.rename_credential(credential_id, team_id, clean)
 
+    @site_admin_or_leader()
+    async def retire_credential(
+        self,
+        actor_id: UUID,
+        team_id: UUID,
+        credential_id: UUID,
+    ) -> None:
+        await self._credentials.retire_credential(credential_id, team_id)
+
     async def _require_site_admin(self, actor_id: UUID) -> None:
         if not await self._teams.is_site_admin(actor_id):
             raise PermissionDenied(Reason.SITE_ADMIN_REQUIRED)

@@ -1,0 +1,36 @@
+.disclosure {
+  border-top: 1px solid var(--border);
+  padding-top: var(--spacing-3);
+}
+
+.disclosure__summary {
+  align-items: center;
+  color: var(--foreground-tertiary);
+  cursor: pointer;
+  display: flex;
+  font-size: var(--font-size-caption);
+  gap: var(--spacing-2);
+  list-style: none;
+}
+
+.disclosure__summary:hover {
+  color: var(--foreground);
+}
+
+.disclosure__summary::-webkit-details-marker {
+  display: none;
+}
+
+.disclosure__summary .icon {
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+
+.disclosure[open] .disclosure__summary .icon {
+  transform: rotate(90deg);
+}
+
+.disclosure__content {
+  display: grid;
+  gap: var(--spacing-4);
+  padding-top: var(--spacing-4);
+}

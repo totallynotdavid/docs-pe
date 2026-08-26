@@ -58,12 +58,40 @@ class PostgresCredentialRepository:
                     ON credential.id = version.credential_id
                    AND credential.team_id = version.team_id
                  WHERE version.team_id = $1
+                   AND credential.retired_at IS NULL
                  ORDER BY credential.label, version.version DESC
                 """,
                 team_id,
             )
 
         return tuple(self._credential(row) for row in rows)
+
+    async def retire_credential(
+        self,
+        credential_id: UUID,
+        team_id: UUID,
+    ) -> None:
+        """Hide a connection from the team without touching its version
+        history: portal_team_proxy_credential_versions never mutates rows
+        outside portal_reject_proxy_credential_version_mutation's allowance,
+        so deletion happens one level up, on the label row. Reconfiguring
+        under the same label (start_credential_validation) clears this again.
+        """
+        async with self._pool.acquire() as connection:
+            updated = await connection.execute(
+                """
+                UPDATE portal_team_proxy_credentials
+                   SET retired_at = now()
+                 WHERE id = $1
+                   AND team_id = $2
+                   AND retired_at IS NULL
+                """,
+                credential_id,
+                team_id,
+            )
+
+        if updated == "UPDATE 0":
+            raise NotFound(Reason.CREDENTIAL_WRONG_TEAM)
 
     async def rename_credential(
         self,
@@ -126,6 +154,17 @@ class PostgresCredentialRepository:
                     team_id,
                     label,
                     created_by,
+                )
+            else:
+                # Reconfiguring a retired connection is how a team un-deletes
+                # it: same label, so it's the same logical connection.
+                await connection.execute(
+                    """
+                    UPDATE portal_team_proxy_credentials
+                       SET retired_at = NULL
+                     WHERE id = $1
+                    """,
+                    credential_id,
                 )
 
             version = int(

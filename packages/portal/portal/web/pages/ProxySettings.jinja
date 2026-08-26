@@ -1,8 +1,8 @@
-{#def user, csrf_token, team, connections, readiness, provider, providers, fields, show_form, error #}
+{#def user, csrf_token, team, connections, readiness, editing, provider, providers, basic_fields, advanced_fields, show_form, error #}
 <Layout :title="'Conexión proxy · ' ~ team.name"
         :user="user"
         :csrf_token="csrf_token"
-        active="team-settings"
+        active="team-settings-proxy"
         :active_team="team">
   <TopBar title="Conexión proxy" icon="link">
     {% if connections and not show_form %}
@@ -29,6 +29,9 @@
               </TableHead>
               <TableHead align="right">
                 Estado
+              </TableHead>
+              <TableHead align="right">
+                Acciones
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -59,6 +62,22 @@
                     {{ connection.state.value|credential_state }}
                   </Status>
                 </TableCell>
+                <TableCell align="right">
+                  <Actions>
+                    <ActionButton variant="secondary"
+                                  size="sm"
+                                  :href="'/teams/' ~ team.id ~ '/settings/proxy?edit=' ~ connection.credential_id">
+                      {{ 'Reconectar' if connection.state.value == 'failed' else 'Editar' }}
+                    </ActionButton>
+                    <Submission :action="'/teams/' ~ team.id ~ '/settings/proxy/' ~ connection.credential_id ~ '/retire'"
+                                :csrf_token="csrf_token"
+                                data-confirm="¿Eliminar esta conexión? Tendrás que volver a ingresar sus datos si la necesitas de nuevo.">
+                      <ActionButton type="submit" variant="link-danger" size="sm">
+                        Eliminar
+                      </ActionButton>
+                    </Submission>
+                  </Actions>
+                </TableCell>
               </TableRow>
             {% endfor %}
           </TableBody>
@@ -67,29 +86,36 @@
     {% endif %}
     {% if show_form %}
       <Panel>
-        <PanelHeader title="Nueva conexión"
-                     description="Añade los datos de tu proveedor para continuar." />
+        <PanelHeader :title="'Editar conexión' if editing else 'Nueva conexión'"
+                      :description="'Vuelve a ingresar los datos de este proveedor: por seguridad, no mostramos los que ya guardaste.' if editing else 'Añade los datos de tu proveedor para continuar.'" />
         <PanelBody>
-          <Actions position="above">
-            {% for name in providers %}
-              <ActionButton :variant="'primary' if provider == name else 'outline'"
-                            size="sm"
-                            :href="'/teams/' ~ team.id ~ '/settings/proxy?add=1&provider=' ~ name">
-                {{ provider_label(name) }}
-              </ActionButton>
-            {% endfor %}
-          </Actions>
+          {% if not editing %}
+            <Actions position="above">
+              {% for name in providers %}
+                <ActionButton :variant="'primary' if provider == name else 'outline'"
+                              size="sm"
+                              :href="'/teams/' ~ team.id ~ '/settings/proxy?add=1&provider=' ~ name">
+                  {{ provider_label(name) }}
+                </ActionButton>
+              {% endfor %}
+            </Actions>
+          {% endif %}
           <FormLayout :action="'/teams/' ~ team.id ~ '/settings/proxy'"
                       :csrf_token="csrf_token"
                       autocomplete="off">
             <input type="hidden" name="provider" value="{{ provider }}">
+            {% if editing %}
+              <input type="hidden" name="edit_credential_id" value="{{ editing.credential_id }}">
+            {% endif %}
             <Field label="Nombre de referencia">
               <input name="label"
                      maxlength="120"
                      placeholder="Ej. Producción Lima"
+                     value="{{ editing.label if editing else '' }}"
+                     {% if editing %}readonly{% endif %}
                      required>
             </Field>
-            {% for field in fields %}
+            {% for field in basic_fields %}
               <Field :label="field_label(field.name)">
                 {% if field.choices %}
                   <select name="{{ field.name }}" {% if field.required %}required{% endif %}>
@@ -106,8 +132,29 @@
                 {% endif %}
               </Field>
             {% endfor %}
+            {% if advanced_fields %}
+              <Disclosure label="Configuración avanzada">
+                {% for field in advanced_fields %}
+                  <Field :label="field_label(field.name)">
+                    {% if field.choices %}
+                      <select name="{{ field.name }}" {% if field.required %}required{% endif %}>
+                        {% for value in field.choices %}
+                          <option value="{{ value }}"
+                                  {% if value is eq field.default %}selected{% endif %}>{{ choice_label(value) }}</option>
+                        {% endfor %}
+                      </select>
+                    {% else %}
+                      <input name="{{ field.name }}"
+                             type="{% if field.secret %}password{% else %}text{% endif %}"
+                             value="{% if not field.secret %}{{ field.default }}{% endif %}"
+                             {% if field.required %}required{% endif %}>
+                    {% endif %}
+                  </Field>
+                {% endfor %}
+              </Disclosure>
+            {% endif %}
             <ActionButton type="submit">
-              Validar y guardar
+              {{ 'Guardar cambios' if editing else 'Validar y guardar' }}
             </ActionButton>
           </FormLayout>
         </PanelBody>
