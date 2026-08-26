@@ -49,6 +49,11 @@ class Field:
     default: str = ""
     # Empty means free text; normalize still validates.
     choices: tuple[str, ...] = ()
+    # A fine-tuning knob the portal collapses behind "advanced settings" by
+    # default. Independent of required: lifetime_minutes is required (it
+    # always has a value, just a defaulted one) but still advanced, same as
+    # gateway/proxy_type/country are required but not advanced.
+    advanced: bool = False
 
 
 @dataclass(frozen=True)

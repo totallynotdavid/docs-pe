@@ -45,7 +45,7 @@ _FIELDS = (
     Field("password", secret=True),
     # DataImpulse expects lowercase ISO-3166 country codes.
     Field("country", default="pe"),
-    Field("session_minutes", default="3"),
+    Field("session_minutes", default="3", advanced=True),
 )
 
 

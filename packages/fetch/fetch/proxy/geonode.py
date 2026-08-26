@@ -75,11 +75,11 @@ _FIELDS = (
     Field("gateway", default="fr", choices=tuple(sorted(_GATEWAY_HOST_BY_NAME))),
     Field("proxy_type", default="residential", choices=_PROXY_TYPES),
     Field("country", default="PE"),
-    Field("state", required=False),
-    Field("city", required=False),
-    Field("asn", required=False),
-    Field("strict_off", required=False),
-    Field("lifetime_minutes", default="10"),
+    Field("state", required=False, advanced=True),
+    Field("city", required=False, advanced=True),
+    Field("asn", required=False, advanced=True),
+    Field("strict_off", required=False, advanced=True),
+    Field("lifetime_minutes", default="10", advanced=True),
 )
 
 
