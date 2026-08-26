@@ -109,6 +109,14 @@
   display: none;
 }
 
+.drawer__mobile-account {
+  display: none;
+}
+
+.drawer__tabbar {
+  display: none;
+}
+
 @media (max-width: 720px) {
   .drawer {
     height: auto;
@@ -123,12 +131,79 @@
     padding: var(--spacing-2) var(--spacing-3);
   }
 
-  .drawer__scroll {
+  .drawer__collapse {
     display: none;
   }
 
-  .drawer__footer {
+  .drawer:not(.drawer--minimal) .drawer__scroll {
+    display: none;
+  }
+
+  .drawer--minimal .drawer__footer {
     margin-left: auto;
     max-width: 220px;
   }
+
+  /* Non-minimal mobile: the account trigger moves into the nav overlay
+     (below), since "above" placement only makes sense with a tall sidebar
+     behind it. Without this, the popover opens off the top of the screen. */
+  .drawer:not(.drawer--minimal) .drawer__footer {
+    display: none;
+  }
+
+  .app-shell[data-mobile-nav-open] .drawer__scroll {
+    background: var(--background);
+    bottom: 60px;
+    display: block;
+    left: 0;
+    overflow-y: auto;
+    padding: var(--spacing-4) var(--spacing-3);
+    position: fixed;
+    right: 0;
+    top: 0;
+    z-index: var(--z-modal);
+  }
+
+  .drawer:not(.drawer--minimal) .drawer__mobile-account {
+    border-bottom: 1px solid var(--border);
+    display: block;
+    margin-bottom: var(--spacing-3);
+    padding-bottom: var(--spacing-3);
+  }
+
+  .drawer:not(.drawer--minimal) .drawer__tabbar {
+    display: flex;
+  }
+}
+
+.drawer__tabbar {
+  align-items: stretch;
+  background: var(--background);
+  border-top: 1px solid var(--border);
+  bottom: 0;
+  height: 60px;
+  left: 0;
+  position: fixed;
+  right: 0;
+  z-index: var(--z-modal);
+}
+
+.drawer__tab {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--foreground-tertiary);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  gap: var(--spacing-1);
+  justify-content: center;
+  text-decoration: none;
+}
+
+.drawer__tab[aria-expanded="true"],
+.drawer__tab--active {
+  color: var(--foreground);
 }

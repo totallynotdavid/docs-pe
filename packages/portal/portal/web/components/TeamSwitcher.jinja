@@ -1,0 +1,26 @@
+{#def teams, active_team #}
+<div class="team-switcher" data-dropdown>
+  <button class="team-switcher__trigger"
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded="false"
+          aria-controls="team-switcher-menu"
+          data-dropdown-trigger>
+    <span class="team-switcher__name">{{ active_team.name }}</span>
+    <Icon name="chevron-down" :size="16" />
+  </button>
+  <Dropdown id="team-switcher-menu" placement="below" hidden data-dropdown-menu>
+    <span class="dropdown__label">Cambiar de equipo</span>
+    {% for team in teams %}
+      {% if team.id != active_team.id %}
+        <DropdownItem :href="'/teams/' ~ team.id">
+          {{ team.name }}
+        </DropdownItem>
+      {% endif %}
+    {% endfor %}
+    <DropdownSeparator />
+    <DropdownItem href="/?switch=1">
+      Ver todos los equipos
+    </DropdownItem>
+  </Dropdown>
+</div>

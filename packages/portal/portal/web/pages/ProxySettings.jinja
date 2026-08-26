@@ -1,10 +1,13 @@
-{#def user, csrf_token, team, connections, readiness, editing, provider, providers, basic_fields, advanced_fields, show_form, error #}
+{#def user, csrf_token, team, connections, readiness, editing, provider, providers, basic_fields, advanced_fields, show_form, error, teams=() #}
 <Layout :title="'Conexión proxy · ' ~ team.name"
         :user="user"
         :csrf_token="csrf_token"
+        :teams="teams"
         active="team-settings-proxy"
         :active_team="team">
-  <TopBar title="Conexión proxy" icon="link">
+  <TopBar title="Conexión proxy"
+          icon="link"
+          :breadcrumb="[{'label': 'Equipos', 'href': '/?switch=1'}, {'label': team.name, 'href': '/teams/' ~ team.id}]">
     {% if connections and not show_form %}
       <ActionButton size="sm" :href="'/teams/' ~ team.id ~ '/settings/proxy?add=1'">
         <Icon name="plus" />
@@ -87,7 +90,7 @@
     {% if show_form %}
       <Panel>
         <PanelHeader :title="'Editar conexión' if editing else 'Nueva conexión'"
-                      :description="'Vuelve a ingresar los datos de este proveedor: por seguridad, no mostramos los que ya guardaste.' if editing else 'Añade los datos de tu proveedor para continuar.'" />
+                     :description="'Vuelve a ingresar los datos de este proveedor: por seguridad, no mostramos los que ya guardaste.' if editing else 'Añade los datos de tu proveedor para continuar.'" />
         <PanelBody>
           {% if not editing %}
             <Actions position="above">
@@ -105,7 +108,9 @@
                       autocomplete="off">
             <input type="hidden" name="provider" value="{{ provider }}">
             {% if editing %}
-              <input type="hidden" name="edit_credential_id" value="{{ editing.credential_id }}">
+              <input type="hidden"
+                     name="edit_credential_id"
+                     value="{{ editing.credential_id }}">
             {% endif %}
             <Field label="Nombre de referencia">
               <input name="label"

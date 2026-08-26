@@ -1,4 +1,5 @@
-{#def user, csrf_token="", minimal=False, active="", active_team=None #}
+{#def user, csrf_token="", minimal=False, active="", active_team=None, teams=() #}
+{% set search_href = ('/teams/' ~ active_team.id ~ '/search') if active_team else ('/admin/search' if user.is_site_admin else '') %}
 <aside class="{{ 'drawer drawer--minimal' if minimal else 'drawer' }}">
   <div class="drawer__inner">
     <header class="drawer__header">
@@ -16,9 +17,24 @@
       {% endif %}
     </header>
     {% if not minimal %}
-      <nav class="drawer__scroll nav" aria-label="Navegación principal">
+      <nav class="drawer__scroll nav"
+           id="mobile-nav-panel"
+           data-mobile-nav-panel
+           aria-label="Navegación principal">
+        <div class="drawer__mobile-account">
+          <AccountMenu :user="user"
+                       :csrf_token="csrf_token"
+                       placement="below"
+                       id="account-menu-mobile" />
+        </div>
+        {% if active_team and teams|length > 1 %}
+          <TeamSwitcher :teams="teams" :active_team="active_team" />
+        {% endif %}
         <NavSection label="Espacio de trabajo" id="workspace">
-          <NavItem href="/" label="Equipos" icon="users" :active="active == 'teams'" />
+          <NavItem :href="'/?switch=1' if teams|length > 1 else '/'"
+                   label="Equipos"
+                   icon="users"
+                   :active="active == 'teams'" />
           {% if active_team %}
             <NavItem :href="'/teams/' ~ active_team.id"
                      label="Tareas"
@@ -90,4 +106,23 @@
                    :placement="'below' if minimal else 'above'" />
     </div>
   </div>
+  {% if not minimal %}
+    <nav class="drawer__tabbar" aria-label="Navegación móvil">
+      <button class="drawer__tab"
+              type="button"
+              data-mobile-nav-toggle
+              aria-expanded="false"
+              aria-controls="mobile-nav-panel">
+        <Icon name="list" :size="20" />
+        <span>Menú</span>
+      </button>
+      {% if search_href %}
+        <a class="{{ 'drawer__tab drawer__tab--active' if active in ('team-search', 'global-search') else 'drawer__tab' }}"
+           href="{{ search_href }}">
+          <Icon name="search" :size="20" />
+          <span>Buscar</span>
+        </a>
+      {% endif %}
+    </nav>
+  {% endif %}
 </aside>

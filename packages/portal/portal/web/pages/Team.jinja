@@ -1,11 +1,14 @@
-{#def user, csrf_token, team, jobs, page, total, minimal=False, readiness=None #}
+{#def user, csrf_token, team, jobs, page, total, teams=(), minimal=False, readiness=None #}
 <Layout :title="team.name"
         :user="user"
         :csrf_token="csrf_token"
         :minimal="minimal"
+        :teams="teams"
         active="team-jobs"
         :active_team="team">
-  <TopBar :title="team.name" icon="users">
+  <TopBar :title="team.name"
+          icon="users"
+          :breadcrumb="[{'label': 'Equipos', 'href': '/?switch=1'}]">
     {% if team.role and team.role.value == 'team_leader' %}
       <ActionButton size="sm" :href="'/teams/' ~ team.id ~ '/jobs/new'">
         <Icon name="plus" />

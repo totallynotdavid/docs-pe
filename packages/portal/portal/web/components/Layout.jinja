@@ -1,4 +1,4 @@
-{#def title, user=None, csrf_token="", setup=False, minimal=False, active="", active_team=None, onboarding_step=1 #}
+{#def title, user=None, csrf_token="", setup=False, minimal=False, active="", active_team=None, teams=(), onboarding_step=1 #}
 <!DOCTYPE html>
 <html lang="es">
   <head>
@@ -34,7 +34,8 @@
                  :csrf_token="csrf_token"
                  :minimal="minimal"
                  :active="active"
-                 :active_team="active_team" />
+                 :active_team="active_team"
+                 :teams="teams" />
         <div class="workspace">
           <div class="page-card">{{ content }}</div>
         </div>

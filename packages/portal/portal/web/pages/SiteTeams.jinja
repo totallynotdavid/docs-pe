@@ -43,9 +43,7 @@
                 </TableCell>
                 <TableCell align="right">
                   <Actions>
-                    <ActionButton variant="secondary"
-                                  size="sm"
-                                  :href="'/teams/' ~ team.id">
+                    <ActionButton variant="secondary" size="sm" :href="'/teams/' ~ team.id">
                       Gestionar
                     </ActionButton>
                     <Submission :action="'/admin/teams/' ~ team.id ~ '/global-search'"

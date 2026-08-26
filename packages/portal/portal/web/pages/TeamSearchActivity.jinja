@@ -1,12 +1,13 @@
-{#def user, csrf_token, team, entries #}
+{#def user, csrf_token, team, entries, teams=() #}
 <Layout :title="'Actividad de búsqueda · ' ~ team.name"
         :user="user"
         :csrf_token="csrf_token"
+        :teams="teams"
         active="team-settings-activity"
         :active_team="team">
   <TopBar title="Actividad de búsqueda"
           icon="search"
-          :breadcrumb="[{'label': 'Equipos', 'href': '/'}, {'label': team.name, 'href': '/teams/' ~ team.id}]" />
+          :breadcrumb="[{'label': 'Equipos', 'href': '/?switch=1'}, {'label': team.name, 'href': '/teams/' ~ team.id}]" />
   <MainContent>
     <Panel>
       <PanelHeader title="Búsquedas recientes"

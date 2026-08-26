@@ -138,4 +138,8 @@ body.signed-out .content {
   .page-card {
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }
+
+  .app-shell:not(.app-shell--minimal) .page-card {
+    padding-bottom: 60px;
+  }
 }

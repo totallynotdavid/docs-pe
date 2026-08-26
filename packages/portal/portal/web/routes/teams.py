@@ -46,10 +46,8 @@ async def team_page(
         team_id,
         page=current_page,
     )
-    minimal = is_search_only(
-        page_session.user,
-        await service.teams(page_session.user.id),
-    )
+    teams = await service.teams(page_session.user.id)
+    minimal = is_search_only(page_session.user, teams)
     readiness = await provisioning.team_readiness(page_session.user.id, team_id)
 
     return render_hx(
@@ -59,6 +57,7 @@ async def team_page(
         user=page_session.user,
         csrf_token=page_session.csrf_token,
         team=team,
+        teams=teams,
         jobs=jobs,
         total=total,
         page=current_page,
@@ -87,6 +86,7 @@ async def team_search_activity_get(
         user=page_session.user,
         csrf_token=page_session.csrf_token,
         team=await service.team(page_session.user.id, team_id),
+        teams=await service.teams(page_session.user.id),
         entries=await service.recent_searches(page_session.user.id, team_id),
     )
 
@@ -100,6 +100,7 @@ async def _members_context(
     error: str = "",
 ) -> dict[str, object]:
     team = await service.team(session.user.id, team_id)
+    teams = await service.teams(session.user.id)
     members = await provisioning.members(session.user.id, team_id)
     invites = await provisioning.pending_invites(session.user.id, team_id)
 
@@ -107,6 +108,7 @@ async def _members_context(
         "user": session.user,
         "csrf_token": session.csrf_token,
         "team": team,
+        "teams": teams,
         "members": members,
         "invites": invites,
         "error": error,
@@ -280,6 +282,7 @@ async def _proxy_context(
     error: str = "",
 ) -> dict[str, object]:
     team = await service.team(session.user.id, team_id)
+    teams = await service.teams(session.user.id)
     credentials = await service.credentials(session.user.id, team_id)
     readiness = await provisioning.team_readiness(session.user.id, team_id)
     connections = _latest_per_connection(credentials)
@@ -301,6 +304,7 @@ async def _proxy_context(
         "user": session.user,
         "csrf_token": session.csrf_token,
         "team": team,
+        "teams": teams,
         "connections": connections,
         "readiness": readiness,
         "editing": editing,

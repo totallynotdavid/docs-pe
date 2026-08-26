@@ -1,16 +1,16 @@
-{#def user, csrf_token="", placement="below" #}
-<div class="account" data-account>
+{#def user, csrf_token="", placement="below", id="account-menu" #}
+<div class="account" data-dropdown>
   <button class="account__trigger"
           type="button"
           aria-haspopup="menu"
           aria-expanded="false"
-          aria-controls="account-menu"
-          data-account-trigger>
+          :aria-controls="id"
+          data-dropdown-trigger>
     <Avatar :label="user.email" />
     <span class="account__label">{{ user.email.split("@")[0] }}</span>
     <Icon name="chevron-down" :size="16" class="account__chevron" />
   </button>
-  <Dropdown id="account-menu" :placement="placement" hidden data-account-menu>
+  <Dropdown :id="id" :placement="placement" hidden data-dropdown-menu>
     <span class="dropdown__label">{{ user.email }}</span>
     <DropdownItem href="/security">
       <Icon name="shield" />

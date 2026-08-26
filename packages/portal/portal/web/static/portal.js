@@ -38,40 +38,76 @@ function setupSidebarCollapse() {
   }
 }
 
-function setupAccountMenu() {
-  const account = document.querySelector("[data-account]");
-  const button = document.querySelector("[data-account-trigger]");
-  const menu = document.querySelector("[data-account-menu]");
+function setupDropdownMenus() {
+  // One handler per [data-dropdown] container: the account menu and the
+  // team switcher both use this, independently, on the same page.
+  const containers = document.querySelectorAll("[data-dropdown]");
 
-  if (!account || !button || !menu) {
+  for (const container of containers) {
+    const button = container.querySelector("[data-dropdown-trigger]");
+    const menu = container.querySelector("[data-dropdown-menu]");
+
+    if (!button || !menu) {
+      continue;
+    }
+
+    function close() {
+      menu.hidden = true;
+      button.setAttribute("aria-expanded", "false");
+    }
+
+    button.addEventListener("click", () => {
+      const isOpen = menu.hidden;
+
+      menu.hidden = !isOpen;
+      button.setAttribute("aria-expanded", String(isOpen));
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!(event.target instanceof Node) || !container.contains(event.target)) {
+        close();
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      close();
+      button.focus();
+    });
+  }
+}
+
+function setupMobileNav() {
+  const shell = document.querySelector(".app-shell");
+  const toggle = document.querySelector("[data-mobile-nav-toggle]");
+  const panel = document.querySelector("[data-mobile-nav-panel]");
+
+  if (!shell || !toggle || !panel) {
     return;
   }
 
-  function close() {
-    menu.hidden = true;
-    button.setAttribute("aria-expanded", "false");
+  function setOpen(open) {
+    if (open) {
+      shell.dataset.mobileNavOpen = "1";
+    } else {
+      delete shell.dataset.mobileNavOpen;
+    }
+
+    toggle.setAttribute("aria-expanded", String(open));
   }
 
-  button.addEventListener("click", () => {
-    const isOpen = menu.hidden;
-
-    menu.hidden = !isOpen;
-    button.setAttribute("aria-expanded", String(isOpen));
-  });
-
-  document.addEventListener("click", (event) => {
-    if (!(event.target instanceof Node) || !account.contains(event.target)) {
-      close();
-    }
+  toggle.addEventListener("click", () => {
+    setOpen(shell.dataset.mobileNavOpen !== "1");
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") {
-      return;
+    if (event.key === "Escape" && shell.dataset.mobileNavOpen === "1") {
+      setOpen(false);
+      toggle.focus();
     }
-
-    close();
-    button.focus();
   });
 }
 
@@ -495,7 +531,8 @@ function setupPasskeyEnrollment() {
 }
 
 setupSidebarCollapse();
-setupAccountMenu();
+setupDropdownMenus();
+setupMobileNav();
 setupNavSections();
 setupConfirmSubmit();
 setupCsvDropzone();

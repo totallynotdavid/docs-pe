@@ -7,7 +7,7 @@ from uuid import UUID
 from litestar import Request, Response, get, post
 from litestar.di import NamedDependency
 from litestar.enums import RequestEncodingType
-from litestar.params import Body
+from litestar.params import Body, FromQuery
 from litestar.response import Redirect
 from litestar_htmx import HTMXRequest
 
@@ -33,6 +33,7 @@ async def dashboard(
     service: NamedDependency[PortalService],
     provisioning: NamedDependency[ProvisioningService],
     settings: NamedDependency[PortalSettings],
+    switch: FromQuery[bool] = False,
 ) -> Response:
     if page_session.user.is_site_admin:
         status = await provisioning.installation_status(page_session.user.id)
@@ -49,15 +50,19 @@ async def dashboard(
     # With a single team, or a remembered one from the last visit, there is no
     # real choice to present: skip straight past the picker. Search-only
     # sessions have always skipped it on a single team; a remembered team
-    # removes the same hop for everyone else too.
-    if len(teams) == 1:
-        return Redirect(destination(teams[0].id), status_code=303)
+    # removes the same hop for everyone else too. `?switch=1` is the explicit
+    # escape hatch: without it, a member of several teams could never see the
+    # picker again once the cookie was set, since every visit to `/` would
+    # bounce straight back into whichever team they last touched.
+    if not switch:
+        if len(teams) == 1:
+            return Redirect(destination(teams[0].id), status_code=303)
 
-    remembered = request.cookies.get(settings.last_team_cookie)
-    match = next((team for team in teams if str(team.id) == remembered), None)
+        remembered = request.cookies.get(settings.last_team_cookie)
+        match = next((team for team in teams if str(team.id) == remembered), None)
 
-    if match is not None:
-        return Redirect(destination(match.id), status_code=303)
+        if match is not None:
+            return Redirect(destination(match.id), status_code=303)
 
     return render(
         "Dashboard",
