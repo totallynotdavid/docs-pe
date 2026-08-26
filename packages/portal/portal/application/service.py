@@ -44,6 +44,7 @@ if TYPE_CHECKING:
         JobEvent,
         JobItem,
         JobItemCounts,
+        JobNotification,
         SearchLogEntry,
         SubmissionReview,
         TeamSearchActivity,
@@ -408,7 +409,7 @@ class PortalService(AuthorizedService):
     async def notifications(
         self,
         actor_id: UUID,
-    ) -> tuple[JobEvent, ...]:
+    ) -> tuple[JobNotification, ...]:
         # A site admin isn't necessarily a member of any team, so their own
         # memberships would leave this feed empty even though they're meant
         # to see activity across the whole installation.

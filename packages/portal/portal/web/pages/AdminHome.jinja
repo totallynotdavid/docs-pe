@@ -32,9 +32,7 @@
       {% if notifications %}
         <List>
           {% for notification in notifications[:10] %}
-            <ListItem>
-              <span>{{ notification.event_type|notification }}</span>
-            </ListItem>
+            <NotificationRow :notification="notification" />
           {% endfor %}
         </List>
       {% else %}

@@ -19,6 +19,7 @@ from portal.domain.models import (
     JobEvent,
     JobItem,
     JobItemCounts,
+    JobNotification,
     JobState,
     ProtectedSecret,
     QueueHealth,
@@ -430,7 +431,7 @@ class PostgresJobRepository:
         event_types: tuple[str, ...],
         *,
         limit: int,
-    ) -> tuple[JobEvent, ...]:
+    ) -> tuple[JobNotification, ...]:
         if not team_ids or not event_types:
             return ()
 
@@ -440,10 +441,13 @@ class PostgresJobRepository:
                 event.id,
                 event.job_id,
                 event.event_type,
-                event.sequence,
-                event.created_at
+                event.created_at,
+                job.team_id,
+                job.filename,
+                team.name AS team_name
               FROM portal_job_events AS event
               JOIN portal_jobs AS job ON job.id = event.job_id
+              JOIN portal_teams AS team ON team.id = job.team_id
              WHERE job.team_id = ANY($1::uuid[])
                AND event.event_type = ANY($2::text[])
              ORDER BY event.sequence DESC
@@ -455,11 +459,13 @@ class PostgresJobRepository:
         )
 
         return tuple(
-            JobEvent(
+            JobNotification(
                 id=row["id"],
                 job_id=row["job_id"],
+                team_id=row["team_id"],
+                team_name=row["team_name"],
+                filename=row["filename"],
                 event_type=row["event_type"],
-                sequence=int(row["sequence"]),
                 created_at=row["created_at"],
             )
             for row in rows

@@ -376,6 +376,21 @@ class JobEvent:
 
 
 @dataclass(frozen=True)
+class JobNotification:
+    """A JobEvent plus the context a cross-job, cross-team feed needs: which
+    job and which team, since the feed is the only place that isn't already
+    scoped to one of them."""
+
+    id: UUID
+    job_id: UUID
+    team_id: UUID
+    team_name: str
+    filename: str
+    event_type: str
+    created_at: datetime | None = None
+
+
+@dataclass(frozen=True)
 class NotificationIntent:
     id: UUID
     event_id: UUID

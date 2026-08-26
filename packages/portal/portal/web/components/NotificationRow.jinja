@@ -1,0 +1,9 @@
+{#def notification #}
+<ListItem>
+  <a href="{{ '/teams/' ~ notification.team_id ~ '/jobs/' ~ notification.job_id }}">
+    {{ notification.event_type|notification }}
+  </a>
+  <MetaText>
+    {{ notification.filename }} · {{ notification.team_name }}{% if notification.created_at %} · {{ notification.created_at.strftime("%d/%m %H:%M") }}{% endif %}
+  </MetaText>
+</ListItem>
