@@ -81,6 +81,16 @@ def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
     )
 
 
+def create_app_from_env() -> Litestar:
+    """Uvicorn's per-worker-process factory target for `run`'s multiprocess mode.
+
+    Each worker process imports this module fresh and calls this factory itself,
+    so settings load from the environment again here rather than being passed
+    down from the parent process.
+    """
+    return create_worker_api()
+
+
 def run(argv: Sequence[str]) -> None:
     import uvicorn
 
@@ -90,10 +100,21 @@ def run(argv: Sequence[str]) -> None:
     settings = PortalSettings.from_environment()
     settings.validate()
 
+    if settings.worker_api_workers < 1:
+        raise SystemExit("PORTAL_WORKER_API_WORKERS must be at least 1")
+
+    # A single worker process fields all fleet claim/publish/heartbeat traffic
+    # regardless of host core count, so multiple processes share the load.
+    # uvicorn's multiprocess mode requires an import string rather than an app
+    # instance: each worker process imports this module and calls the factory
+    # itself instead of the parent process constructing one app and forking it.
+    #
     # In a container, the host port binding supplies the tailnet boundary.
     # Outside one, bind directly to the Tailscale interface.
     uvicorn.run(
-        create_worker_api(settings),
+        "portal.worker.api:create_app_from_env",
+        factory=True,
         host=settings.worker_api_host,
         port=settings.worker_api_port,
+        workers=settings.worker_api_workers,
     )

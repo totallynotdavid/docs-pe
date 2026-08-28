@@ -61,6 +61,12 @@ Deploy `web` and `worker-api` from the same revision with the same database,
 object store, and master-key file. Expose only `web` through the tunnel. Bind
 `worker-api` to the tailnet interface or publish it only on a tailnet address.
 
+`worker-api` fields every fleet node's claim, publish, and heartbeat traffic
+through `PORTAL_WORKER_API_WORKERS` uvicorn worker processes (default 4). One
+process caps at roughly one CPU core regardless of host size, so a bigger fleet
+needs more processes, not just more worker nodes. Size it below the host's core
+count, leaving room for Postgres and, on a shared host, other tenants.
+
 ## Worker enrollment
 
 Use [worker fleet operations](worker-fleet.md) to prepare a node. A worker may

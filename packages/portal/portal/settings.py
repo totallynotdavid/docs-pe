@@ -52,6 +52,12 @@ ENVIRONMENTS = frozenset({"development", "production"})
 
 DEFAULT_WORKER_API_PORT = 8443
 
+# One uvicorn worker process fields all fleet claim/publish/heartbeat traffic
+# regardless of host core count. 4 processes on a 6-core host leaves headroom
+# for Postgres and other tenants on a shared box; raise per-host if the box is
+# dedicated or has more cores.
+DEFAULT_WORKER_API_WORKERS = 4
+
 
 @dataclass(frozen=True)
 class PortalSettings:
@@ -64,6 +70,7 @@ class PortalSettings:
     turnstile_secret: str = ""
     worker_api_host: str = "127.0.0.1"
     worker_api_port: int = DEFAULT_WORKER_API_PORT
+    worker_api_workers: int = DEFAULT_WORKER_API_WORKERS
     worker_bootstrap_token: str = ""
     object_root: Path = Path(".data/objects")
     resend_api_key: str = ""
@@ -82,6 +89,9 @@ class PortalSettings:
             worker_api_host=_optional("PORTAL_WORKER_API_HOST") or "127.0.0.1",
             worker_api_port=int(
                 _optional("PORTAL_WORKER_API_PORT") or DEFAULT_WORKER_API_PORT
+            ),
+            worker_api_workers=int(
+                _optional("PORTAL_WORKER_API_WORKERS") or DEFAULT_WORKER_API_WORKERS
             ),
             worker_bootstrap_token=_optional("PORTAL_WORKER_BOOTSTRAP_TOKEN"),
             object_root=Path(os.environ.get("PORTAL_OBJECT_ROOT", ".data/objects")),
