@@ -1,76 +1,117 @@
 # Portal deployment
 
-The deployment runs a browser-facing app and a worker API over a named fleet:
+The production portal has a public web application and a private worker API:
 
 ```text
-Cloudflare -> cloudflared -> Traefik -> portal web -> PostgreSQL
-                                      -> mounted master key
+browser -> Cloudflare -> cloudflared -> web -> PostgreSQL
+                                      -> object store
+                                      -> master key
 
-worker nodes -> Tailscale -> portal worker-api -> PostgreSQL
-                                             -> local object store
+worker node -> Tailscale -> worker-api -> PostgreSQL
+                                      -> object store
+                                      -> master key
 ```
 
-`web` is the public application. `worker-api` is reachable only on the tailnet.
-Workers call it over Tailscale and do not need direct PostgreSQL access.
+The worker API has no public route. Workers call it over the tailnet and do not
+need direct database credentials. The deployment uses the container images and
+environment expected by `packages/portal/portal`.
 
-The deployment uses a Dokploy Application for `web`, a Compose service for
-`worker-api` because it must bind to one host address, and one Dokploy
-Application per worker node. Worker applications run `portal worker`, expose no
-port, and make outbound requests only.
+## Prerequisites
 
-## Edge and client identity
+Prepare these resources before starting:
 
-Cloudflare terminates TLS, applies WAF and bot controls, and forwards traffic
-through the tunnel. The origin has no public listener. The application trusts
-`CF-Connecting-IP` because the tunnel is the only route to it and ignores
-`X-Forwarded-For`.
+- PostgreSQL reachable by both `web` and `worker-api`.
+- A persistent object directory for uploaded inputs and result payloads.
+- A master-key file mounted read-only into both portal processes.
+- A Cloudflare tunnel and public HTTPS origin for `web`.
+- A Tailscale path and ACL from worker nodes to `worker-api`.
+- Resend credentials for account setup and notification mail.
 
-`PORTAL_PUBLIC_ORIGIN` controls HTTPS enforcement, secure cookies, and host
-checking. `PORTAL_ENVIRONMENT` controls only local-development conveniences.
-Production validation rejects an insecure origin and missing Turnstile
-configuration.
+Copy `.env.example` and set every production value. Production validation
+requires `PORTAL_PUBLIC_ORIGIN` to use HTTPS, both Turnstile keys,
+`PORTAL_WORKER_BOOTSTRAP_TOKEN`, `PORTAL_RESEND_API_KEY`, and
+`PORTAL_MAIL_FROM`. `PORTAL_TLS_TERMINATED_UPSTREAM=true` when an upstream
+terminates TLS before the application receives the request.
 
-## Master key
+## Initial installation
 
-The master key file contains one key per line, newest first:
-
-```text
-<version> <urlsafe-base64 32 bytes>
-```
-
-It is mounted as a file rather than passed through the environment. The file
-protects encrypted credentials and TOTP secrets from a database-only leak. It
-does not protect a host that can read the file.
-
-Create and rotate it with restrictive permissions:
+Create the key directory before writing the key:
 
 ```sh
-install -m 600 /dev/null /etc/portal/master.key
-uv run portal new-key --version v1 > /etc/portal/master.key
-
-uv run portal new-key --version v2 > /tmp/next-key
-cat /etc/portal/master.key >> /tmp/next-key
-install -m 600 /tmp/next-key /etc/portal/master.key
+sudo install -d -m 700 /etc/portal
+umask 077
+uv run --env-file .env portal new-key --version v1 > /tmp/portal.master.key
+sudo install -m 600 /tmp/portal.master.key /etc/portal/master.key
+rm /tmp/portal.master.key
 ```
 
-Redeploy both listeners, run `uv run portal rewrap`, and remove an old key only
-after the command reports zero rows using it. Back up the key separately from
-PostgreSQL. A database backup without the key cannot restore encrypted
-credentials.
+Mount the key at the path in `PORTAL_MASTER_KEY_FILE`, then run migrations and
+provision the first administrator from the portal environment:
 
-## Worker connectivity
+```sh
+uv run --env-file .env portal migrate
+uv run --env-file .env portal provision \
+  --admin-email admin@example.org \
+  --admin-password-env PORTAL_PROVISION_ADMIN_PASSWORD \
+  --team-name "Equipo Lima" \
+  --team-slug equipo-lima
+```
 
-Workers enroll with `POST /enroll` using the shared bootstrap token. The API
-returns a credential scoped to `PORTAL_WORKER_ID`; enrollment is idempotent.
-Claims and publishes check that credential on every request, so revoking a
-worker takes effect without waiting for a tailnet change.
+Deploy `web` and `worker-api` from the same revision with the same database,
+object store, and master-key file. Expose only `web` through the tunnel. Bind
+`worker-api` to the tailnet interface or publish it only on a tailnet address.
 
-The node needs `PORTAL_WORKER_ID`, `PORTAL_WORKER_API_URL`,
-`PORTAL_WORKER_BOOTSTRAP_TOKEN`, and `PORTAL_WORKER_TAILSCALE_HOSTNAME`. Use
-`portal enroll-worker --worker-id <id> --revoke` to revoke a node or to manage a
-node that must not hold the bootstrap token.
+## Worker enrollment
 
-Run browser automation in a non-root container with a read-only root filesystem
-outside a scoped temporary directory, no listening ports, and the default
-seccomp profile. Keep the worker credential and Tailscale client on the node,
-outside that container.
+Use [worker fleet operations](worker-fleet.md) to prepare a node. A worker may
+self-enroll on startup with `PORTAL_WORKER_BOOTSTRAP_TOKEN` and
+`PORTAL_WORKER_TAILSCALE_HOSTNAME`, or use a fixed credential issued by:
+
+```sh
+uv run --env-file .env portal enroll-worker \
+  --worker-id <worker-id> \
+  --tailscale-hostname <tailnet-hostname>
+```
+
+The issued credential is shown once. Store it as
+`PORTAL_WORKER_CREDENTIAL` on the worker and omit the bootstrap token when the
+node should not be able to enroll itself. Revoke it when decommissioning the
+node:
+
+```sh
+uv run --env-file .env portal enroll-worker \
+  --worker-id <worker-id> \
+  --revoke
+```
+
+## Key rotation
+
+The master-key file stores versioned keys, newest first. Keep the old key until
+all encrypted rows have been rewrapped:
+
+```sh
+uv run --env-file .env portal new-key --version v2 > /tmp/master.key.next
+cat /etc/portal/master.key >> /tmp/master.key.next
+sudo install -m 600 /tmp/master.key.next /etc/portal/master.key
+uv run --env-file .env portal rewrap
+```
+
+Back up the key separately from PostgreSQL. A database backup without the key
+cannot restore encrypted credentials. Remove an old key only after rewrap has
+completed and the running processes use the new file.
+
+## Verify a deployment
+
+Check the public origin through Cloudflare, then check the private path from a
+worker node. Confirm that:
+
+- the login page loads and Turnstile verification works;
+- the first administrator can enroll a second factor;
+- a small job reaches `running` and returns a result;
+- `portal worker` heartbeats appear in `portal_workers`;
+- the worker API is unreachable from the public network; and
+- cancellation prevents a late worker publish.
+
+Use [Portal operations](../../packages/portal/operations.md) for database
+checks. Deploy a new revision only after migrations are applied, and keep the
+previous image available for rollback.

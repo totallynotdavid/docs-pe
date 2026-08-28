@@ -1,84 +1,59 @@
-# Browser
+# browser
 
-Drives Chrome over the DevTools protocol for sites requiring JavaScript,
-reCAPTCHA, Cloudflare, or another browser gate.
+`browser` drives Chrome through the DevTools protocol for sites that require
+JavaScript, reCAPTCHA, Cloudflare, or a browser-level reputation signal.
 
 ```sh
 uv run --env-file .env browser \
   --input subjects.csv \
-  --output results.csv \
+  --output results/entel.csv \
   --site entel
 ```
 
-Use [fetch](../fetch/readme.md) when a site works over plain HTTP. Use
-[capture](../capture/readme.md) when the site's gate accepts an established
-Chrome profile but rejects automation.
+Use [fetch](../fetch/readme.md) when a plain HTTP client is sufficient. Use
+[capture](../capture/readme.md) when a request works in an established Chrome
+profile but not in automation.
 
 ## Sites
 
-| Site           | Input          | Output                                                                |
-| -------------- | -------------- | --------------------------------------------------------------------- |
-| `entel`        | DNI or RUC     | Debt: `debt_total`, `has_punishment`                                  |
-| `portabilidad` | 9-digit mobile | Carrier data: `receptor`, `cedente`, `asignatario_original`, and more |
+| Site | Accepted input | Output |
+| --- | --- | --- |
+| `entel` | DNI or RUC | Debt total and punishment status. |
+| `portabilidad` | Nine-digit mobile number | Carrier history and current carrier. |
 
-The classifier routes each subject only to sites that accept its document kind.
-Site-specific wire behavior and gate handling live in the
-[site notes](../../docs/sites/).
+The [site notes](../../docs/sites/) own each site's endpoint, browser gate,
+and response contract.
 
-## Configuration
+## Sessions and retries
 
-Browser uses the first provider in `PROXY_PROVIDER` and one proxy session for
-the run. Lane counts are ignored.
+The state database defaults to `<output>.state.sqlite3`. It records the latest
+verified observation for each subject. Reusing the same output and state paths
+resumes subjects that have not succeeded.
 
-```env
-PROXY_PROVIDER=geonode
-GEONODE_USERNAME=...
-GEONODE_PASSWORD=...
+A structured site rejection causes a fresh token or session attempt according
+to `--reject-retries`, `--reject-restart-threshold`, and
+`--max-session-restarts`. A hard browser error is not converted into a document
+result. It stops the run so the browser failure can be fixed.
+
+Entel has a browser-bound request sequence and must remain in this package. The
+details are in [the Entel note](../../docs/sites/entel.md). Portabilidad does
+not use `--control`; the flag is for sites that need a warm-up identifier.
+
+## Proxy mode
+
+Browser creates one local unauthenticated relay for Chrome and attaches proxy
+credentials outside the browser. A session restart creates a new relay and
+upstream session. Browser uses the first provider in `PROXY_PROVIDER` and does
+not use provider lane counts. See [Proxy configuration](../../docs/proxies.md)
+for credentials and country settings.
+
+## Command reference
+
+Run the executable for the complete, current option list:
+
+```sh
+uv run browser --help
 ```
 
-Provider credentials and country settings are documented in
-[Proxy configuration](../../docs/proxies.md).
-
-## Command-line interface
-
-| Flag                         | Default                  | Notes                                                                 |
-| ---------------------------- | ------------------------ | --------------------------------------------------------------------- |
-| `--control`                  | none                     | Warm-up identifier; must be accepted by the site                      |
-| `--reject-retries`           | 12                       | Extra token mints before recording a reject                           |
-| `--reject-restart-threshold` | 4                        | Consecutive exhausted subjects before a session restart               |
-| `--max-session-restarts`     | 0                        | Session restarts allowed per run                                      |
-| `--proxy` / `--no-proxy`     | on                       | Use the configured proxy; disable for local testing                   |
-| `--software-webgl`           | on                       | Use SwiftShader for a consistent fingerprint; disable with a real GPU |
-| `--state`                    | `<output>.state.sqlite3` | State database path                                                   |
-| `--diagnostics`              | off                      | Append redacted per-request timing to a JSON Lines file               |
-
-`uv run browser --help` prints this same table.
-
-## State and retries
-
-`<output>.state.sqlite3` records observations; the CSV contains the latest
-verified result for each subject. A later run retries subjects that did not
-succeed. See [Architecture](../../ARCHITECTURE.md) for the shared state model.
-
-Both sites can reject an otherwise valid lookup because their browser token or
-session is stale. Browser raises `RejectedError`, mints a fresh token, and
-retries up to `--reject-retries`. A structured rejection proves the session is
-healthy and does not restart it by itself; a hard `BrowserError` (a crash, for
-example) propagates immediately instead of retrying. Repeated exhausted
-rejections can trigger a fresh session according to `--reject-restart-threshold`
-and `--max-session-restarts`.
-
-Entel's complete request and token constraints are in
-[its site note](../../docs/sites/entel.md).
-
-Read [Troubleshooting](../../docs/operations/troubleshooting.md) when session
-restarts are not improving the rejection rate.
-
-## The local proxy
-
-Each browser session gets its own local relay (`local_proxy.py`): Chrome talks
-to an unauthenticated `127.0.0.1` endpoint, and the relay attaches the upstream
-proxy's credentials itself. A session restart gets a fresh relay and therefore a
-fresh upstream exit, with no code changes. See
-[why Entel needs this](../../docs/sites/entel.md#why-automation-fails) for the
-CDP interception failure this works around.
+Use `--diagnostics` for redacted JSON Lines timing data. Do not treat the
+diagnostic file or the result CSV as the state ledger.

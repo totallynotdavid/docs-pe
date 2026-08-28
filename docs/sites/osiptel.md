@@ -1,68 +1,43 @@
 # OSIPTEL
 
-`checatuslineas.osiptel.gob.pe`. Implemented in
-[fetch](../../packages/fetch/readme.md) (plain HTTP, no gate beyond the WAF).
-Accepts any document; returns one row per registered phone line (`modalidad`,
-redacted `numero`, `operador`), via a paginated POST using DataTables-style
-parameters, with `IdTipoDoc` set to 1 for DNI and 2 for RUC. Each page returns
-up to 5,000 rows.
+The OSIPTEL lookup is available at
+`https://checatuslineas.osiptel.gob.pe/` and is implemented in
+[fetch](../../packages/fetch/readme.md). It accepts any supported DNI or RUC
+and returns one row per registered phone line.
 
-## WAF and Peru-exit requirement
+## Request and response
 
-OSIPTEL geo-gates by exit IP. `GEONODE_COUNTRY` and `DATAIMPULSE_COUNTRY`
-control the exit country; see
-[Proxy configuration](../proxies.md#peru-exits-are-mandatory-for-osiptel) for
-the variables and their defaults. A different, validly formatted country code
-set by hand passes that validation, opens a working proxy session, and still
-gets blocked by the WAF here.
+The client warms the home page, then POSTs paginated DataTables-style requests
+to:
 
-A non-Peru exit gets a `status=500` block page during the home-page warmup,
-classified as `BanSignalError`. Against GeoNode's global residential pool,
-identical code produced roughly 10% success versus 98.6% with Peru exits:
-OSIPTEL blocks 85-95% of non-Peru exits.
+```text
+https://checatuslineas.osiptel.gob.pe/Consultas/GetAllCabeceraConsulta/
+```
 
-Suspicious exits can also receive HTTP 200 with a CAPTCHA wall instead of a
-clean block, so the readiness check inspects the response body for a success
-marker rather than trusting the status code alone.
+The request identifies DNI with `IdTipoDoc=1` and RUC with `IdTipoDoc=2`. The
+client requests at most 5,000 rows per page and continues until the reported
+total is covered.
 
-Example Peru exit prefixes seen in passing traffic: `38.25.x`, `64.76.x`,
-`179.6.x`, `181.67.x`, `200.215.x`, `201.218.x`. Use
-[the preflight check](../proxies.md#providers) to confirm your current exit
-rather than relying on this list, since providers rotate pools.
+Each returned line contains:
 
-## Provider failure modes
+```text
+modalidad, numeroServicio, operador
+```
 
-Measured across 122,000 documents: GeoNode failed 0.03%, DataImpulse failed
-20-32%, and every `ban_signal` came from DataImpulse. Two failure modes
-dominated:
+The exported result uses the columns `modalidad`, `numero`, and `operador`.
+The `counts` projection groups lines by operator.
 
-- `upstream_not_ready`: a `ConnectError` with `status=0`, caused by dead exits
-  in the DataImpulse pool. This is _not_ a `407` and does _not_ indicate
-  exhausted account traffic. See
-  [troubleshooting.md](../operations/troubleshooting.md#separate-provider-failures-from-document-failures)
-  for that distinction.
-- `ban_signal`: OSIPTEL returned `status=500` because DataImpulse supplied a
-  non-Peru exit despite `DATAIMPULSE_COUNTRY=pe` being set. The country field is
-  a request hint, not a guarantee.
+## Readiness and WAF
 
-DataImpulse held 40% of the lanes in one run but produced only 5% of the rows:
-including it adds little throughput and requires a recovery pass for the
-documents it fails. On 2026-08-02, a 235,002-document run had 6,825 failures
-(6,800 DataImpulse, 25 GeoNode). Rerunning those 6,825 documents with GeoNode
-only, same site, same hour, completed all of them with zero failures in about 23
-minutes. This is why [proxies.md](../proxies.md#provider-selection-by-site)
-recommends GeoNode only for OSIPTEL.
+The home page must contain the normal site marker before a lookup starts. Treat
+a block page or CAPTCHA wall as a site ban signal, including HTTP 200 responses.
 
-Sample size matters: an earlier 20-failure sample split 9 DataImpulse to 11
-GeoNode and suggested the opposite conclusion. At four-digit scale the real
-ratio is roughly 1000:1. Don't attribute a provider failure from a sample under
-~1000 attempts (see
-[troubleshooting.md](../operations/troubleshooting.md#separate-provider-failures-from-document-failures)).
+OSIPTEL requires a Peru exit. Configure it in
+[Proxy configuration](../proxies.md#country-and-site-selection), run the
+[proxy preflight](../proxies.md#preflight), then start a small job before a
+large one.
 
 ## Empty results
 
-A document with no registered phone lines is a valid, non-error result. In
-practice empty-result share ranges from about 4% to 30% of a DNI job depending
-on province; see [results.md](../reports/results.md) for measured job
-distributions and the reconciliation formula that accounts for empty results. A
-job outside that range deserves investigation, not a retry.
+An empty `data` array with `iTotalRecords=0` is an `ok` lookup with no registered
+lines. Reconcile OSIPTEL by document outcome in SQLite.

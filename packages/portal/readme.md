@@ -1,64 +1,52 @@
-# Portal
+# portal
 
-The portal is the web interface for fetch jobs. Teams upload documents, choose
-sites and proxy credentials, follow progress, and download results. Workers
-claim lookup work through the worker API.
+The portal provides a web interface for submitting lookup jobs, sharing access
+through teams, reusing previous results, and running work on a worker fleet.
+Workers claim queue items through `worker-api`; they do not need PostgreSQL
+credentials.
 
 ```sh
 mise run dev
 ```
 
-The public application serves browsers. The worker API serves the worker fleet
-over Tailscale. See the
-[deployment guide](../../docs/operations/portal-deployment.md) for production
-topology and worker enrollment.
+Read [portal deployment](../../docs/operations/portal-deployment.md) before
+running it outside a local development environment.
 
 ## Local development
 
-Set the database, origin, key file, and bootstrap values in `.env`:
-
-```env
-PORTAL_DATABASE_DSN=postgresql://postgres@127.0.0.1:5432/postgres
-PORTAL_ENVIRONMENT=development
-PORTAL_PUBLIC_ORIGIN=http://localhost:8000
-PORTAL_TLS_TERMINATED_UPSTREAM=false
-PORTAL_MASTER_KEY_FILE=.data/master.key
-PORTAL_BOOTSTRAP_ADMIN_EMAIL=admin@example.org
-PORTAL_BOOTSTRAP_ADMIN_PASSWORD=choose-a-local-password
-PORTAL_BOOTSTRAP_TEAM_NAME=Equipo Lima
-PORTAL_BOOTSTRAP_TEAM_SLUG=equipo-lima
-```
-
-`mise run dev` starts PostgreSQL, applies migrations, provisions the first admin
-and team, and runs the web process. The first admin enrolls a TOTP app or
-passkey at `/security/setup`. `mise run reset` removes the local database.
-
-Turnstile may be empty in development. Production requires the site key, secret,
-an HTTPS public origin, and the worker bootstrap token.
-
-Run the portal tests with:
+Start with the repository template:
 
 ```sh
-uv run pytest tests/portal
+cp .env.example .env
+mise run dev
 ```
 
-Each test database is isolated and disposable.
+Local development starts PostgreSQL, applies migrations, provisions the first
+administrator and team, and runs the web process. The first administrator
+finishes TOTP or passkey enrollment at `/security/setup`. `mise run reset`
+removes the disposable local database.
+
+Development may omit Turnstile, mail, and worker enrollment settings.
+Production validation requires an HTTPS public origin, both Turnstile keys, a
+worker bootstrap token, a Resend API key, and a sender address. The complete
+variable set is maintained in [`.env.example`](../../.env.example).
 
 ## Commands
 
 ```text
-portal web            serve the browser-facing app
-portal worker-api     serve the worker API
-portal worker         claim and run work on a worker node
-portal migrate        apply schema migrations
+portal web            serve the public web application
+portal worker-api     serve the tailnet-only worker API
+portal worker         claim and execute queue items
+portal migrate        apply pending migrations
 portal provision      create or verify the initial installation
-portal bootstrap      provision from PORTAL_BOOTSTRAP_*
+portal bootstrap      provision the local development installation
 portal enroll-worker  issue or revoke a worker credential
 portal new-key        print a master-key line
-portal rewrap         move stored data keys onto the active key
+portal rewrap         re-encrypt stored secrets with the active key
 ```
 
-Provision the first production admin with an environment-backed password:
+Run `uv run portal <command> --help` for command-specific options. Provisioning
+uses environment-backed passwords and is safe to rerun:
 
 ```sh
 uv run --env-file .env portal provision \
@@ -68,80 +56,39 @@ uv run --env-file .env portal provision \
   --team-slug equipo-lima
 ```
 
-The command is safe to rerun. Proxy credentials use
-`PORTAL_PROVISION_<PROVIDER>_<FIELD>` variables from the provider schema.
+Proxy credentials for provisioning use
+`PORTAL_PROVISION_<PROVIDER>_<FIELD>` names generated from the provider schema.
 
-## Authentication
+## Runtime model
 
-Site admins must enroll TOTP or a passkey. Every user can manage their own
-factors and recovery codes. Login accepts a password followed by TOTP, a
-recovery code, or a user-verified passkey. A passkey can also start login on its
-own.
+The portal creates one queue item per accepted document/site pair. Workers claim
+items, execute `fetch`, and publish results under a lease fence. Cancellation
+advances the fence so a late worker cannot publish into a cancelled job.
 
-Sessions expire after seven days and state-changing requests require CSRF and
-same-origin checks. The audit log records authentication, refusals,
-administrative changes, secret access, and worker credential changes.
+Team search exposes entries available to that team. Site admins and entitled
+teams can use global search. Stored proxy credentials and TOTP secrets use
+envelope encryption; passkey public keys are stored for verification. Master
+key creation, backup, and rotation are documented in the
+[deployment guide](../../docs/operations/portal-deployment.md#master-key).
 
-## Jobs
-
-Submit a CSV, select sites and a proxy credential, then review reusable results
-before creating the job. Progress and results are available from the team page.
-The queue permits five active jobs globally; a job submitted past that cap is
-created in `queued` state and starts running once a slot frees up. Read
-[Architecture](../../ARCHITECTURE.md#portal-lifecycle) for queue and worker
-semantics.
-
-Team search returns entries confirmed by that team. Global search is available
-to site admins and teams with the global-search entitlement. Results use generic
-columns and rows, so a site can add fields without a portal template change.
-
-## Secrets
-
-Proxy credentials and TOTP secrets use envelope encryption with a versioned
-master key. Passkey public keys are stored for signature verification. See
-[master-key operations](../../docs/operations/portal-deployment.md#master-key)
-for creation, backup, and rotation.
-
-For direct SQL intervention, see the [operations runbook](operations.md).
+For manual intervention, use the [SQL runbook](operations.md). It is for a
+trusted operator and is not a replacement for application authorization.
 
 ## Code map
 
-| Path                  | Owns                                                    |
-| --------------------- | ------------------------------------------------------- |
-| `portal/web/`         | Litestar routes, sessions, templates, assets            |
-| `portal/worker/`      | Worker API, agent, protocol, enrollment                 |
-| `portal/application/` | Login, teams, credentials, jobs, provisioning           |
-| `portal/domain/`      | Job, team, credential, and planning rules               |
-| `portal/repository/`  | PostgreSQL access, one concern per module               |
-| `portal/credentials/` | Master keyring and envelope encryption                  |
-| `portal/ephemeral.py` | Expiring keyed state                                    |
-| `portal/storage/`     | Immutable upload references                             |
-| `portal/security.py`  | Password, session, TOTP, WebAuthn, and token primitives |
+| Path | Responsibility |
+| --- | --- |
+| `portal/web/` | Routes, sessions, templates, and assets. |
+| `portal/worker/` | Worker API, protocol, agent, and enrollment. |
+| `portal/application/` | Login, teams, credentials, jobs, and provisioning. |
+| `portal/domain/` | Domain models and planning rules. |
+| `portal/repository/` | PostgreSQL access, separated by concern. |
+| `portal/credentials/` | Master keyring and envelope encryption. |
+| `portal/storage/` | Immutable upload and result objects. |
+| `portal/security.py` | Password, session, TOTP, WebAuthn, and token primitives. |
 
-djlint lowercases matching tags when it reformats `portal/web/`'s Jinja
-components, so check a component's name against real HTML elements before adding
-one.
+Run portal tests with:
 
-## Configuration
-
-| Variable                           | Meaning                                           |
-| ---------------------------------- | ------------------------------------------------- |
-| `PORTAL_DATABASE_DSN`              | PostgreSQL connection string                      |
-| `PORTAL_ENVIRONMENT`               | `development` or `production`                     |
-| `PORTAL_PUBLIC_ORIGIN`             | Scheme and host used for HTTPS and host checks    |
-| `PORTAL_TLS_TERMINATED_UPSTREAM`   | Whether an upstream terminates TLS                |
-| `PORTAL_MASTER_KEY_FILE`           | Versioned master-key file                         |
-| `PORTAL_OBJECT_ROOT`               | Directory for uploaded inputs and result payloads |
-| `PORTAL_TURNSTILE_SITE_KEY`        | Login widget key                                  |
-| `PORTAL_TURNSTILE_SECRET`          | Server-side Turnstile key                         |
-| `PORTAL_WORKER_API_HOST`           | Worker API bind address                           |
-| `PORTAL_WORKER_API_PORT`           | Worker API port                                   |
-| `PORTAL_WORKER_BOOTSTRAP_TOKEN`    | Token for worker self-enrollment                  |
-| `PORTAL_WORKER_API_URL`            | Worker API URL on a worker node                   |
-| `PORTAL_WORKER_ID`                 | Stable worker identity                            |
-| `PORTAL_WORKER_TAILSCALE_HOSTNAME` | Worker tailnet hostname                           |
-| `PORTAL_WORKER_CONCURRENCY`        | Number of worker lanes                            |
-| `PORTAL_BOOTSTRAP_*`               | First local admin and team                        |
-
-Use `PORTAL_WORKER_CREDENTIAL` instead of self-enrollment when a worker must not
-hold the bootstrap token.
+```sh
+uv run pytest tests/portal
+```
