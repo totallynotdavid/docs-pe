@@ -2,7 +2,7 @@
 
 The OSIPTEL lookup is available at
 `https://checatuslineas.osiptel.gob.pe/` and is implemented in
-[fetch](../../packages/fetch/readme.md). It accepts any supported DNI or RUC
+[fetch](../../packages/cli/readme.md). It accepts any supported DNI or RUC
 and returns one row per registered phone line.
 
 ## Request and response

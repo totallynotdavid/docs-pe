@@ -44,7 +44,7 @@ DATAIMPULSE_SESSION_MINUTES=3
 at least one. DataImpulse has no release endpoint; its session expires through
 the provider TTL.
 
-The field schema in `fetch.proxy.base` is the source used by environment
+The field schema in `core.proxy.base` is the source used by environment
 loading, stored portal credentials, and the portal form. When adding a
 provider, add its schema and registry entry before adding provider-specific
 documentation.
@@ -89,8 +89,8 @@ job:
 uv run --env-file .env python - <<'PY'
 import asyncio
 
-from fetch.proxy.load import values_from_environment
-from fetch.proxy.registry import preflight, spec_for
+from cli.config import values_from_environment
+from core.proxy.registry import preflight, spec_for
 
 
 async def main() -> None:

@@ -5,7 +5,7 @@ packages are independent, so discovery does not obligate the project to ship
 browser or HTTP automation.
 
 ```text
-capture -> browser -> fetch
+capture -> browser -> core
 ```
 
 ## 1. Discover the request
@@ -31,18 +31,18 @@ assume that a request copied from DevTools is sufficient outside the browser.
 | --- | --- |
 | A human browser profile is part of the working protocol | `capture` |
 | Chrome, JavaScript, or a browser gate is required | `browser` |
-| The request works with an ordinary HTTP client | `fetch` |
+| The request works with an ordinary HTTP client | `core` |
 
 Read the package README before implementing the site. Keep each package's
 adapter and parser local. Do not import site code between `capture`, `browser`,
-and `fetch`.
+and `core`.
 
 ## 3. Implement and register
 
-Register the site in the registry for the package that owns it. For `fetch`,
+Register the site in the registry for the package that owns it. For `core`,
 put request and parsing code under
-`packages/fetch/fetch/sites/<name>/` and keep retry decisions in
-`fetch.domain.policy`. For `browser`, put session and page behavior under
+`packages/core/core/sites/<name>/` and keep retry decisions in
+`core.domain.policy`. For `browser`, put session and page behavior under
 `packages/browser/browser/sites/<name>/`. For `capture`, keep the relay and
 browser script under `packages/capture/capture/sites/<name>/`.
 

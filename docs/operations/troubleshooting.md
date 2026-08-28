@@ -30,7 +30,7 @@ sqlite3 results/out.state.sqlite3 \
 ```
 
 If the host does not provide the SQLite CLI, use a short script through the
-workspace environment. Do not infer succeeded documents from result CSV rows:
+development environment. Do not infer succeeded documents from result CSV rows:
 an `ok` lookup with zero returned rows produces no CSV row.
 
 To inspect one document's attempts:

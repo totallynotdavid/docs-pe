@@ -3,7 +3,7 @@
 Entel's debt lookup is available at `miperfil.entel.pe`. The working
 implementations are in [browser](../../packages/browser/readme.md) and
 [capture](../../packages/capture/readme.md). It is not implemented in
-[fetch](../../packages/fetch/readme.md): the accepted request depends on
+[fetch](../../packages/cli/readme.md): the accepted request depends on
 browser state that a plain HTTP client does not reproduce.
 
 ## Result contract

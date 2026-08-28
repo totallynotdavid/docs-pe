@@ -10,7 +10,7 @@ uv run --env-file .env browser \
   --site entel
 ```
 
-Use [fetch](../fetch/readme.md) when a plain HTTP client is sufficient. Use
+Use [fetch](../cli/readme.md) when a plain HTTP client is sufficient. Use
 [capture](../capture/readme.md) when a request works in an established Chrome
 profile but not in automation.
 

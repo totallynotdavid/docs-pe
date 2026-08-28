@@ -1,7 +1,11 @@
 # Contributing
 
-This is a uv workspace. Use the commands exposed by `mise.toml` so local work
-uses the repository toolchain:
+The root project provides the development environment. Use the commands
+exposed by `mise.toml` so local work uses the repository toolchain:
+
+The root `uv.lock` covers development. `packages/cli/uv.lock` and
+`packages/portal/uv.lock` cover their deployment environments. `mise run update`
+updates all three.
 
 ```sh
 mise install
@@ -11,11 +15,11 @@ mise run check
 mise run test
 ```
 
-For focused work, use the workspace environment:
+For focused work, use the root environment:
 
 ```sh
-uv run pytest tests/fetch
-uv run pytest tests/fetch/sites/osiptel/test_lookup.py::test_name
+uv run pytest tests/cli
+uv run pytest tests/core/sites/osiptel/test_lookup.py::test_name
 uv run mypy packages/portal
 uv run ruff check packages/portal
 ```
@@ -25,15 +29,15 @@ cluster. Do not use a system Python, pytest, Ruff, or mypy.
 
 ## Boundaries
 
-- `fetch` owns unattended lookups, proxy providers, fault policy, and SQLite
-  outcomes.
+- `core` owns site requests, proxy providers, fault policy, and retry state.
+- `cli` owns unattended lookups, SQLite outcomes, and CSV exports.
 - `browser` owns Chrome sessions and browser-gated sites.
 - `capture` owns request discovery with a real Chrome profile.
 - `portal` owns HTTP routes, authentication, PostgreSQL state, and worker
-  orchestration. It may import `fetch`.
+  orchestration. It uses `core` for lookups.
 
-Do not add imports between `capture`, `browser`, and `fetch`. Keep fault-to-
-retry decisions in `fetch.domain.policy`, not in a site adapter.
+Keep `capture`, `browser`, and `core` independent. `cli` and `portal` may use
+`core`. Keep fault-to-retry decisions in `core.domain.policy`.
 
 ## Documentation
 

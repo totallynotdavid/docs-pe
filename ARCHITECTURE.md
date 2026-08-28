@@ -1,17 +1,17 @@
 # Architecture
 
 The repository turns identifiers and telephone numbers into site-specific
-results. It has three execution modes and one service that coordinates them:
+results. It has one lookup engine and three applications:
 
 ```text
-capture -> browser -> fetch
-portal  -> fetch
+capture -> browser -> core
+cli     -> core
+portal  -> core
 ```
 
 The arrows describe the normal path for discovering and scaling a site. They
 also describe the allowed dependency direction. `capture`, `browser`, and
-`fetch` do not import one another. `portal` may use `fetch` as its execution
-library.
+`core` do not import one another. `cli` and `portal` use `core`.
 
 ## Execution modes
 
@@ -22,8 +22,11 @@ site behavior.
 `browser` drives Chrome through CDP. It owns browser sessions, browser gates,
 and site behavior that cannot be reduced to an HTTP request.
 
-`fetch` runs site requests through proxy providers. It owns provider sessions,
-site parsers, fault classification, retry policy, and the SQLite outcome store.
+`core` runs site requests through proxy providers. It owns provider sessions,
+site parsers, fault classification, and retry policy.
+
+`cli` is the standalone `fetch` tool. It owns command parsing, environment
+loading, local SQLite state, CSV exports, and sharded-job tools.
 
 The packages intentionally copy site knowledge between modes instead of
 sharing implementation code. A site can therefore remain in `capture` while
@@ -44,7 +47,7 @@ input CSV
 
 A lane owns the session, readiness check, proxy rotation, and lookup execution
 for one site. A site reports facts such as a ban signal or a malformed response.
-`fetch.domain.policy` decides what those facts mean for retry and breaker
+`core.domain.policy` decides what those facts mean for retry and breaker
 accounting. Site modules do not implement their own retry policy.
 
 ## Outcome state
@@ -75,7 +78,7 @@ state.
 ## Portal lifecycle
 
 The portal creates one queue item per accepted document/site pair. A worker
-claims an item through the worker API, executes the fetch pipeline in its own
+claims an item through the worker API, executes a core lookup in its own
 process, and publishes the result. Claim leases and lease fences prevent a
 late worker from publishing after cancellation or reassignment.
 

@@ -4,9 +4,9 @@ The toolchain is pinned in mise.toml and only uv resolves it. Never invoke
 python, pytest, ruff, or mypy directly.
 
 ```
-mise run install     uv sync --all-packages --all-groups
+mise run install     uv sync --all-groups
 mise run format      ruff format + ruff check --fix
-mise run check       mypy across the workspace
+mise run check       mypy across the repository
 mise run test        pytest across every package, portal included
 mise run build       PyInstaller single binary for fetch
 mise run dev         start postgres, bootstrap, and run the portal (Ctrl+C stops everything)
@@ -16,9 +16,9 @@ mise run reset       wipe the local postgres cluster; next `mise run dev` starts
 Focused work, when a full run is too slow:
 
 ```
-uv run pytest tests/fetch                        no database needed
+uv run pytest tests/cli                          no database needed
 uv run pytest tests/portal                       starts a postgres cluster
-uv run pytest tests/fetch/sites/osiptel/test_lookup.py::test_name
+uv run pytest tests/core/sites/osiptel/test_lookup.py::test_name
 uv run mypy packages/portal
 uv run ruff check packages/portal
 ```
@@ -30,7 +30,8 @@ shared concepts. Then read the package readme you're working on.
 
 Each package readme covers its own domain:
 
-- `packages/fetch/readme.md`: HTTP sites, CLI, outputs, resume
+- `packages/core/readme.md`: HTTP sites, providers, sessions, retry policy
+- `packages/cli/readme.md`: CLI, outputs, resume, and sharded jobs
 - `packages/browser/readme.md`: Chrome automation, reCAPTCHA/Cloudflare,
   rejection retry
 - `packages/capture/readme.md`: reverse-engineer sites using your own Chrome
@@ -44,7 +45,7 @@ restate its content in a package readme:
 - `docs/operations/troubleshooting.md`: runbook, log interpretation
 - `docs/sites/`: per-site wire protocol, gates, failure modes (entel, osiptel,
   sunat, portabilidad)
-- `docs/adding-a-site.md`: capture → browser → fetch workflow
+- `docs/adding-a-site.md`: capture → browser → core workflow
 - `docs/reports/results.md`: historical job data and reconciliation
 - `docs/operations/portal-deployment.md`: Dokploy topology, cloudflared edge,
   master key, tailnet
@@ -66,25 +67,24 @@ Job output goes under `results/`, which is gitignored.
 
 Where things live
 
-add a fetch site packages/fetch/fetch/sites/<name>/ + sites/registry.py SITES
-add a proxy vendor packages/fetch/fetch/proxy/<name>.py + proxy/registry.py
-PROVIDERS fault or retry behaviour packages/fetch/fetch/domain/policy.py, the
-only owner document parsing/routing packages/fetch/fetch/domain/types.py, Doc
-and RucKind resume state packages/fetch/fetch/store/outcomes.py portal HTTP
+add a core site packages/core/core/sites/<name>/ + sites/registry.py SITES
+add a core proxy vendor packages/core/core/proxy/<name>.py + proxy/registry.py
+PROVIDERS fault or retry behaviour packages/core/core/domain/policy.py, the
+only owner document parsing/routing packages/core/core/domain/types.py, Doc
+and RucKind CLI resume state packages/cli/cli/store/outcomes.py portal HTTP
 handling packages/portal/portal/web/routes/ portal auth and CSRF
 packages/portal/portal/web/deps.py, not in a route portal SQL
 packages/portal/portal/repository/, one module per concern: auth.py, teams.py,
 credentials.py, jobs.py.
 
-Tests live in one tests/ package at the repo root, one subpackage per workspace
-member.
+Tests live in one tests/ package at the repo root, one subpackage per package.
 
 pytest is configured once in the root pyproject.toml with asyncio_mode = "auto",
 so an async test is a plain async def test_* with no decorator.
 
 Rules that break things silently when ignored
 
-Do not add cross-package imports between `capture`, `browser`, and `fetch`. See
+Do not add cross-package imports between `capture`, `browser`, and `core`. See
 `ARCHITECTURE.md#package-boundaries`.
 
 Do not classify faults inside a site. See `ARCHITECTURE.md`. `domain/policy.py`

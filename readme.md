@@ -5,7 +5,7 @@ number-portability data.
 
 ## Start
 
-Install the pinned toolchain and workspace dependencies:
+Install the pinned toolchain and development dependencies:
 
 ```sh
 mise install
@@ -38,7 +38,7 @@ uv run fetch-status --output results/out.csv
 
 | Tool | Use it when |
 | --- | --- |
-| [`fetch`](packages/fetch/readme.md) | The site accepts ordinary HTTP requests and the job needs unattended scale. |
+| [`fetch`](packages/cli/readme.md) | The site accepts ordinary HTTP requests and the job needs unattended scale. |
 | [`browser`](packages/browser/readme.md) | The site needs Chrome, JavaScript, or a browser reputation signal. |
 | [`capture`](packages/capture/readme.md) | You need to discover a request with your own Chrome profile. |
 | [`portal`](packages/portal/readme.md) | People need job submission, teams, reusable results, and a worker fleet. |
@@ -57,7 +57,7 @@ That is a workflow, not a dependency rule. See [Adding a site](docs/adding-a-sit
 
 ## Development
 
-Run workspace checks from the repository root:
+Run checks from the repository root:
 
 ```sh
 mise run format

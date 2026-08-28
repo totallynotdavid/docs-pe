@@ -2,7 +2,7 @@
 
 The SUNAT lookup is available at
 `https://e-consultaruc.sunat.gob.pe/` and is implemented in
-[fetch](../../packages/fetch/readme.md). The `sunat` and `sunat_reps` sites use
+[fetch](../../packages/cli/readme.md). The `sunat` and `sunat_reps` sites use
 the same endpoint family but accept different RUC kinds.
 
 ## Sites and output
