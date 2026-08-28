@@ -2,7 +2,7 @@
 
 `fetch` and `browser` use proxy providers. `capture` uses the operator's own
 Chrome profile. This document defines provider configuration and coordination.
-Historical measurements are in [the results ledger](reports/results.md).
+Historical measurements are in [the historical results](reports/results.md).
 
 ## Configure providers
 
@@ -28,8 +28,9 @@ GEONODE_LIFETIME_MINUTES=10
 
 `GEONODE_GATEWAY` accepts `fr`, `fr_whitelist`, `us`, or `sg`.
 `GEONODE_PROXY_TYPE` accepts `residential`, `datacenter`, or `mix`.
-`GEONODE_COUNTRY` is an uppercase two-letter code. The lifetime controls the
-provider session lifetime.
+`GEONODE_COUNTRY` accepts a two-letter code in either case and is normalized to
+uppercase. `GEONODE_LIFETIME_MINUTES` must be between 3 and 1,440; it controls
+the provider session lifetime.
 
 DataImpulse fields:
 
@@ -40,19 +41,20 @@ DATAIMPULSE_COUNTRY=pe
 DATAIMPULSE_SESSION_MINUTES=3
 ```
 
-`DATAIMPULSE_COUNTRY` is lowercase and `DATAIMPULSE_SESSION_MINUTES` must be
-at least one. DataImpulse has no release endpoint; its session expires through
-the provider TTL.
+`DATAIMPULSE_COUNTRY` accepts a two-letter code in either case and is normalized
+to lowercase. `DATAIMPULSE_SESSION_MINUTES` must be between 1 and 1,440.
+DataImpulse has no release endpoint; its session expires through the provider
+TTL.
 
-The field schema in `core.proxy.base` is the source used by environment
-loading, stored portal credentials, and the portal form. When adding a
-provider, add its schema and registry entry before adding provider-specific
-documentation.
+Each provider module owns its field schema. `core.proxy.base` supplies the
+shared field and provider-spec types used by environment loading, stored portal
+credentials, and the portal form. When adding a provider, add its schema and
+registry entry before adding provider-specific documentation.
 
 ## Country and site selection
 
-OSIPTEL requires a Peru exit. Set the country explicitly for every provider
-that may receive OSIPTEL work:
+OSIPTEL requires a Peru exit. Set the country explicitly for every provider that
+may receive OSIPTEL work:
 
 ```env
 GEONODE_COUNTRY=PE
@@ -82,14 +84,13 @@ Inspect current leases in [Portal operations](../packages/portal/operations.md).
 ## Preflight
 
 The provider registry exposes a preflight helper that opens a real session and
-returns the observed exit IP. Run it with the same environment used by the
-job:
+returns the observed exit IP. Run it with the same environment used by the job:
 
 ```sh
 uv run --env-file .env python - <<'PY'
 import asyncio
 
-from cli.config import values_from_environment
+from core.proxy.base import values_from_environment
 from core.proxy.registry import preflight, spec_for
 
 

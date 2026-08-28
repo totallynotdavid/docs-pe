@@ -26,10 +26,10 @@ administrator and team, and runs the web process. The first administrator
 finishes TOTP or passkey enrollment at `/security/setup`. `mise run reset`
 removes the disposable local database.
 
-Development may omit Turnstile, mail, and worker enrollment settings.
-Production validation requires an HTTPS public origin, both Turnstile keys, a
-worker bootstrap token, a Resend API key, and a sender address. The complete
-variable set is maintained in [`.env.example`](../../.env.example).
+Development may omit Turnstile, mail, and worker enrollment settings. Production
+validation requires an HTTPS public origin, both Turnstile keys, a worker
+bootstrap token, a Resend API key, and a sender address. The complete variable
+set is maintained in [`.env.example`](../../.env.example).
 
 ## Commands
 
@@ -56,8 +56,8 @@ uv run --env-file .env portal provision \
   --team-slug equipo-lima
 ```
 
-Proxy credentials for provisioning use
-`PORTAL_PROVISION_<PROVIDER>_<FIELD>` names generated from the provider schema.
+Proxy credentials for provisioning use `PORTAL_PROVISION_<PROVIDER>_<FIELD>`
+names generated from the provider schema.
 
 ## Runtime model
 
@@ -67,25 +67,12 @@ advances the fence so a late worker cannot publish into a cancelled job.
 
 Team search exposes entries available to that team. Site admins and entitled
 teams can use global search. Stored proxy credentials and TOTP secrets use
-envelope encryption; passkey public keys are stored for verification. Master
-key creation, backup, and rotation are documented in the
-[deployment guide](../../docs/operations/portal-deployment.md#master-key).
+envelope encryption; passkey public keys are stored for verification. Master key
+creation, backup, and rotation are documented in the
+[deployment guide](../../docs/operations/portal-deployment.md#key-rotation).
 
 For manual intervention, use the [SQL runbook](operations.md). It is for a
 trusted operator and is not a replacement for application authorization.
-
-## Code map
-
-| Path | Responsibility |
-| --- | --- |
-| `portal/web/` | Routes, sessions, templates, and assets. |
-| `portal/worker/` | Worker API, protocol, agent, and enrollment. |
-| `portal/application/` | Login, teams, credentials, jobs, and provisioning. |
-| `portal/domain/` | Domain models and planning rules. |
-| `portal/repository/` | PostgreSQL access, separated by concern. |
-| `portal/credentials/` | Master keyring and envelope encryption. |
-| `portal/storage/` | Immutable upload and result objects. |
-| `portal/security.py` | Password, session, TOTP, WebAuthn, and token primitives. |
 
 Run portal tests with:
 

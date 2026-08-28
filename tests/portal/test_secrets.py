@@ -62,11 +62,7 @@ def test_a_truncated_ciphertext_is_refused(protector: EnvelopeProtector) -> None
 
 
 def test_a_rotated_keyring_still_opens_what_the_old_key_wrapped() -> None:
-    """The reason the envelope is worth its complexity.
-
-    Rotation prepends a key. Payload ciphertext is untouched, so nothing has to
-    be rewritten for secrets to keep opening and new ones to use the new key.
-    """
+    """Key rotation preserves old ciphertext and selects the new key for writes."""
     old = EnvelopeProtector(
         MasterKeyring.from_lines([f"{MASTER_KEY_VERSION} {MASTER_KEY}"])
     )

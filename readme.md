@@ -1,32 +1,38 @@
 # docs-pe
 
-Tools for looking up public Peruvian identity, telephone, taxpayer, and
-number-portability data.
+Command-line and browser tools for looking up public Peruvian identity,
+telephone, taxpayer, and number-portability data.
 
-## Start
+## Get started
 
-Install the pinned toolchain and development dependencies:
+Install the pinned toolchain and dependencies:
 
 ```sh
 mise install
 mise run install
 ```
 
-Copy `.env.example`, add the credentials for the proxy provider you intend to
-use, and run a small job first:
+Create a CSV with one authorized identifier in its first column. Replace the
+example before running a lookup:
 
 ```sh
+printf '%s\n' '12345678' > subjects.csv
 cp .env.example .env
+```
+
+Add credentials for the proxy provider in `.env`, then run a small lookup:
+
+```sh
 uv run --env-file .env fetch \
-  --input docs.csv \
+  --input subjects.csv \
   --output results/out.csv \
   --sites osiptel
 ```
 
-`fetch` stores progress in `results/out.state.sqlite3` and writes CSV files
-from that state. The SQLite database is the record of what happened. The CSV
-files are disposable projections and may be absent until the process exports
-its current state.
+The run stores its durable state in `results/out.state.sqlite3` and exports
+site-specific CSV projections such as `results/out.osiptel.csv`. A valid lookup
+with no returned rows has an `ok` state but no result row. Use the state
+database when reconciling a run.
 
 Inspect a completed or interrupted run with:
 
@@ -34,38 +40,35 @@ Inspect a completed or interrupted run with:
 uv run fetch-status --output results/out.csv
 ```
 
-## Choose a tool
+## Choose a runner
 
-| Tool | Use it when |
-| --- | --- |
-| [`fetch`](packages/cli/readme.md) | The site accepts ordinary HTTP requests and the job needs unattended scale. |
-| [`browser`](packages/browser/readme.md) | The site needs Chrome, JavaScript, or a browser reputation signal. |
-| [`capture`](packages/capture/readme.md) | You need to discover a request with your own Chrome profile. |
-| [`portal`](packages/portal/readme.md) | People need job submission, teams, reusable results, and a worker fleet. |
+| Tool                                    | Use it when                                                                 |
+| --------------------------------------- | --------------------------------------------------------------------------- |
+| [`fetch`](packages/cli/readme.md)       | The site accepts ordinary HTTP requests and the job needs unattended scale. |
+| [`browser`](packages/browser/readme.md) | The site needs Chrome, JavaScript, or a browser reputation signal.          |
+| [`capture`](packages/capture/readme.md) | You need to discover a request with your own Chrome profile.                |
+| [`portal`](packages/portal/readme.md)   | People need job submission, teams, reusable results, and a worker fleet.    |
 
-Most new sites begin in `capture`, move to `browser` if a browser is part of
-the protocol, and move to `fetch` only when the request works without Chrome.
-That is a workflow, not a dependency rule. See [Adding a site](docs/adding-a-site.md).
+New site work usually starts with [`capture`](packages/capture/readme.md), then
+moves to [`browser`](packages/browser/readme.md) or
+[`fetch`](packages/cli/readme.md) once the protocol is understood. See
+[Adding a site](docs/adding-a-site.md).
 
-## More
+## Learn more
 
-- [Architecture](ARCHITECTURE.md) explains package boundaries and durable state.
-- [Site notes](docs/sites/) record current request and response contracts.
-- [Operations](docs/operations/) covers deployment, diagnosis, and
-  [multi-host fetch jobs](docs/operations/sharded-fetch.md).
-- [Results](docs/reports/results.md) contains historical measurements.
+- [Architecture](ARCHITECTURE.md) defines package ownership and durable state.
+- [Site notes](docs/sites/) describe current request and response contracts.
+- [Operations](docs/operations/) contains deployment and diagnosis runbooks.
+- [Historical measurements](docs/reports/results.md) are dated observations, not
+  runtime guarantees.
 
-## Development
+## Contributing
 
-Run checks from the repository root:
+Read [Contributing](CONTRIBUTING.md) before changing code. It covers the pinned
+toolchain, focused checks, documentation ownership, and commit messages.
 
 ```sh
-mise run format
+mise run install
 mise run check
 mise run test
-mise run build
 ```
-
-`mise run dev` starts the disposable local PostgreSQL instance, bootstraps the
-portal, and runs the web process. Use `mise run reset` only when that local
-database may be removed.

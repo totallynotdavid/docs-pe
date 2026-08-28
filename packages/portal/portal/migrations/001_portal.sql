@@ -771,10 +771,7 @@ CREATE TABLE portal_workers (
     current_job_id uuid REFERENCES portal_jobs(id) ON DELETE SET NULL
 );
 
--- One row per GeoNode sticky-port slot (fetch/proxy/geonode.py's
--- _HTTP_STICKY_SLOT_COUNT). See PostgresProxySlots (portal/repository/slots.py)
--- for the self-expiring lease contract. Extend the CHECK and the seed below
--- when another provider needs the same port-level coordination.
+-- One row per GeoNode sticky-port slot used by worker allocation.
 CREATE TABLE portal_proxy_slots (
     provider text NOT NULL CONSTRAINT portal_proxy_slots_provider_supported
         CHECK (provider IN ('geonode')),

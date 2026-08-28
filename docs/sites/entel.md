@@ -3,8 +3,8 @@
 Entel's debt lookup is available at `miperfil.entel.pe`. The working
 implementations are in [browser](../../packages/browser/readme.md) and
 [capture](../../packages/capture/readme.md). It is not implemented in
-[fetch](../../packages/cli/readme.md): the accepted request depends on
-browser state that a plain HTTP client does not reproduce.
+[fetch](../../packages/cli/readme.md): the accepted request depends on browser
+state that a plain HTTP client does not reproduce.
 
 ## Result contract
 
@@ -18,21 +18,21 @@ OnlinePayment_Step2/DataActionGetData
 The request body is captured from the live application. The fields that the
 automation changes are:
 
-| Field | Requirement |
-| --- | --- |
-| `screenData.variables.DocumentType` | `DNI` or `RUC`. |
-| `screenData.variables.DocumentNumber` | The identifier being queried. |
-| `screenData.variables.RecaptchaId` | The string `"0"`. |
-| `clientVariables.TokenCaptchaV3` | A fresh token minted in the page. |
-| `viewName` | `OnlinePaymentFlow.OnlinePayment`. |
-| `versionInfo.moduleVersion` | The current value from `moduleversioninfo`. |
+| Field                                 | Requirement                                 |
+| ------------------------------------- | ------------------------------------------- |
+| `screenData.variables.DocumentType`   | `DNI` or `RUC`.                             |
+| `screenData.variables.DocumentNumber` | The identifier being queried.               |
+| `screenData.variables.RecaptchaId`    | The string `"0"`.                           |
+| `clientVariables.TokenCaptchaV3`      | A fresh token minted in the page.           |
+| `viewName`                            | `OnlinePaymentFlow.OnlinePayment`.          |
+| `versionInfo.moduleVersion`           | The current value from `moduleversioninfo`. |
 
-Keep the complete captured body. Constructing a smaller body or copying a
-token into an HTTP client omits browser state that Entel validates.
+Keep the complete captured body. Constructing a smaller body or copying a token
+into an HTTP client omits browser state that Entel validates.
 
-A valid no-debt response has `HasErrorDebt: false` and `DebtTotal: "0.0"`.
-The rejection response has HTTP 200, `HasErrorDebt: true`, `DebtTotal: "0.0"`,
-an empty account list, and an empty `DocumentNumber`. Use `HasErrorDebt` to
+A valid no-debt response has `HasErrorDebt: false` and `DebtTotal: "0.0"`. The
+rejection response has HTTP 200, `HasErrorDebt: true`, `DebtTotal: "0.0"`, an
+empty account list, and an empty `DocumentNumber`. Use `HasErrorDebt` to
 distinguish a valid zero-debt result from a rejected lookup.
 
 ## Browser sequence
@@ -45,9 +45,9 @@ The browser implementation therefore:
 3. obtains a fresh reCAPTCHA v3 token in the page; and
 4. sends the captured template with the current document fields and token.
 
-The token must be minted while the page is still on Step 1. A token minted
-after the application advances to Step 2 is rejected. The request that
-initializes the widget must remain enabled; otherwise `RecaptchaId` is empty.
+The token must be minted while the page is still on Step 1. A token minted after
+the application advances to Step 2 is rejected. The request that initializes the
+widget must remain enabled; otherwise `RecaptchaId` is empty.
 
 ## CSRF
 
@@ -77,7 +77,7 @@ A hard browser error stops the run. It indicates that the page or session could
 not complete the protocol.
 
 If a fresh browser still receives rejections, inspect the page sequence, the
-CSRF cookie, and the provider exit before increasing retry counts. This site
-has accepted an established interactive Chrome profile while rejecting an
-automated profile with the same visible request. That is the boundary that
-keeps Entel in `browser` and `capture`.
+CSRF cookie, and the provider exit before increasing retry counts. This site has
+accepted an established interactive Chrome profile while rejecting an automated
+profile with the same visible request. That is the boundary that keeps Entel in
+`browser` and `capture`.

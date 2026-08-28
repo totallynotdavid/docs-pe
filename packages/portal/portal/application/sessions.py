@@ -92,9 +92,7 @@ class BrowserSessions:
 
         user = await self._users.user_by_id(UUID(record["user_id"]))
 
-        # Re-read on every request, same as the identity check above: a
-        # deactivation takes effect on the account's next request, not at
-        # the session's natural idle/absolute expiry.
+        # Deactivation takes effect on the account's next request.
         if user is None or not user.is_active:
             await self._store.discard(key)
             return None

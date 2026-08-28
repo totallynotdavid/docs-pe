@@ -18,7 +18,6 @@ def _hashed_stylesheet(content: str, prefix: str, static_dir: Path) -> str:
         static_dir.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
 
-    # Keep only the bundle referenced by the current content hash.
     for old_bundle in static_dir.glob(f"{prefix}.*.css"):
         if old_bundle != path:
             old_bundle.unlink()

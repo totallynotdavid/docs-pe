@@ -71,8 +71,7 @@ async def test_a_rewrap_moves_stored_secrets_onto_the_active_key(
     assert row is not None
     assert row["master_key_version"] == "v2"
 
-    # The payload is untouched, which is the property that makes a rotation
-    # cheap: only the wrapped data key is rewritten.
+    # Rewrapping changes only the wrapped data key.
     assert bytes(row["config_ciphertext"]) == bytes(ciphertext_before)
 
 
@@ -81,7 +80,7 @@ async def test_a_rewrapped_secret_opens_once_the_old_key_is_deleted(
     rotated: MasterKeyring,
     rotated_lines: tuple[str, str],
 ) -> None:
-    """The point of the whole exercise: the retired key can actually go away."""
+    """Rewrapped secrets remain readable after the retired key is removed."""
     old = EnvelopeProtector(KEYRING)
     await seed_team(pool, config=old.protect(encode_config(VALUES)))
 
@@ -95,7 +94,6 @@ async def test_a_rewrapped_secret_opens_once_the_old_key_is_deleted(
     )
     assert row is not None
 
-    # The key file after the old line is deleted: only v2 remains.
     finished = EnvelopeProtector(MasterKeyring.from_lines([rotated_lines[0]]))
     secret = ProtectedSecret(
         ciphertext=bytes(row["config_ciphertext"]),

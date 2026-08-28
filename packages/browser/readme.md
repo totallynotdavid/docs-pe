@@ -16,24 +16,25 @@ profile but not in automation.
 
 ## Sites
 
-| Site | Accepted input | Output |
-| --- | --- | --- |
-| `entel` | DNI or RUC | Debt total and punishment status. |
+| Site           | Accepted input           | Output                               |
+| -------------- | ------------------------ | ------------------------------------ |
+| `entel`        | DNI or RUC               | Debt total and punishment status.    |
 | `portabilidad` | Nine-digit mobile number | Carrier history and current carrier. |
 
-The [site notes](../../docs/sites/) own each site's endpoint, browser gate,
-and response contract.
+The [site notes](../../docs/sites/) own each site's endpoint, browser gate, and
+response contract.
 
 ## Sessions and retries
 
-The state database defaults to `<output>.state.sqlite3`. It records the latest
-verified observation for each subject. Reusing the same output and state paths
-resumes subjects that have not succeeded.
+The state database defaults to `<output>.state.sqlite3`. It records every
+observation, including `ok`, `rejected`, and `failed`. Only `ok` marks a subject
+complete, so reusing the same output and state paths resumes subjects that have
+not succeeded.
 
-A structured site rejection causes a fresh token or session attempt according
-to `--reject-retries`, `--reject-restart-threshold`, and
-`--max-session-restarts`. A hard browser error is not converted into a document
-result. It stops the run so the browser failure can be fixed.
+A structured site rejection causes a fresh token or session attempt according to
+`--reject-retries`, `--reject-restart-threshold`, and `--max-session-restarts`.
+A hard browser error is not converted into a document result. It stops the run
+so the browser failure can be fixed.
 
 Entel has a browser-bound request sequence and must remain in this package. The
 details are in [the Entel note](../../docs/sites/entel.md). Portabilidad does

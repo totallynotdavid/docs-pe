@@ -10,8 +10,8 @@ portal  -> core
 ```
 
 The arrows describe the normal path for discovering and scaling a site. They
-also describe the allowed dependency direction. `capture`, `browser`, and
-`core` do not import one another. `cli` and `portal` use `core`.
+also describe the allowed dependency direction. `capture`, `browser`, and `core`
+do not import one another. `cli` and `portal` use `core`.
 
 ## Execution modes
 
@@ -28,10 +28,10 @@ site parsers, fault classification, and retry policy.
 `cli` is the standalone `fetch` tool. It owns command parsing, environment
 loading, local SQLite state, CSV exports, and sharded-job tools.
 
-The packages intentionally copy site knowledge between modes instead of
-sharing implementation code. A site can therefore remain in `capture` while
-its protocol is investigated, or remain in `browser` when plain HTTP is not a
-valid implementation.
+The packages intentionally copy site knowledge between modes instead of sharing
+implementation code. A site can therefore remain in `capture` while its protocol
+is investigated, or remain in `browser` when plain HTTP is not a valid
+implementation.
 
 ## Standalone fetch lifecycle
 
@@ -55,20 +55,20 @@ accounting. Site modules do not implement their own retry policy.
 The SQLite database is the source of truth for a standalone run. Each
 document/site pair has one durable row when it has produced an outcome.
 
-| Status | Meaning |
-| --- | --- |
-| `ok` | The site returned a valid result. An empty result is valid only for a site that allows it. |
-| `not_found` | The site explicitly confirmed that the document is absent. |
-| `failed` | The latest attempt failed. The row remains retryable until its cumulative attempt limit is reached. |
+| Status      | Meaning                                                                                             |
+| ----------- | --------------------------------------------------------------------------------------------------- |
+| `ok`        | The site returned a valid result. An empty result is valid only for a site that allows it.          |
+| `not_found` | The site explicitly confirmed that the document is absent.                                          |
+| `failed`    | The latest attempt failed. The row remains retryable until its cumulative attempt limit is reached. |
 
 `MAX_ATTEMPTS` limits attempts in one process. `MAX_TOTAL_ATTEMPTS` limits the
-same pair across relaunches. A circuit-breaker wait is not a healthy contact
-and does not consume the document's attempt budget.
+same pair across relaunches. A circuit-breaker wait is not a healthy contact and
+does not consume the document's attempt budget.
 
 CSV files contain projections of successful rows, not a complete progress
-ledger. In particular, a successful lookup that returns no rows has an
-`ok` outcome but contributes no data row to a result CSV. Query SQLite when
-logs and CSV files disagree.
+ledger. In particular, a successful lookup that returns no rows has an `ok`
+outcome but contributes no data row to a result CSV. Query SQLite when logs and
+CSV files disagree.
 
 Standalone breaker state is stored by site and provider in the outcome database
 and restored when the same output path resumes. The portal stores its fleet
@@ -79,8 +79,8 @@ state.
 
 The portal creates one queue item per accepted document/site pair. A worker
 claims an item through the worker API, executes a core lookup in its own
-process, and publishes the result. Claim leases and lease fences prevent a
-late worker from publishing after cancellation or reassignment.
+process, and publishes the result. Claim leases and lease fences prevent a late
+worker from publishing after cancellation or reassignment.
 
 PostgreSQL owns queue leases, cancellation fences, reusable entries, team
 access, worker identities, fleet proxy-slot leases, and the fleet circuit

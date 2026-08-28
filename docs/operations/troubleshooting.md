@@ -3,8 +3,8 @@
 Start with the durable state for the run you are investigating. Logs explain
 what a process attempted, and CSV files are projections. Neither is a complete
 progress ledger. Read [Architecture](../../ARCHITECTURE.md#outcome-state) for
-the state model, [Proxy configuration](../proxies.md) for provider behavior,
-and the matching [site note](../sites/) for site-specific failures.
+the state model, [Proxy configuration](../proxies.md) for provider behavior, and
+the matching [site note](../sites/) for site-specific failures.
 
 ## Inspect a standalone run
 
@@ -46,21 +46,21 @@ order by site;
 
 Check the error code, site, provider, and attempt sample together:
 
-| Signal | Likely boundary |
-| --- | --- |
-| `407` or `TRAFFIC_EXHAUSTED` across many documents and lanes | Provider credentials or account capacity. |
-| `ban_signal` during a site readiness check | The site rejected the exit or returned a block page. |
-| `upstream_not_ready` with connection failures | Provider endpoint or upstream availability. |
-| One parser or document error on a small set | Document data or site response shape. |
-| `unknown_error` | An exception escaped the known fault taxonomy and needs investigation. |
+| Signal                                                       | Likely boundary                                                        |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `407` or `TRAFFIC_EXHAUSTED` across many documents and lanes | Provider credentials or account capacity.                              |
+| `ban_signal` during a site readiness check                   | The site rejected the exit or returned a block page.                   |
+| `upstream_not_ready` with connection failures                | Provider endpoint or upstream availability.                            |
+| One parser or document error on a small set                  | Document data or site response shape.                                  |
+| `unknown_error`                                              | An exception escaped the known fault taxonomy and needs investigation. |
 
-For OSIPTEL, verify the actual exit country before changing retry settings.
-See [the OSIPTEL note](../sites/osiptel.md) and
+For OSIPTEL, verify the actual exit country before changing retry settings. See
+[the OSIPTEL note](../sites/osiptel.md) and
 [proxy configuration](../proxies.md#country-and-site-selection).
 
 ## Inspect portal health
 
-Portal breaker state is in PostgreSQL and is keyed by site and provider:
+Portal breaker state is in PostgreSQL and is keyed by source and provider:
 
 ```sql
 select source, provider, consecutive_failures, level, open_until, updated_at
@@ -81,9 +81,9 @@ where worker_id is not null
 order by provider, worker_id, slot_id;
 ```
 
-Run these queries through the [portal SQL runbook](../../packages/portal/operations.md)
-with the portal database connection. Do not run them against a standalone
-SQLite state database.
+Run these queries through the
+[portal SQL runbook](../../packages/portal/operations.md) with the portal
+database connection. Do not run them against a standalone SQLite state database.
 
 ## Session rotation
 

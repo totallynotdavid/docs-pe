@@ -63,7 +63,6 @@ def plan_pending(
     sites: list[Site],
     done_pairs: set[tuple[str, str]],
 ) -> dict[str, list[Doc]]:
-    # Skip pairs already resolved by a previous run.
     return {
         site.name: [
             doc
@@ -75,5 +74,4 @@ def plan_pending(
 
 
 def count_unrouted(docs: list[Doc], sites: list[Site]) -> int:
-    # Documents accepted by no selected site never appear in any output.
     return sum(1 for doc in docs if not any(site.accepts(doc) for site in sites))

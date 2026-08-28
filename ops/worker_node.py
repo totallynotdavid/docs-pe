@@ -169,11 +169,8 @@ def worker_api_container_id() -> str:
 def dokploy_container_id() -> str:
     """Find the Dokploy service's own container by its swarm service label.
 
-    Not the ancestor=<image> filter: a swarm service task's image can outlive
-    the local tag->id mapping it was started from (this host's dokploy image
-    lost its v0.29.14 tag at some point after the container started, while the
-    container itself kept running unaffected), so ancestor=<tag> silently
-    matches nothing days later even though the container is up and healthy.
+    A running swarm task can outlive the local tag-to-image mapping it was
+    started from, so an image filter can miss a healthy service later.
     """
     result = ssh_run(
         MASTER_HOST,

@@ -152,17 +152,13 @@ async def test_totp_setup_is_confirm_gated(
     pool: asyncpg.Pool,
     provisioning: ProvisioningService,
 ) -> None:
-    # An installation always has at least one active admin; without one, an
-    # unrelated no-op touch of is_site_admin would trip
-    # portal_installation_must_have_admin, a pre-existing invariant this test
-    # isn't about.
+    # The database trigger requires an active administrator for this write.
     await seed_site_admin(pool, "admin@osiptel.test")
     user_id = await seed_user(pool, email="candidata@osiptel.test")
 
     setup = await provisioning.begin_totp_setup(user_id)
     assert setup.enrollment_uri.startswith("otpauth://totp/")
 
-    # Merely beginning does not enable anything.
     unenrolled = await pool.fetchval(
         "SELECT mfa_enabled FROM portal_users WHERE id = $1", user_id
     )
@@ -361,8 +357,7 @@ async def test_discoverable_passkey_login_needs_no_password(
 
         assert verify_response.headers["location"] == "/"
 
-    # Replaying the same assertion (same sign_count) must not authenticate a
-    # second time: this is exactly the signal a cloned authenticator gives.
+    # Reusing the sign_count identifies a replay or cloned authenticator.
     with sync_client(app) as client2:
         options_response_2 = client2.post(
             "/login/passkey/options", headers={"Origin": ORIGIN}

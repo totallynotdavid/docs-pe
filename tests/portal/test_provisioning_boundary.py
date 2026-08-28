@@ -265,16 +265,13 @@ async def test_the_first_administrator_is_created_pending_their_own_setup(
         hashed,
     )
 
-    # Never a site admin yet, and no secret was generated here for an
-    # operator to see: only the account exists, waiting on /security/setup.
     assert administrator.is_site_admin is False
     assert administrator.pending_site_admin is True
     assert administrator.mfa_enabled is False
     assert administrator.has_passkey is False
     assert needs_setup is True
 
-    # Rerunning provisioning must not disturb a pending account, and once the
-    # account completes its own enrollment, rerunning must not touch it either.
+    # Rerunning provisioning must preserve the pending account.
     again, still_pending = await provisioning.ensure_site_admin(
         "bootstrap@osiptel.test",
         hashed,
@@ -347,8 +344,7 @@ async def test_deactivating_a_teams_sole_leader_is_blocked_and_names_the_team(
     assert raised.value.reason is Reason.USER_LAST_LEADER
     assert raised.value.params["teams"] == "Equipo"
 
-    # Adding a second leader clears the way, the same escape hatch a stuck
-    # team is meant to have.
+    # A second leader permits deactivation without violating team leadership.
     second_leader = await seed_user(pool, email="segunda-lider@osiptel.test")
     await team_repository.add_member(
         team.team_id,
@@ -440,8 +436,7 @@ async def test_deleting_a_user_requires_zero_history(
     team = await seed_team(pool)
     unused = await seed_user(pool, email="sin-uso@osiptel.test")
 
-    # Keep another active leader so the assertion below exercises user-history
-    # protection, not the sole-leader guard.
+    # Preserve a second active leader so this test reaches the history guard.
     second_leader = await seed_user(pool, email="segunda-lider@osiptel.test")
     await team_repository.add_member(
         team.team_id,
@@ -486,8 +481,7 @@ async def test_promoting_marks_pending_until_self_enrollment_completes(
     assert needs_setup is True
 
     pending = await provisioning.user_detail(admin_id, candidate_id)
-    # Not an admin yet, and the promoting admin never sees the candidate's
-    # own second factor: only the candidate can produce it, at /security/setup.
+    # The promoting admin must not enroll the candidate's second factor.
     assert pending.is_site_admin is False
     assert pending.pending_site_admin is True
 
@@ -507,7 +501,6 @@ async def test_promoting_marks_pending_until_self_enrollment_completes(
     assert promoted.pending_site_admin is False
     assert promoted.mfa_enabled is True
 
-    # Promoting an already-promoted account is a no-op.
     again = await provisioning.promote_to_site_admin(
         admin_id,
         user_id=candidate_id,
@@ -516,9 +509,6 @@ async def test_promoting_marks_pending_until_self_enrollment_completes(
     )
     assert again is False
 
-    # Two active admins, so demoting one is allowed; the guard that blocks
-    # stripping the *last* one is covered by the deactivation test above,
-    # which shares the same _require_not_last_site_admin check.
     demoted = await provisioning.demote_site_admin(
         admin_id,
         user_id=candidate_id,
@@ -575,11 +565,8 @@ async def test_a_deactivated_persons_session_stops_working_immediately(
     )
     await team_repository.add_member(team.id, leader_id, TeamRole.TEAM_LEADER)
 
-    # Two TestClients against the same app share one asyncpg pool bound to
-    # one event loop; nesting their `with` blocks runs each on its own
-    # blocking portal and trips asyncpg's "different loop" guard. Sequential
-    # blocks avoid that, so the leader's cookie is captured, then replayed
-    # after the admin acts.
+    # Separate client contexts avoid binding the shared asyncpg pool to two
+    # event loops at once.
     with sync_client(app) as leader_client:
         assert login(leader_client, leader_email).status_code == 303
         assert leader_client.get("/").status_code == 200
@@ -600,8 +587,7 @@ async def test_a_deactivated_persons_session_stops_working_immediately(
     with sync_client(app) as replay_client:
         replay_client.cookies.set(settings.session_cookie, session_cookie)
 
-        # The previously issued cookie is now invalid. Sessions re-read the
-        # account on every request instead of caching it at login.
+        # The session re-reads the account, so this cookie is now rejected.
         blocked = replay_client.get("/", follow_redirects=False)
         assert blocked.status_code == 303
         assert blocked.headers["location"] == "/login"

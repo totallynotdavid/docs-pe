@@ -1,9 +1,8 @@
 # fetch
 
-`fetch` is the standalone command-line tool. It plans document/site pairs,
-loads proxy credentials from the environment, records outcomes in SQLite, and
-exports site-specific CSV projections. [core](../core/readme.md) performs each
-lookup.
+`fetch` is the standalone command-line tool. It plans document/site pairs, loads
+proxy credentials from the environment, records outcomes in SQLite, and exports
+site-specific CSV projections. [core](../core/readme.md) performs each lookup.
 
 Use it when the site works without Chrome. Use [browser](../browser/readme.md)
 when a browser gate or browser state is part of the protocol. Use
@@ -13,7 +12,7 @@ when a browser gate or browser state is part of the protocol. Use
 
 ```sh
 uv run --env-file .env fetch \
-  --input docs.csv \
+  --input subjects.csv \
   --output results/out.csv \
   --sites osiptel
 ```
@@ -24,11 +23,11 @@ sent only to sites that accept its kind.
 
 ## Sites
 
-| Site | Accepted input | Successful output |
-| --- | --- | --- |
-| `osiptel` | DNI or RUC | One row per phone line, plus the `counts` projection. |
-| `sunat` | Natural-person RUC | Identity fields: `tipo_doc`, `num_doc`, `nombre`, and `tipo_contribuyente`. |
-| `sunat_reps` | Legal-entity RUC | One row per legal representative. |
+| Site         | Accepted input     | Successful output                                                           |
+| ------------ | ------------------ | --------------------------------------------------------------------------- |
+| `osiptel`    | DNI or RUC         | One row per phone line, plus the `counts` projection.                       |
+| `sunat`      | Natural-person RUC | Identity fields: `tipo_doc`, `num_doc`, `nombre`, and `tipo_contribuyente`. |
+| `sunat_reps` | Legal-entity RUC   | One row per legal representative.                                           |
 
 The current request and response contract for each site lives in
 [`docs/sites/`](../../docs/sites/). Retry behavior is shared by the pipeline;
@@ -48,24 +47,24 @@ defaults, country requirements, and portal slot coordination are documented in
 
 ## State and exports
 
-For `--output results/out.csv`, fetch uses
-`results/out.state.sqlite3` as its durable ledger. It records outcomes, proxy
-providers, run metadata, and circuit-breaker state. Reuse the same output path
-to resume. Delete the state database only when starting a new run is intended.
+For `--output results/out.csv`, fetch uses `results/out.state.sqlite3` as its
+durable ledger. It records outcomes, proxy providers, run metadata, and
+circuit-breaker state. Reuse the same output path to resume. Delete the state
+database only when starting a new run is intended.
 
 The process exports these files for each selected site:
 
-| File | Contents |
-| --- | --- |
-| `out.<site>.csv` | Rows from successful lookups. |
-| `out.<site>.<projection>.csv` | A derived site projection, such as carrier counts. |
-| `out.<site>.errors.csv` | The latest failure for each failed document, including failures that are still retryable. |
-| `out.<site>.not_found.csv` | Documents the site explicitly confirmed absent. |
-| `out.state.sqlite3` | The outcome ledger and attempt counts. |
+| File                          | Contents                                                                                  |
+| ----------------------------- | ----------------------------------------------------------------------------------------- |
+| `out.<site>.csv`              | Rows from successful lookups.                                                             |
+| `out.<site>.<projection>.csv` | A derived site projection, such as carrier counts.                                        |
+| `out.<site>.errors.csv`       | The latest failure for each failed document, including failures that are still retryable. |
+| `out.<site>.not_found.csv`    | Documents the site explicitly confirmed absent.                                           |
+| `out.state.sqlite3`           | The outcome ledger and attempt counts.                                                    |
 
 An `ok` outcome can contain zero rows when the site allows an empty result. Use
-the state database for reconciliation. See [Architecture](../../ARCHITECTURE.md) and
-[Troubleshooting](../../docs/operations/troubleshooting.md).
+the state database for reconciliation. See [Architecture](../../ARCHITECTURE.md)
+and [Troubleshooting](../../docs/operations/troubleshooting.md).
 
 Inspect a run without parsing logs or CSV projections:
 
@@ -73,8 +72,9 @@ Inspect a run without parsing logs or CSV projections:
 uv run fetch-status --output results/out.csv
 ```
 
-For multi-host work, create a manifest before starting shards, reconcile it,
-and merge only a complete job. See [Sharded fetch jobs](../../docs/operations/sharded-fetch.md).
+For multi-host work, create a manifest before starting shards, reconcile it, and
+merge only a complete job. See
+[Sharded fetch jobs](../../docs/operations/sharded-fetch.md).
 
 ## Command reference
 

@@ -158,9 +158,7 @@ UPDATE portal_job_items AS item
 RETURNING item.job_id
 """
 
-# unnest(...) AS attempt(...) zips the four parallel arrays row-wise, the
-# same multi-column unnest idiom PostgresProxySlots.renew() uses (see
-# repository/slots.py) to write several rows in one round trip.
+# The arrays are positional, so unnest writes all attempts in one round trip.
 _INSERT_ATTEMPTS = """
 INSERT INTO portal_lookup_attempts
     (id, job_item_id, source, provider, worker_id, lane_index,

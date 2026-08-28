@@ -175,8 +175,7 @@ async def login_passkey_verify_post(
         )
     )
 
-    # Same bound as login_mfa_post: a failed guess costs the whole pending
-    # state, not just this one attempt.
+    # A failed passkey guess consumes the pending login state.
     if not isinstance(outcome, SessionIssued):
         return _signed_out("/login?error=1", settings)
 
@@ -224,9 +223,7 @@ def _signed_out(location: str, settings: PortalSettings) -> Response:
 
 
 def _clear_cookie(response: Response, name: str, settings: PortalSettings) -> None:
-    # An expiring cookie has to carry the same attributes as the one it
-    # replaces: a __Host- cookie sent without Secure is rejected outright, and
-    # the stale one would survive.
+    # Clearing a __Host- cookie must preserve its scope and Secure attributes.
     _set_cookie(response, name, "", settings, max_age=0)
 
 

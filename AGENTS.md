@@ -47,7 +47,7 @@ restate its content in a package readme:
 - `docs/sites/`: per-site wire protocol, gates, failure modes (entel, osiptel,
   sunat, portabilidad)
 - `docs/adding-a-site.md`: capture → browser → core workflow
-- `docs/reports/results.md`: historical job data and reconciliation
+- `docs/reports/results.md`: historical job measurements
 - `docs/operations/portal-deployment.md`: Dokploy topology, cloudflared edge,
   master key, tailnet
 
@@ -68,12 +68,12 @@ Job output goes under `results/`, which is gitignored.
 
 Where things live
 
-add a core site packages/core/core/sites/<name>/ + sites/registry.py SITES
-add a core proxy vendor packages/core/core/proxy/<name>.py + proxy/registry.py
-PROVIDERS fault or retry behaviour packages/core/core/domain/policy.py, the
-only owner document parsing/routing packages/core/core/domain/types.py, Doc
-and RucKind CLI resume state packages/cli/cli/store/outcomes.py portal HTTP
-handling packages/portal/portal/web/routes/ portal auth and CSRF
+add a core site packages/core/core/sites/<name>/ + sites/registry.py SITES add a
+core proxy vendor packages/core/core/proxy/<name>.py + proxy/registry.py
+PROVIDERS fault or retry behaviour packages/core/core/domain/policy.py, the only
+owner document parsing/routing packages/core/core/domain/types.py, Doc and
+RucKind CLI resume state packages/cli/cli/store/outcomes.py portal HTTP handling
+packages/portal/portal/web/routes/ portal auth and CSRF
 packages/portal/portal/web/deps.py, not in a route portal SQL
 packages/portal/portal/repository/, one module per concern: auth.py, teams.py,
 credentials.py, jobs.py.
@@ -86,7 +86,7 @@ so an async test is a plain async def test_* with no decorator.
 Rules that break things silently when ignored
 
 Do not add cross-package imports between `capture`, `browser`, and `core`. See
-`ARCHITECTURE.md#package-boundaries`.
+`ARCHITECTURE.md`.
 
 Do not classify faults inside a site. See `ARCHITECTURE.md`. `domain/policy.py`
 owns the mapping from fault to retry action. A site that grows its own retry

@@ -1,9 +1,8 @@
 # OSIPTEL
 
-The OSIPTEL lookup is available at
-`https://checatuslineas.osiptel.gob.pe/` and is implemented in
-[fetch](../../packages/cli/readme.md). It accepts any supported DNI or RUC
-and returns one row per registered phone line.
+The OSIPTEL lookup is available at `https://checatuslineas.osiptel.gob.pe/` and
+is implemented in [fetch](../../packages/cli/readme.md). It accepts any
+supported DNI or RUC and returns one row per registered phone line.
 
 ## Request and response
 
@@ -24,8 +23,8 @@ Each returned line contains:
 modalidad, numeroServicio, operador
 ```
 
-The exported result uses the columns `modalidad`, `numero`, and `operador`.
-The `counts` projection groups lines by operator.
+The exported result uses the columns `modalidad`, `numero`, and `operador`. The
+`counts` projection groups lines by operator.
 
 ## Readiness and WAF
 
@@ -39,5 +38,5 @@ large one.
 
 ## Empty results
 
-An empty `data` array with `iTotalRecords=0` is an `ok` lookup with no registered
-lines. Reconcile OSIPTEL by document outcome in SQLite.
+An empty `data` array with `iTotalRecords=0` is an `ok` lookup with no
+registered lines. Reconcile OSIPTEL by document outcome in SQLite.

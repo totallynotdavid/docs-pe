@@ -27,8 +27,8 @@ settle, and submits after Turnstile has minted a token.
 The Turnstile checkbox is inside a closed shadow root, so the token step uses a
 GUI click. The token is then read from `window.turnstile.getResponse()`. If the
 token is not minted, or the page reports a CAPTCHA error, the browser package
-classifies the attempt as a browser rejection and applies its configured
-retry policy.
+classifies the attempt as a browser rejection and applies its configured retry
+policy.
 
-This site has no warm-up identifier. A missing result marker after submission
-is a browser failure.
+This site has no warm-up identifier. A missing result marker after submission is
+a browser failure.

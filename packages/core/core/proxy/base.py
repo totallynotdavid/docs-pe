@@ -51,9 +51,7 @@ class Field:
     secret: bool = False
     required: bool = True
     default: str = ""
-    # Empty means free text; normalize still validates.
     choices: tuple[str, ...] = ()
-    # The portal hides fine-tuning fields until the advanced settings are shown.
     advanced: bool = False
 
 

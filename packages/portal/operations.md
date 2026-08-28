@@ -47,8 +47,8 @@ psql "$PORTAL_DATABASE_DSN" -v ON_ERROR_STOP=1 \
   "
 ```
 
-Use the application to grant a leader role. A leader can manage team access,
-so making that change in SQL should be an explicit administrative decision.
+Use the application to grant a leader role. A leader can manage team access, so
+making that change in SQL should be an explicit administrative decision.
 
 ## Inspect recent jobs
 
@@ -97,5 +97,5 @@ psql "$PORTAL_DATABASE_DSN" -v ON_ERROR_STOP=1 \
   "
 ```
 
-The worker sweeper completes the cancellation. Re-query the job before
-reporting it as finished.
+The worker sweeper completes the cancellation. Re-query the job before reporting
+it as finished.

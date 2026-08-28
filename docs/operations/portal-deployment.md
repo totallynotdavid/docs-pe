@@ -73,10 +73,9 @@ uv run --env-file .env portal enroll-worker \
   --tailscale-hostname <tailnet-hostname>
 ```
 
-The issued credential is shown once. Store it as
-`PORTAL_WORKER_CREDENTIAL` on the worker and omit the bootstrap token when the
-node should not be able to enroll itself. Revoke it when decommissioning the
-node:
+The issued credential is shown once. Store it as `PORTAL_WORKER_CREDENTIAL` on
+the worker and omit the bootstrap token when the node should not be able to
+enroll itself. Revoke it when decommissioning the node:
 
 ```sh
 uv run --env-file .env portal enroll-worker \

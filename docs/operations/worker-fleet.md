@@ -4,6 +4,11 @@ The fleet is a set of named worker nodes. The provisioning script configures a
 single-node Docker Swarm manager, registers the node with Dokploy, creates its
 worker application, and waits for the worker heartbeat.
 
+The script is deployment-specific. Its project, repository, branch, tailnet, and
+master host are configured in `ops/worker_node.py`; it is not a general Dokploy
+or cloud provisioning tool. Review those values before using it for a different
+environment.
+
 ## Commands
 
 Set `DOKPLOY_URL` and `DOKPLOY_API_KEY` in the operator environment:
@@ -16,8 +21,8 @@ uv run ops/worker_node.py remove <name> --dry-run
 uv run ops/worker_node.py remove <name> --yes
 ```
 
-The name must match the node's Tailscale hostname. The script derives the
-worker ID, Dokploy application name, and worker hostname from it. Run `--dry-run`
+The name must match the node's Tailscale hostname. The script derives the worker
+ID, Dokploy application name, and worker hostname from it. Run `--dry-run`
 before changing an existing node.
 
 ## Access boundary
@@ -43,8 +48,8 @@ worker API address and bootstrap token from the existing Dokploy deployment.
 The worker self-enrolls when its application starts. No worker credential needs
 to be copied by hand when the bootstrap configuration is present.
 
-The operation is idempotent after the SSH and sudo boundary. Rerun `add` after
-a failed step and inspect the step that failed before changing the host.
+The operation is idempotent after the SSH and sudo boundary. Rerun `add` after a
+failed step and inspect the step that failed before changing the host.
 
 ## Remove and decommission
 

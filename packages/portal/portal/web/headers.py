@@ -24,19 +24,8 @@ if TYPE_CHECKING:
     from portal.settings import PortalSettings
 
 
-# default-src 'self' would block the Turnstile widget, and a login page whose
-# challenge cannot load fails closed forever. Only the two directives the widget
-# needs name challenges.cloudflare.com; everything else stays same-origin.
-# https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html
-#
-# static.cloudflareinsights.com/cloudflareinsights.com carve the same way for
-# Cloudflare's Web Analytics beacon, which the zone injects at the edge: the
-# script itself loads from the static subdomain, then reports each pageview
-# to the bare domain over fetch/sendBeacon, so both script-src and connect-src
-# need an entry. The edge also injects a small inline bootstrap snippet ahead
-# of that script tag; its content (and therefore its hash) is fixed by
-# Cloudflare, not by this app, so it's pinned by hash rather than widened with
-# 'unsafe-inline'.
+# Turnstile and Cloudflare Analytics are the only third-party origins allowed.
+# Pin the analytics bootstrap instead of enabling `unsafe-inline`.
 CLOUDFLARE_BEACON_BOOTSTRAP_HASH = (
     "'sha256-4+7Ef+Wr2glo3yZvK4WyJZtdEuvLztBwfMaMbPpX4WQ='"
 )
@@ -52,23 +41,17 @@ CONTENT_SECURITY_POLICY = (
     "frame-ancestors 'none'"
 )
 
-# No feature here needs a browser permission the portal doesn't already avoid
-# asking for; denying all of them means a future embed or dependency cannot
-# start requesting camera/mic/location access without the change showing up
-# as a diff to this line.
+# Keep browser permissions disabled unless a feature explicitly needs one.
 PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
 
-# Browsers ignore Strict-Transport-Security served over plain http, so this is
-# unconditional: it costs nothing on a development origin and cannot be
-# forgotten on a real one.
+# Browsers ignore HSTS served over plain HTTP, so send it unconditionally.
 RESPONSE_HEADERS = (
     ("content-security-policy", CONTENT_SECURITY_POLICY),
     ("strict-transport-security", "max-age=63072000; includeSubDomains; preload"),
     ("x-content-type-options", "nosniff"),
     ("referrer-policy", "no-referrer"),
     ("permissions-policy", PERMISSIONS_POLICY),
-    # frame-ancestors 'none' above already covers this; kept for the clients
-    # (pre-2020 or CSP-stripping proxies) that only honor the older header.
+    # Keep legacy protection for clients that do not enforce frame-ancestors.
     ("x-frame-options", "DENY"),
 )
 

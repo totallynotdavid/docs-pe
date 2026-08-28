@@ -410,12 +410,8 @@ class ProvisioningService(AuthorizedService):
         if user_id == actor_id:
             raise ProvisioningError(Reason.USER_CANNOT_DEACTIVATE_SELF)
 
-        # No app-level "last admin" pre-check here: the actor must itself be
-        # an active site admin (site_admin_step_up) and can't target itself
-        # (just above), so a different, active admin target always leaves at
-        # least the actor standing. portal_installation_must_have_admin is
-        # the real backstop, for the concurrent-request case this can't
-        # reason about.
+        # The database trigger is the concurrency-safe backstop; this check
+        # only handles the actor and target preconditions.
         user = await self._auth.demote(user_id)
 
         await self._record(AuditAction.USER_DEMOTED, actor_id, trace, user=user_id)

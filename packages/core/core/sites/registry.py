@@ -17,7 +17,6 @@ SITES: dict[str, Site] = {
     OSIPTEL.name: OSIPTEL,
 }
 
-# Derived from each site's `stable` flag.
 STABLE_SITES: frozenset[str] = frozenset(
     name for name, site in SITES.items() if site.stable
 )

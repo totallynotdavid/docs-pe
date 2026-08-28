@@ -376,7 +376,6 @@ class WorkerAgent:
             ),
         )
 
-        # _adopt runs before _execute in the loop and always sets a slot.
         assert lane.held_slot is not None
 
         result = await fetch_one(

@@ -17,8 +17,7 @@ function setupSidebarCollapse() {
 
   for (const toggle of toggles) {
     toggle.addEventListener("click", () => {
-      // Opt-in transition (see .app-shell--transitioning in Sidebar.css): only
-      // a click animates the width, never the page-load correction above.
+      // Animate user-triggered changes, not the page-load correction.
       shell.classList.add("app-shell--transitioning");
 
       const collapsed = shell.dataset.sidebarCollapsed === "1";
