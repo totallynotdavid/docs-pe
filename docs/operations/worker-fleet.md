@@ -1,52 +1,57 @@
 # Worker fleet
 
-The fleet is a set of named, long-lived worker nodes. The provisioning script
-makes a node a single-node Swarm manager, registers it with Dokploy, creates its
-worker application, and waits for a heartbeat.
+The fleet is a set of named worker nodes. The provisioning script configures a
+single-node Docker Swarm manager, registers the node with Dokploy, creates its
+worker application, and waits for the worker heartbeat.
 
 ## Commands
+
+Set `DOKPLOY_URL` and `DOKPLOY_API_KEY` in the operator environment:
 
 ```sh
 uv run ops/worker_node.py list
 uv run ops/worker_node.py add --dry-run <name> <tailnet-ip>
 uv run ops/worker_node.py add <name> <tailnet-ip>
+uv run ops/worker_node.py remove <name> --dry-run
 uv run ops/worker_node.py remove <name> --yes
 ```
 
-Set `DOKPLOY_URL` and `DOKPLOY_API_KEY` first. The short name must match the
-tailnet hostname. The script derives the worker ID, Dokploy application name,
-and worker hostname from it.
+The name must match the node's Tailscale hostname. The script derives the
+worker ID, Dokploy application name, and worker hostname from it. Run `--dry-run`
+before changing an existing node.
 
-## Before adding a node
+## Access boundary
 
-The node must already be reachable as `dubu` over Tailscale SSH, with the
-operator's key installed and passwordless sudo available. Bootstrap that access
-with console access before running the script:
+Before `add`, the operator must be able to connect as `dubu` over Tailscale SSH
+and run the required host commands through non-interactive `sudo`. Establish
+that access through the host's normal provisioning or console process.
 
-```sh
-echo "dubu ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/dubu-dokploy
-```
+The script currently needs broad root privileges while it installs Docker,
+creates `/etc/dokploy`, initializes Swarm, and configures Dokploy. Do not leave
+a permanent unrestricted `NOPASSWD:ALL` rule on a production host. Use a
+dedicated account and a time-limited or narrowly scoped host policy where the
+environment permits it. Remove temporary access after provisioning and record
+the resulting host policy.
 
-The script is idempotent after this boundary. Rerun `add` after a failed step.
+## What `add` changes
 
-## What provisioning configures
+The command checks and, when needed, configures Docker, `/etc/dokploy`, a
+single-node Swarm, the Dokploy overlay network, Dokploy SSH access, the Dokploy
+server registration, and the `portal-worker-<name>` application. It obtains the
+worker API address and bootstrap token from the existing Dokploy deployment.
 
-`add` installs Docker, prepares `/etc/dokploy`, initializes the node's Swarm and
-Dokploy network, installs Dokploy's SSH key for `dubu`, registers and validates
-the server, seeds the Dokploy container's `known_hosts`, and creates the
-git-connected `portal worker` application.
+The worker self-enrolls when its application starts. No worker credential needs
+to be copied by hand when the bootstrap configuration is present.
 
-The worker API address and bootstrap token come from the existing portal
-deployment. The node self-enrolls on startup, so no worker credential is copied
-by hand.
+The operation is idempotent after the SSH and sudo boundary. Rerun `add` after
+a failed step and inspect the step that failed before changing the host.
 
-## Removing a node
+## Remove and decommission
 
-`remove` revokes the worker credential and deletes the Dokploy Application and
-server row. It does not remove Tailscale membership, Docker, Swarm state, or SSH
-access from the machine. Decommission those separately when the host is no
-longer needed.
+`remove --yes` revokes the worker credential, stops and deletes the Dokploy
+application, and removes the Dokploy server row. It does not remove Tailscale
+membership, Docker, Swarm state, SSH access, or host data. Decommission those
+separately after confirming the node has no active work.
 
-## Network
-
-Configure Tailscale ACLs so `tag:worker` can reach the worker API port.
+Configure Tailscale ACLs so the worker tag can reach the private worker API
+port. Verify the node in `list` after adding or removing it.

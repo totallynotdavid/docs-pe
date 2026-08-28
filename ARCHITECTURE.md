@@ -1,78 +1,85 @@
 # Architecture
 
-This repository turns rows of Peruvian identity documents into site-specific
-results. It has three lookup modes:
-
-- `capture` discovers a site's request and response with a human-operated Chrome
-  profile.
-- `browser` automates sites that need Chrome, JavaScript, or a browser gate.
-- `fetch` runs the discovered lookup at scale through proxy providers.
-
-The portal submits jobs to the same fetch pipeline and adds authentication,
-queueing, and worker management around it.
-
-## Package boundaries
-
-Each package owns the site parsers, columns, and document classes for its mode
-of operation.
+The repository turns identifiers and telephone numbers into site-specific
+results. It has three execution modes and one service that coordinates them:
 
 ```text
 capture -> browser -> fetch
 portal  -> fetch
 ```
 
-The arrows describe the workflow and the allowed dependency direction. Do not
-import between `capture`, `browser`, and `fetch`. `portal` may import `fetch` as
-a library.
+The arrows describe the normal path for discovering and scaling a site. They
+also describe the allowed dependency direction. `capture`, `browser`, and
+`fetch` do not import one another. `portal` may use `fetch` as its execution
+library.
 
-## Fetch lifecycle
+## Execution modes
+
+`capture` uses a human-operated Chrome profile to discover a request and its
+response. It is useful when browser reputation or a visual gate is part of the
+site behavior.
+
+`browser` drives Chrome through CDP. It owns browser sessions, browser gates,
+and site behavior that cannot be reduced to an HTTP request.
+
+`fetch` runs site requests through proxy providers. It owns provider sessions,
+site parsers, fault classification, retry policy, and the SQLite outcome store.
+
+The packages intentionally copy site knowledge between modes instead of
+sharing implementation code. A site can therefore remain in `capture` while
+its protocol is investigated, or remain in `browser` when plain HTTP is not a
+valid implementation.
+
+## Standalone fetch lifecycle
 
 ```text
 input CSV
-  -> plan accepted document/site pairs and skip completed outcomes
-  -> run one lane per site with its own session and readiness checks
-  -> lookup, parse, and classify the response
+  -> normalize and plan document/site pairs
+  -> skip pairs with terminal outcomes
+  -> run site lanes with sessions and readiness checks
+  -> parse and classify each response
   -> write the outcome to SQLite
-  -> project finished outcomes to CSV
+  -> export CSV projections
 ```
 
-A lane owns the session, readiness check, lookup, and proxy rotation for one
-site. Sites report domain facts. `fetch.domain.policy` maps those facts to retry
-actions so circuit-breaker accounting stays centralized.
+A lane owns the session, readiness check, proxy rotation, and lookup execution
+for one site. A site reports facts such as a ban signal or a malformed response.
+`fetch.domain.policy` decides what those facts mean for retry and breaker
+accounting. Site modules do not implement their own retry policy.
 
 ## Outcome state
 
-The SQLite outcome store is the source of truth for a run. The durable states
-are:
+The SQLite database is the source of truth for a standalone run. Each
+document/site pair has one durable row when it has produced an outcome.
 
-- `ok`: the site returned a valid result. An empty result is valid only for a
-  site that explicitly allows it.
-- `not_found`: the site confirmed that the document is absent.
-- `failed`: the latest attempt failed and remains eligible for retry until its
-  attempt limit is reached.
+| Status | Meaning |
+| --- | --- |
+| `ok` | The site returned a valid result. An empty result is valid only for a site that allows it. |
+| `not_found` | The site explicitly confirmed that the document is absent. |
+| `failed` | The latest attempt failed. The row remains retryable until its cumulative attempt limit is reached. |
 
-There are no pending rows. A pair that has not produced an outcome has not been
-written yet. CSV files are projections written at the end of a run and may not
-exist while work is in progress. Query SQLite outcomes when logs and output
-files disagree.
+`MAX_ATTEMPTS` limits attempts in one process. `MAX_TOTAL_ATTEMPTS` limits the
+same pair across relaunches. A circuit-breaker wait is not a healthy contact
+and does not consume the document's attempt budget.
 
-Healthy contacts consume the lookup budget. Circuit-breaker blocked contacts do
-not. `MAX_ATTEMPTS` limits one lookup and `MAX_TOTAL_ATTEMPTS` limits the same
-document/site pair across relaunches.
+CSV files contain projections of successful rows, not a complete progress
+ledger. In particular, a successful lookup that returns no rows has an
+`ok` outcome but contributes no data row to a result CSV. Query SQLite when
+logs and CSV files disagree.
+
+Standalone breaker state is stored by site and provider in the outcome database
+and restored when the same output path resumes. The portal stores its fleet
+breaker in PostgreSQL so all workers draw work from the same open or closed
+state.
 
 ## Portal lifecycle
 
-The portal creates one queue item per document/site pair. A worker claims an
-item through the worker API, runs fetch in-process, and publishes the result.
-Workers receive a scoped credential and do not need direct PostgreSQL access.
+The portal creates one queue item per accepted document/site pair. A worker
+claims an item through the worker API, executes the fetch pipeline in its own
+process, and publishes the result. Claim leases and lease fences prevent a
+late worker from publishing after cancellation or reassignment.
 
-PostgreSQL owns queue leases, cancellation fences, reusable job entries, team
-access, and the fleet circuit breaker. Standalone fetch runs use SQLite and do
-not participate in the portal queue.
-
-## Adding a site
-
-Follow [Adding a site](docs/adding-a-site.md). Capture the wire behavior first,
-then implement the browser and fetch versions when the site needs them. Put
-site-specific gates and failure modes in `docs/sites/`. Put dated experiments
-and measurements in `docs/reports/`.
+PostgreSQL owns queue leases, cancellation fences, reusable entries, team
+access, worker identities, fleet proxy-slot leases, and the fleet circuit
+breaker. Uploaded inputs and result payloads live in the configured object
+store. Workers do not need direct PostgreSQL credentials.

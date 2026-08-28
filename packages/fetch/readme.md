@@ -1,79 +1,89 @@
-# Fetch
+# fetch
 
-Bulk lookup of public Peruvian data over HTTP. Fetch distributes document/site
-pairs across proxy sessions, records outcomes in SQLite, and writes CSV
-projections.
+`fetch` runs unattended lookups over HTTP. It plans document/site pairs,
+distributes them across proxy-provider lanes, records every outcome in SQLite,
+and exports site-specific CSV projections.
+
+Use it when the site works without Chrome. Use [browser](../browser/readme.md)
+when a browser gate or browser state is part of the protocol. Use
+[capture](../capture/readme.md) to discover a request before automating it.
+
+## Run a lookup
 
 ```sh
 uv run --env-file .env fetch \
   --input docs.csv \
-  --output out.csv \
+  --output results/out.csv \
   --sites osiptel
 ```
 
-Fetch is for sites that work over plain HTTP. Use
-[browser](../browser/readme.md) when the site needs Chrome or client-side
-protection. Start with [capture](../capture/readme.md) when you need to discover
-the request.
+The input is a CSV whose first column contains identifiers. Empty and malformed
+rows are ignored. Duplicate identifiers are removed by default. A document is
+sent only to sites that accept its kind.
 
 ## Sites
 
-| Site         | Input      | Output                                                          |
-| ------------ | ---------- | --------------------------------------------------------------- |
-| `osiptel`    | DNI or RUC | Phone lines: `modalidad`, redacted `numero`, `operador`         |
-| `sunat`      | RUC-10     | Identity: `tipo_doc`, `num_doc`, `nombre`, `tipo_contribuyente` |
-| `sunat_reps` | RUC-20     | Legal representatives: `nombre`, `cargo`, `fecha_desde`         |
+| Site | Accepted input | Successful output |
+| --- | --- | --- |
+| `osiptel` | DNI or RUC | One row per phone line, plus the `counts` projection. |
+| `sunat` | Natural-person RUC | Identity fields: `tipo_doc`, `num_doc`, `nombre`, and `tipo_contribuyente`. |
+| `sunat_reps` | Legal-entity RUC | One row per legal representative. |
 
-The input is a single-column CSV. Seven-digit DNIs are padded to eight digits;
-11-digit RUCs are kept as strings. Empty or malformed rows are ignored. Each
-`(document, site)` pair is planned and resumed independently.
+The current request and response contract for each site lives in
+[`docs/sites/`](../../docs/sites/). Retry behavior is shared by the pipeline;
+site adapters report facts and do not choose retry actions.
 
-Wire behavior and reconciliation rules live in the
-[site notes](../../docs/sites/).
+## Providers
 
-## Configuration
-
-Set provider credentials in `.env`:
+Set the provider list and credentials in `.env`:
 
 ```env
 PROXY_PROVIDER=geonode:30,dataimpulse:18
 ```
 
-`PROXY_PROVIDER` is a comma-separated list of `name[:lanes]`. Provider fields
-and lane tuning are documented in [Proxy configuration](../../docs/proxies.md).
+The value is a comma-separated list of `name[:lanes]`. Provider fields,
+defaults, country requirements, and portal slot coordination are documented in
+[Proxy configuration](../../docs/proxies.md).
 
-## Command-line interface
+## State and exports
 
-| Flag                       | Default          | Notes                                                                                                                                                    |
-| -------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--dedupe` / `--no-dedupe` | on               | Drop duplicate documents from the input                                                                                                                  |
-| `--session-budget`         | site default     | Lookups per sticky session; OSIPTEL=1 (fresh session per lookup), SUNAT=50. A site's own value is a ceiling: this flag can only lower it, never raise it |
-| `--ban-cooldown-s`         | provider default | Delay applied after a provider ban                                                                                                                       |
-| `--wait-min-s`             | 0                | Minimum delay after a successful lookup                                                                                                                  |
-| `--wait-max-s`             | 0                | Maximum delay, sampled uniformly with `--wait-min-s`                                                                                                     |
-| `--import`                 | off              | Rebuild state from prior per-site exports before planning                                                                                                |
-| `--debug`                  | off              | Log fetch at DEBUG level (`httpx` stays at WARNING)                                                                                                      |
+For `--output results/out.csv`, fetch uses
+`results/out.state.sqlite3` as its durable ledger. It records outcomes, proxy
+providers, run metadata, and circuit-breaker state. Reuse the same output path
+to resume. Delete the state database only when starting a new run is intended.
 
-`uv run fetch --help` prints this same table.
+The process exports these files for each selected site:
 
-## State and output
+| File | Contents |
+| --- | --- |
+| `out.<site>.csv` | Rows from successful lookups. |
+| `out.<site>.<projection>.csv` | A derived site projection, such as carrier counts. |
+| `out.<site>.errors.csv` | The latest failure for each failed document, including failures that are still retryable. |
+| `out.<site>.not_found.csv` | Documents the site explicitly confirmed absent. |
+| `out.state.sqlite3` | The outcome ledger and attempt counts. |
 
-CSV outputs are written atomically when the run ends. The state database holds
-the resumable outcome ledger.
+An `ok` outcome can contain zero rows when the site allows an empty result. Use
+the state database for reconciliation. See [Architecture](../../ARCHITECTURE.md) and
+[Troubleshooting](../../docs/operations/troubleshooting.md).
 
-| File                          | Contents                                                                 |
-| ----------------------------- | ------------------------------------------------------------------------ |
-| `out.<site>.csv`              | Successful rows                                                          |
-| `out.<site>.<projection>.csv` | Derived views, e.g. `out.osiptel.counts.csv` for per-carrier line counts |
-| `out.<site>.errors.csv`       | Terminal failures and attempt metadata                                   |
-| `out.<site>.not_found.csv`    | Documents the site confirmed absent                                      |
-| `out.state.sqlite3`           | Resumable outcomes and the run ledger                                    |
+Inspect a run without parsing logs or CSV projections:
 
-Reuse the same output to resume a run. Use `--import` to rebuild state once from
-previous exports. Delete the state database, for example `rm out.state.sqlite3`,
-to start fresh.
+```sh
+uv run fetch-status --output results/out.csv
+```
 
-Read [Architecture](../../ARCHITECTURE.md) for lifecycle, retry, and circuit
-breaker semantics. Read
-[Troubleshooting](../../docs/operations/troubleshooting.md) when output files
-and the state database disagree.
+For multi-host work, create a manifest before starting shards, reconcile it,
+and merge only a complete job. See [Sharded fetch jobs](../../docs/operations/sharded-fetch.md).
+
+## Command reference
+
+The command-line options are generated by the executable. Run:
+
+```sh
+uv run fetch --help
+```
+
+Important options include `--session-budget`, `--ban-cooldown-s`, `--dedupe`,
+`--import`, and the output path. The site's session budget is a ceiling, so a
+command-line value can lower it but cannot make a site reuse a session when its
+contract requires a fresh one.

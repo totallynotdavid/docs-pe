@@ -1,69 +1,97 @@
 # Troubleshooting
 
-Diagnose a run from the state database, not logs or the output CSV: see
-[Architecture](../../ARCHITECTURE.md#outcome-state) for why. For proxy
-mechanics, read [Proxy configuration](../proxies.md). For site-specific failure
-modes, read the matching file in [docs/sites](../sites/).
+Start with the durable state for the run you are investigating. Logs explain
+what a process attempted, and CSV files are projections. Neither is a complete
+progress ledger. Read [Architecture](../../ARCHITECTURE.md#outcome-state) for
+the state model, [Proxy configuration](../proxies.md) for provider behavior,
+and the matching [site note](../sites/) for site-specific failures.
 
-## Check progress
+## Inspect a standalone run
+
+Pass the same output path used by `fetch`. The command derives the state path as
+`<output>.state.sqlite3`:
 
 ```sh
-uv run python scripts/check-job-status.py
-uv run python scripts/check-provider-breakdown.py
-uv run python scripts/check-circuit-breaker.py
+uv run fetch-status --output results/out.csv
+uv run fetch-status --output results/out.csv --minutes 10
 ```
 
-If the count of new outcomes stops, check the worker process and then inspect
-the provider breakdown. If one provider has stopped producing outcomes, its
-circuit breaker may be parked. A successful contact for that provider clears the
-breaker.
+The command reports `ok`, `not_found`, and failed rows. A failed row may still
+be retryable. It also reads the recorded provider directly, shows the persisted
+breaker state, and can summarize recent outcomes with `--minutes`.
 
-## Separate provider failures from document failures
+## Query the state database
 
-Treat a provider as unhealthy only after checking more than one box and a large
-sample. The same provider account is shared across boxes, and a deterministic
-document failure can trip the same breaker as a provider outage.
+Use SQLite against the state path when a script is not enough:
 
-Signs of an exhausted provider include `407` on every lane and
-`TRAFFIC_EXHAUSTED`. Signs of a document-level failure include one error code
-repeating for a small set of documents, or failures that stop immediately after
-the first successful contact.
+```sh
+sqlite3 results/out.state.sqlite3 \
+  "select status, count(*) from outcomes group by status;"
+```
 
-For OSIPTEL specifically, check `GEONODE_COUNTRY` and `DATAIMPULSE_COUNTRY`
-before blaming the account: see
-[Peru exits are mandatory for OSIPTEL](../proxies.md#peru-exits-are-mandatory-for-osiptel).
+If the host does not provide the SQLite CLI, use a short script through the
+workspace environment. Do not infer succeeded documents from result CSV rows:
+an `ok` lookup with zero returned rows produces no CSV row.
 
-## Check session rotation
-
-Count sessions for one document when a lane rotates unexpectedly:
+To inspect one document's attempts:
 
 ```sql
-select session_id, count(*) as lookups
+select site, doc, status, attempt_count, error_code, proxy_id, finished_at
 from outcomes
 where doc = '12345678'
-group by session_id;
+order by site;
 ```
 
-See
-[fetch's CLI reference](../../packages/fetch/readme.md#command-line-interface)
-for each site's default session budget. In `browser`, a session restarts after
-the configured rejection threshold. A restart cannot fix an account that is out
-of provider traffic.
+## Distinguish failure classes
 
-## Check GeoNode port pressure
+Check the error code, site, provider, and attempt sample together:
 
-See [Proxy configuration](../proxies.md#providers) for GeoNode's sticky-port
-slot limit and how the portal worker fleet coordinates it automatically.
+| Signal | Likely boundary |
+| --- | --- |
+| `407` or `TRAFFIC_EXHAUSTED` across many documents and lanes | Provider credentials or account capacity. |
+| `ban_signal` during a site readiness check | The site rejected the exit or returned a block page. |
+| `upstream_not_ready` with connection failures | Provider endpoint or upstream availability. |
+| One parser or document error on a small set | Document data or site response shape. |
+| `unknown_error` | An exception escaped the known fault taxonomy and needs investigation. |
 
-See which slots are currently leased and to whom:
+For OSIPTEL, verify the actual exit country before changing retry settings.
+See [the OSIPTEL note](../sites/osiptel.md) and
+[proxy configuration](../proxies.md#country-and-site-selection).
+
+## Inspect portal health
+
+Portal breaker state is in PostgreSQL and is keyed by site and provider:
 
 ```sql
-select worker_id, lane_index, slot_id
-from portal_proxy_slots
-where provider = 'geonode' and worker_id is not null
-order by worker_id, slot_id;
+select source, provider, consecutive_failures, level, open_until, updated_at
+from portal_circuit_breakers
+order by source, provider;
 ```
 
-Every worker node's lanes should hold distinct `slot_id` values. Worker logs
-should show `proxy_id=proxy-1-port-<N>` varying per lane instead of pinned to
-one port.
+Portal workers also report heartbeats and held proxy slots:
+
+```sql
+select worker_id, tailscale_hostname, last_seen_at, revoked_at
+from portal_workers
+order by worker_id;
+
+select provider, worker_id, lane_index, slot_id, lease_expires_at
+from portal_proxy_slots
+where worker_id is not null
+order by provider, worker_id, slot_id;
+```
+
+Run these queries through the [portal SQL runbook](../../packages/portal/operations.md)
+with the portal database connection. Do not run them against a standalone
+SQLite state database.
+
+## Session rotation
+
+Inspect `session_id` and `proxy_id` in the outcome row or exported error row.
+The fetch session budget is site-specific and can be lowered with
+`--session-budget`. Browser rejection retries and session restarts are
+independent settings. Read the relevant package README before changing either.
+
+If restarting a session does not change the rejection class, check the provider
+and site gate before increasing retry counts. Retries cannot repair invalid
+credentials, a blocked exit, or a browser-only protocol.
