@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from fetch.domain.types import Doc
-from fetch.sites.registry import SITES, STABLE_SITES
+from core.domain.types import Doc
+from core.sites.registry import SITES, STABLE_SITES
 
 from portal.domain.errors import Reason, SourceValidationError
 from portal.domain.models import (

@@ -32,7 +32,7 @@ def entry_row(row: Record) -> Entry:
 # Entries with these statuses count as a usable answer for the submission
 # review's "already known" check. 'failed' never does: a failed attempt has
 # nothing to hand back, no matter how recent, so it always falls through to
-# a fresh fetch.
+# a fresh lookup.
 _REUSABLE_STATUSES = ("ok", "not_found")
 
 

@@ -16,12 +16,12 @@ import httpx
 import msgspec
 import psutil
 
-from fetch.domain.types import Cell, Doc
-from fetch.pipeline.breaker import CircuitBreaker
-from fetch.pipeline.fetch import fetch_one
-from fetch.pipeline.session import WorkerConfig, WorkerState, close_session
-from fetch.proxy.registry import provider_from_values, spec_for
-from fetch.sites.registry import SITES
+from core.domain.types import Cell, Doc
+from core.pipeline.breaker import CircuitBreaker
+from core.pipeline.fetch import fetch_one
+from core.pipeline.session import WorkerConfig, WorkerState, close_session
+from core.proxy.registry import provider_from_values, spec_for
+from core.sites.registry import SITES
 
 from portal.worker.protocol import (
     ClaimRequest,
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from uuid import UUID
 
-    from fetch.proxy.base import ProxyProvider
+    from core.proxy.base import ProxyProvider
 
 
 logger = logging.getLogger(__name__)

@@ -5,7 +5,7 @@ import json
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from fetch.sites.registry import STABLE_SITES
+from core.sites.registry import STABLE_SITES
 
 from portal.domain.errors import Reason, SourceValidationError
 from portal.domain.models import (

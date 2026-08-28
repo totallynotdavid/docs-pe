@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fetch.pipeline.breaker import DEFAULT_THRESHOLD
+from core.pipeline.breaker import DEFAULT_THRESHOLD
 from portal.repository.breakers import PostgresCircuitBreakers
 
 

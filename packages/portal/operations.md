@@ -9,7 +9,7 @@ psql "$PORTAL_DATABASE_DSN" -v ON_ERROR_STOP=1
 ```
 
 All commands below are PostgreSQL. Standalone fetch state is SQLite and is
-documented in [fetch](../fetch/readme.md).
+documented in [fetch](../cli/readme.md).
 
 ## Add a team member
 

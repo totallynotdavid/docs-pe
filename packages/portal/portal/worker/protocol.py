@@ -4,7 +4,7 @@ from uuid import UUID
 
 import msgspec
 
-from fetch.domain.types import Row
+from core.domain.types import Row
 
 
 class ClaimRequest(msgspec.Struct, frozen=True):

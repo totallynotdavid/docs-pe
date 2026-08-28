@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from fetch.pipeline.breaker import (
+from core.pipeline.breaker import (
     DEFAULT_BASE_COOLDOWN_S,
     DEFAULT_MAX_COOLDOWN_S,
     DEFAULT_THRESHOLD,

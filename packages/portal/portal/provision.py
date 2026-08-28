@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import asyncpg
 
-from fetch.proxy.registry import PROVIDERS, spec_for
+from core.proxy.registry import PROVIDERS, spec_for
 
 from portal.application.provisioning import ProvisioningService
 from portal.application.sessions import OneTimeTokens

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fetch.proxy.registry import PROVIDERS
+from core.proxy.registry import PROVIDERS
 
 from portal.domain.errors import Reason
 

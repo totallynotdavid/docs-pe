@@ -9,8 +9,8 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from fetch.domain.errors import ProxyConfigurationError
-from fetch.proxy.registry import PROVIDERS, preflight, spec_for
+from core.domain.errors import ProxyConfigurationError
+from core.proxy.registry import PROVIDERS, preflight, spec_for
 
 from portal.application.access import (
     AuthorizedService,
@@ -56,7 +56,7 @@ from portal.security import (
 
 
 if TYPE_CHECKING:
-    from fetch.proxy.base import Field
+    from core.proxy.base import Field
 
     from portal.application.sessions import OneTimeTokens
     from portal.notify.mailer import Mailer
