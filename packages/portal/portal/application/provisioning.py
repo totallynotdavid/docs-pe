@@ -444,13 +444,8 @@ class ProvisioningService(AuthorizedService):
             user=user_id,
         )
 
-    # --- Self-service second factors -----------------------------------
-    #
-    # @public here means what it always means in this file: no role check,
-    # because every one of these acts on the caller's own account
-    # (actor_id is always "myself"). Open to any signed-in user, not just
-    # site admins: portal_admin_requires_second_factor only requires one of
-    # a site admin, but nothing stops a team member from adding their own.
+    # These methods act on the caller's own account and therefore require no
+    # administrative role. Site-admin enrollment is enforced separately.
 
     @public
     async def begin_totp_setup(self, actor_id: UUID) -> TotpSetup:

@@ -155,10 +155,8 @@ def _totp(secret: str) -> pyotp.TOTP:
     )
 
 
-# --- WebAuthn/passkeys -------------------------------------------------------
-#
-# Thin wrappers around the `webauthn` package: callers never import it
-# directly, the same way pyotp stays behind the TOTP functions above.
+# Keep the WebAuthn dependency behind this module so callers use the same
+# boundary as the TOTP helpers.
 
 
 @dataclass(frozen=True)

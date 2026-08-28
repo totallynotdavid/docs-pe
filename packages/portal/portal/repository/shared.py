@@ -24,9 +24,6 @@ def user_row(row: Record) -> PortalUser:
     )
 
 
-# Every portal_users query that feeds user_row must select this alongside
-# is_site_admin/is_active/mfa_enabled/pending_site_admin: PortalUser.has_passkey
-# has no column of its own to select directly.
 def has_passkey_sql(users_alias: str = "portal_users") -> str:
     return f"""EXISTS(
         SELECT 1 FROM portal_webauthn_credentials AS credential

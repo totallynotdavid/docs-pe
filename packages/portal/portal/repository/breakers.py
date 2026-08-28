@@ -47,19 +47,7 @@ UPDATE portal_circuit_breakers
 
 
 class PostgresCircuitBreakers:
-    """Fleet-wide (site, provider) health that every worker node's /claim
-    filters against.
-
-    fetch.pipeline.breaker's CircuitBreaker is correct but process-local: a
-    single fetch run has one process, so parking every lane after ten
-    consecutive failures is fleet-wide by construction. Portal runs the same
-    pipeline from N worker processes, each with its own in-process breaker,
-    so that invariant silently became "ten consecutive failures per node."
-    This table restores it: /publish reports each claimed item's outcome
-    here, and /claim's candidate query excludes items for a (source,
-    provider) pair whose breaker is currently open, so a trip on one node's
-    lane stops every node's lanes from drawing more of that pair's work.
-    """
+    """Persist breaker state so claims exclude open site-provider pairs fleet-wide."""
 
     def __init__(self, pool: Pool) -> None:
         self._pool = pool

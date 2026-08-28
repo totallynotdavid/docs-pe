@@ -101,12 +101,9 @@ class WorkerAgent:
     def __init__(self, options: AgentOptions) -> None:
         self.options = options
         self._breakers: dict[tuple[str, str], CircuitBreaker] = {}
-        # Best-effort signal for the admin health page, not correctness-critical:
-        # concurrent lanes can each be mid-flight on a different job, so this is
-        # whichever one claimed most recently, not a per-lane breakdown.
+        # The health page shows the most recently claimed job, not per-lane state.
         self._current_job_id: UUID | None = None
-        # Owned by run()/_loop, read by _heartbeat_loop to report exactly
-        # which slots are still held on each tick (see PostgresProxySlots.renew).
+        # The heartbeat renews the slots currently held by these lanes.
         self._lanes = [LaneSession() for _ in range(options.concurrency)]
 
     async def run(self) -> None:
@@ -115,18 +112,9 @@ class WorkerAgent:
             "X-Portal-Worker": self.options.worker_id,
         }
 
-        # A relayed/latent tailnet path lets a pooled keep-alive connection sit
-        # idle long enough (a lookup can take tens of seconds) that the peer or
-        # an in-between relay tears it down; the next request reuses it from the
-        # pool and fails with RemoteProtocolError before a single byte comes
-        # back. httpx's own `retries` only covers failures establishing a fresh
-        # connection (httpcore.ConnectionPool's docstring is explicit about
-        # this) and does nothing for a request that fails on a connection
-        # pulled back out of the pool, confirmed live: it kept happening with
-        # retries=2 set. max_keepalive_connections=0 sidesteps the whole class
-        # by never reusing a connection across requests, which costs an extra
-        # handshake per call but these are infrequent control-plane calls, not
-        # a hot path.
+        # Idle pooled connections can be closed by a relayed tailnet path while
+        # a lookup is in progress. These control-plane calls avoid keep-alive
+        # reuse so the next request establishes a fresh connection.
         transport = httpx.AsyncHTTPTransport(retries=2)
         limits = httpx.Limits(max_keepalive_connections=0)
 
@@ -145,15 +133,8 @@ class WorkerAgent:
                 ),
             ]
 
-            # Docker sends SIGTERM on stop/redeploy with no shell wrapper in
-            # front of this process (portal worker is the container's own
-            # command), and Python's default SIGTERM disposition kills the
-            # process immediately: none of _loop's `finally` blocks would
-            # run, leaving every lane's held GeoNode slot to expire on its
-            # own lease (PostgresProxySlots.LEASE_TTL) instead of freeing up
-            # right away. Catching the signal and cancelling instead lets
-            # each lane's finally reach _close_and_release before exit,
-            # inside Docker's stop grace period.
+            # Cancellation lets each lane release its session and slot before
+            # the container stop grace period ends.
             stop = asyncio.Event()
             loop = asyncio.get_running_loop()
             for sig in (signal.SIGTERM, signal.SIGINT):
@@ -177,11 +158,8 @@ class WorkerAgent:
         while True:
             await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
 
-            # Read fresh each tick: this is what actually renews every lane's
-            # slot lease (PostgresProxySlots.LEASE_TTL). A slot a lane no
-            # longer lists here just isn't renewed and expires on its own; a
-            # missed heartbeat itself is a missed renewal for everything, the
-            # same as a missed renewal for the worker's own liveness below.
+            # Renew only the slots still held by these lanes. A removed slot
+            # must expire instead of being renewed by stale process state.
             held_slots = tuple(
                 HeldSlot(provider=lane.held_slot_provider, slot_id=lane.held_slot)
                 for lane in self._lanes
@@ -215,11 +193,8 @@ class WorkerAgent:
                 try:
                     lease = await self._claim(client, lane.key)
                 except httpx.HTTPError:
-                    # A single lane's claim failing (worker-api briefly
-                    # unreachable, a credential mid-rotation) must not take
-                    # down the other concurrent lanes or the heartbeat: same
-                    # principle as _heartbeat_loop's own catch, applied here
-                    # too.
+                    # A control-plane failure in one lane must not stop the
+                    # other lanes or the heartbeat.
                     logger.warning("worker_claim_failed", exc_info=True)
                     await asyncio.sleep(IDLE_POLL_SECONDS)
                     continue
@@ -232,11 +207,8 @@ class WorkerAgent:
                     provider = await self._adopt(client, lane, lease, lane_index)
                     result = await self._execute(lane, lease, provider, lane_index)
                 except httpx.HTTPError:
-                    # Claiming or releasing a GeoNode slot is a worker-api
-                    # call like /claim and /publish, so it can fail the same
-                    # transient way and must not take down every other
-                    # concurrent lane either. This item's lease is left to
-                    # expire and gets swept back to pending for another lane.
+                    # Leave this item for lease expiry and let another lane
+                    # retry it. A slot failure must not stop other lanes.
                     logger.warning("worker_slot_failed", exc_info=True)
                     await asyncio.sleep(IDLE_POLL_SECONDS)
                     continue
@@ -244,18 +216,11 @@ class WorkerAgent:
                 try:
                     await self._publish(client, lease, result)
                 except httpx.HTTPError:
-                    # The lease may already be gone (reclaimed under a stale
-                    # fence after this took too long, or the credential
-                    # rotated mid-flight): the result for this attempt is
-                    # lost, but crashing every other concurrent lane over one
-                    # rejected publish is worse. Whoever holds the lease now
-                    # redoes it.
+                    # A rejected or expired lease cannot publish. Other lanes
+                    # continue and the item is retried under a new lease.
                     logger.warning("worker_publish_failed", exc_info=True)
         finally:
-            # Cancellation (process shutdown) must not leak a held sticky
-            # session or GeoNode slot: every other exit from this loop
-            # already routes through _idle/_adopt, which close on their own
-            # terms.
+            # Release resources held by this lane during cancellation.
             await self._close_and_release(client, lane)
 
     async def _idle(self, client: httpx.AsyncClient, lane: LaneSession) -> None:
@@ -275,15 +240,7 @@ class WorkerAgent:
         lease: WorkLease,
         lane_index: int,
     ) -> ProxyProvider:
-        """Point the lane at this lease's (source, credential), closing
-        whatever session/slot it was holding if that's actually changing.
-
-        The held slot is kept for as long as the lane works this provider,
-        not reclaimed per session: GeoNode rotates exit identity through a
-        fresh session id on the same port, so a session reopening under
-        session_budget reuses the slot already held instead of a worker-api
-        round trip. See PostgresProxySlots for the lease contract.
-        """
+        """Use this lease's provider credential and close a changed one."""
         key = (lease.source, lease.credential_version_id)
 
         if lane.key is not None and lane.key != key:
@@ -308,11 +265,7 @@ class WorkerAgent:
     async def _close_and_release(
         self, client: httpx.AsyncClient, lane: LaneSession
     ) -> None:
-        """Stop using this provider entirely: close whatever session is open
-        and release the held slot back to the fleet-wide pool. Called when a
-        lane switches to a different (source, credential), goes idle, or
-        shuts down, not on every session reopen. Safe to call whether or not
-        either is currently held."""
+        """Close the lane session and release its provider slot, if held."""
         if lane.provider is not None:
             with contextlib.suppress(Exception):
                 await close_session(lane.state, provider=lane.provider)
@@ -323,15 +276,8 @@ class WorkerAgent:
                     client, lane.held_slot_provider, lane.held_slot
                 )
             except httpx.HTTPError:
-                # Release can fail the same transient way claim/publish do
-                # (see run()'s connection-pooling comment). Keep the local
-                # claim on failure so the next call retries the release
-                # instead of abandoning the row until its lease lapses on
-                # its own (release's own WHERE worker_id = $3 makes a retry
-                # safe even if the original request actually landed).
-                # Keeping held_slot set also keeps _heartbeat_loop renewing
-                # it in the meantime, which matters: this lane may still be
-                # actively using the real proxy port behind it.
+                # Keep the local claim so a later cleanup can retry the
+                # idempotent release while the lane may still use the slot.
                 pass
             else:
                 lane.held_slot = None
@@ -404,7 +350,8 @@ class WorkerAgent:
         breaker = self._breakers.setdefault(
             (lease.source, provider_name),
             CircuitBreaker(
-                provider=f"{lease.source}:{provider_name}",
+                provider=provider_name,
+                source=lease.source,
                 run_id=self.options.worker_id,
             ),
         )

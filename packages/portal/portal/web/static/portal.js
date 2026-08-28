@@ -324,8 +324,6 @@ function setupRecoveryCodes() {
   });
 }
 
-// --- WebAuthn/passkeys -------------------------------------------------
-//
 // navigator.credentials wants ArrayBuffers where the server's JSON carries
 // base64url text (challenge, credential ids, the public key user handle),
 // and wants the reverse on the way back. These four functions are the only

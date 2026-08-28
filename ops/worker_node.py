@@ -1,13 +1,12 @@
 #!/usr/bin/env python
-"""Add or remove a worker-fleet node: host config and Dokploy deployment.
+"""Add, remove, or inspect a worker-fleet node.
 
     uv run ops/worker_node.py list
     uv run ops/worker_node.py add <name> <tailnet-ip> [--dry-run]
     uv run ops/worker_node.py remove <name> [--dry-run] [--yes]
 
-See docs/operations/worker-fleet.md for the fleet model and the prerequisite
-that a fresh box needs dubu's SSH key and NOPASSWD sudo before `add` can run
-non-interactively.
+The worker-fleet runbook describes the host access boundary and the changes
+made by each command.
 """
 
 from __future__ import annotations
@@ -240,9 +239,9 @@ def preflight(node: Node) -> None:
     sudo_ok = ssh_run(node.hostname, "sudo -n true", check=False)
     if sudo_ok.returncode != 0:
         msg = (
-            f"{SSH_USER}@{node.hostname} does not have passwordless sudo yet. Run "
-            f"on that box: echo '{SSH_USER} ALL=(ALL) NOPASSWD:ALL' | "
-            f"sudo tee /etc/sudoers.d/{SSH_USER}-dokploy"
+            f"{SSH_USER}@{node.hostname} cannot run non-interactive sudo. "
+            "Establish temporary, scoped provisioning access through the host "
+            "administrator before retrying."
         )
         raise SystemExit(msg)
 

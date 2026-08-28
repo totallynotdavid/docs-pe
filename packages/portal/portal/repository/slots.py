@@ -10,23 +10,9 @@ if TYPE_CHECKING:
     from asyncpg import Pool
 
 
-# A held slot must be renewed (via /heartbeat) before this elapses or it
-# becomes reclaimable by anyone. Long enough to absorb a few missed
-# heartbeats (HEARTBEAT_INTERVAL_SECONDS in worker/agent.py is 15s) without
-# losing the slot mid-session; short enough that a worker that crashed,
-# was OOM-killed, or never comes back stops blocking the pool within a
-# minute instead of forever.
+# An unrenewed slot becomes reclaimable after this interval.
 LEASE_TTL = timedelta(seconds=60)
 
-# A slot's own lease_expires_at is the sole authority on reclaimability.
-# Earlier versions judged staleness by joining portal_workers.last_seen_at
-# instead, which broke on every restart: worker_id is a stable identity that
-# outlives any one process, so a freshly restarted process's first heartbeat
-# renewed that worker_id's liveness and silently resurrected slots its
-# crashed predecessor had abandoned, with no operator-visible signal. A
-# lease that must be renewed by name (see renew()) doesn't have that
-# failure mode: a restarted process starts holding nothing, so it renews
-# nothing, and whatever the old process leaked simply expires on schedule.
 _CLAIM = """
 WITH candidate AS (
     SELECT slot_id
@@ -53,9 +39,7 @@ UPDATE portal_proxy_slots
    AND worker_id = $3
 """
 
-# unnest($2, $3) pairs each held (provider, slot_id) positionally; a caller
-# renewing slots across two providers in one call gets both rows touched in
-# one round trip instead of one UPDATE per slot.
+# The provider and slot arrays are paired by position.
 _RENEW = """
 UPDATE portal_proxy_slots AS s
    SET lease_expires_at = now() + $4::interval
@@ -67,26 +51,11 @@ UPDATE portal_proxy_slots AS s
 
 
 class PostgresProxySlots:
-    """Fleet-wide assignment of provider slot_id values to real ports.
+    """Assign fleet-wide provider slots with expiring leases.
 
-    fetch/proxy/geonode.py maps slot_id to one of GeoNode's 901 sticky ports;
-    that mapping only stays unique if every lane, on every worker node, holds
-    a distinct slot_id at once. A lane claims a free row the first time it
-    works a job for a given provider and holds it until it switches provider
-    or goes idle, independent of how often the underlying provider session
-    itself gets closed and reopened.
-
-    A claim is a lease, not a reservation: it expires on its own (LEASE_TTL)
-    unless the holder keeps renewing it, the same pattern portal_job_items
-    already uses for job assignment (repository/jobs.py). The holder is
-    responsible for renewal, reported once per heartbeat as the exact set of
-    slots its lanes currently hold in memory (see worker/agent.py's
-    _heartbeat_loop) -- not a blanket "renew everything tagged with my
-    worker_id", which is what let a restarted process revive a crashed
-    predecessor's leaked rows under the old worker-heartbeat-staleness
-    design. An explicit release() still frees a slot immediately for a
-    graceful shutdown; it's an optimization; a slot nobody renews expires
-    within LEASE_TTL regardless of why.
+    A lane keeps its slot while it works one provider credential. Renewal
+    receives the exact slots held by the current process. An unrenewed lease
+    expires, while an explicit release makes a slot available immediately.
     """
 
     def __init__(self, pool: Pool) -> None:
@@ -105,10 +74,7 @@ class PostgresProxySlots:
         await self._pool.execute(_RELEASE, provider, slot_id, worker_id)
 
     async def renew(self, *, worker_id: str, held: Sequence[tuple[str, int]]) -> None:
-        """Extend the lease on exactly the (provider, slot_id) pairs the
-        caller currently holds. A pair this worker_id doesn't actually hold
-        (already reclaimed, or never claimed) matches no row and is a safe
-        no-op, the same idempotency release() already relies on."""
+        """Extend leases for the exact provider and slot pairs held locally."""
         if not held:
             return
 
