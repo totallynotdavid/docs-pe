@@ -276,12 +276,21 @@ class WorkerAgent:
                 await close_session(lane.state, provider=lane.provider)
 
         if lane.held_slot is not None and lane.held_slot_provider is not None:
-            with contextlib.suppress(Exception):
+            try:
                 await self._release_slot(
                     client, lane.held_slot_provider, lane.held_slot
                 )
-            lane.held_slot = None
-            lane.held_slot_provider = None
+            except httpx.HTTPError:
+                # Release can fail the same transient way claim/publish do
+                # (see run()'s connection-pooling comment). Keep the local
+                # claim on failure so the next call retries the release
+                # instead of leaking this row in portal_proxy_slots forever
+                # (release's own WHERE worker_id = $3 makes a retry safe
+                # even if the original request actually landed).
+                pass
+            else:
+                lane.held_slot = None
+                lane.held_slot_provider = None
 
     async def _claim(
         self, client: httpx.AsyncClient, affinity: tuple[str, UUID] | None
