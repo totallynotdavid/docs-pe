@@ -783,7 +783,6 @@ class PostgresJobRepository:
             )
 
         async with self._pool.acquire() as connection, connection.transaction():
-            await self._lock_queue_gate(connection)
             await self._sweep_expired_locked(connection)
 
             row = await connection.fetchrow(
@@ -832,8 +831,6 @@ class PostgresJobRepository:
         """
 
         async with self._pool.acquire() as connection, connection.transaction():
-            await self._lock_queue_gate(connection)
-
             entry_id = await connection.fetchval(
                 _UPSERT_ENTRY,
                 uuid4(),
@@ -976,7 +973,7 @@ class PostgresJobRepository:
             )
 
     async def _sweep_expired_locked(self, connection: Connection) -> None:
-        """Recover expired leases while holding the queue gate."""
+        """Recover expired leases. A drain takes the queue gate itself."""
 
         rows = await connection.fetch(
             _SWEEP_EXPIRED,
@@ -1037,6 +1034,10 @@ class PostgresJobRepository:
             job_id,
             JobState(row["state"]),
         )
+        # Promotion reads and updates the fleet-wide active-job count, so it
+        # needs the queue gate. Only a drain reaches this point, so claim()
+        # and publish() no longer serialize on every call just to get here.
+        await self._lock_queue_gate(connection)
         await self._promote_locked(connection)
 
     async def _event(
