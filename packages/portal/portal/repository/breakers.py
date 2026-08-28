@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from core.pipeline.breaker import (
@@ -20,29 +19,30 @@ VALUES ($1, $2)
 ON CONFLICT (source, provider) DO NOTHING
 """
 
-_LOCK_ROW = """
-SELECT consecutive_failures, level
-  FROM portal_circuit_breakers
- WHERE source = $1 AND provider = $2
- FOR UPDATE
-"""
-
-_RECORD_SUCCESS = """
-UPDATE portal_circuit_breakers
-   SET consecutive_failures = 0, level = 0, open_until = NULL
- WHERE source = $1 AND provider = $2
-"""
-
-_RECORD_BELOW_THRESHOLD = """
-UPDATE portal_circuit_breakers
-   SET consecutive_failures = $3
- WHERE source = $1 AND provider = $2
-"""
-
-_TRIP = """
-UPDATE portal_circuit_breakers
-   SET consecutive_failures = 0, level = $3, open_until = $4
- WHERE source = $1 AND provider = $2
+# A single atomic UPDATE, not a SELECT ... FOR UPDATE followed by a
+# Python-side branch: the earlier version held the row lock across an
+# extra network round trip, and every lookup for a given (source, provider)
+# contends on the same row, so that gap serializes the whole fleet the same
+# way the queue gate lock once did. $3 = healthy_contact, $4 = threshold,
+# $5 = base_cooldown_s, $6 = max_cooldown_s.
+_RECORD_OUTCOME = """
+UPDATE portal_circuit_breakers b
+   SET consecutive_failures = CASE
+           WHEN $3 THEN 0
+           WHEN b.consecutive_failures + 1 < $4 THEN b.consecutive_failures + 1
+           ELSE 0
+       END,
+       level = CASE
+           WHEN $3 THEN 0
+           WHEN b.consecutive_failures + 1 < $4 THEN b.level
+           ELSE b.level + 1
+       END,
+       open_until = CASE
+           WHEN $3 THEN NULL
+           WHEN b.consecutive_failures + 1 < $4 THEN b.open_until
+           ELSE now() + (LEAST($6, $5 * power(2, b.level)) * interval '1 second')
+       END
+ WHERE b.source = $1 AND b.provider = $2
 """
 
 
@@ -57,25 +57,12 @@ class PostgresCircuitBreakers:
     ) -> None:
         async with self._pool.acquire() as connection, connection.transaction():
             await connection.execute(_ENSURE_ROW, source, provider)
-            row = await connection.fetchrow(_LOCK_ROW, source, provider)
-
-            if healthy_contact:
-                await connection.execute(_RECORD_SUCCESS, source, provider)
-                return
-
-            consecutive = int(row["consecutive_failures"]) + 1
-
-            if consecutive < DEFAULT_THRESHOLD:
-                await connection.execute(
-                    _RECORD_BELOW_THRESHOLD, source, provider, consecutive
-                )
-                return
-
-            level = int(row["level"]) + 1
-            cooldown = min(
+            await connection.execute(
+                _RECORD_OUTCOME,
+                source,
+                provider,
+                healthy_contact,
+                DEFAULT_THRESHOLD,
+                DEFAULT_BASE_COOLDOWN_S,
                 DEFAULT_MAX_COOLDOWN_S,
-                DEFAULT_BASE_COOLDOWN_S * (2 ** (level - 1)),
             )
-            open_until = datetime.now(UTC) + timedelta(seconds=cooldown)
-
-            await connection.execute(_TRIP, source, provider, level, open_until)
