@@ -120,6 +120,7 @@ mise x postgres -- pg_dump -h 127.0.0.1 -p 5432 -U postgres -d postgres \\
 
 [tasks.check]
 run = [
+  "uv run ops/check_docs.py",
   "uv run mypy .",
   "uv run djlint packages/portal/portal/web/components packages/portal/portal/web/pages --check",
 ]
