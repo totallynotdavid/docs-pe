@@ -1,5 +1,24 @@
-[tool.uv.workspace]
-members = ["packages/*"]
+[project]
+name = "osiptel-dev"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "browser",
+  "capture",
+  "cli",
+  "core",
+  "portal",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+browser = { path = "packages/browser", editable = true }
+capture = { path = "packages/capture", editable = true }
+cli = { path = "packages/cli", editable = true }
+core = { path = "packages/core", editable = true }
+portal = { path = "packages/portal", editable = true }
 
 [tool.ruff]
 fix = true
@@ -86,8 +105,11 @@ section-order = [
   "boolean-default-value-positional-argument",
 ]
 
+[tool.mypy]
+exclude_gitignore = true
+
 [[tool.mypy.overrides]]
-module = ["asyncpg", "fetch.*", "psutil"]
+module = ["asyncpg", "core.*", "psutil"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

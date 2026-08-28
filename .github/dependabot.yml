@@ -1,7 +1,10 @@
 version: 2
 updates:
   - package-ecosystem: "uv"
-    directory: "/"
+    directories:
+      - "/"
+      - "/packages/cli"
+      - "/packages/portal"
     schedule:
       interval: "weekly"
       day: "monday"

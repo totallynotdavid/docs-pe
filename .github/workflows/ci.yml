@@ -55,11 +55,19 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-dependency-glob: uv.lock
+          cache-dependency-glob: |
+            uv.lock
+            packages/cli/uv.lock
+            packages/portal/uv.lock
 
       - run: uv python install 3.14.6
 
-      - run: uv sync --locked --all-packages --all-groups
+      - run: |
+          uv lock --check
+          uv lock --check --project packages/cli
+          uv lock --check --project packages/portal
+
+      - run: uv sync --locked --all-groups
 
       - run: uv run ruff format --check
 
