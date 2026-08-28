@@ -116,6 +116,18 @@ class Site:
 
 
 @dataclass(frozen=True)
+class AttemptOutcome:
+    """One try inside fetch_one's retry loop: what happened and how long it
+    took. A document that ultimately succeeds after failing once still keeps
+    every attempt here; only the final one is `ok` or `not_found`."""
+
+    attempt: int
+    status: Status
+    elapsed_ms: int
+    error_code: str = ""
+
+
+@dataclass(frozen=True)
 class Result:
     doc: Doc
     site: str
@@ -133,6 +145,7 @@ class Result:
     provider: str = ""
 
     attempt: int = 0
+    attempts: tuple[AttemptOutcome, ...] = ()
 
 
 @dataclass

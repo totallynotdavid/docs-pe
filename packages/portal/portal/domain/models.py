@@ -367,6 +367,16 @@ class ClaimedWork:
 
 
 @dataclass(frozen=True)
+class AttemptRecord:
+    """One try inside a lookup's retry loop, kept for portal_lookup_attempts."""
+
+    fetch_attempt: int
+    outcome: str
+    elapsed_ms: int
+    error_code: str | None = None
+
+
+@dataclass(frozen=True)
 class JobEvent:
     id: UUID
     job_id: UUID

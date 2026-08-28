@@ -24,6 +24,7 @@ from core.proxy.registry import provider_from_values, spec_for
 from core.sites.registry import SITES
 
 from portal.worker.protocol import (
+    AttemptRecord,
     ClaimRequest,
     ClaimSlotRequest,
     ClaimSlotResponse,
@@ -70,6 +71,13 @@ class LaneSession:
     held_slot_provider: str | None = None
 
 
+class AttemptResult(TypedDict):
+    fetch_attempt: int
+    outcome: str
+    elapsed_ms: int
+    error_code: str | None
+
+
 class ExecuteResult(TypedDict):
     """The shape sent to /publish, both as portal_entries' typed fields and,
     unmodified, as the archived content blob."""
@@ -80,6 +88,7 @@ class ExecuteResult(TypedDict):
     columns: list[str]
     rows: list[list[Cell]]
     error_code: str | None
+    attempts: list[AttemptResult]
 
 
 @dataclass(frozen=True)
@@ -214,7 +223,7 @@ class WorkerAgent:
                     continue
 
                 try:
-                    await self._publish(client, lease, result)
+                    await self._publish(client, lease, result, lane_index)
                 except httpx.HTTPError:
                     # A rejected or expired lease cannot publish. Other lanes
                     # continue and the item is retried under a new lease.
@@ -311,6 +320,7 @@ class WorkerAgent:
         client: httpx.AsyncClient,
         lease: WorkLease,
         result: ExecuteResult,
+        lane_index: int,
     ) -> None:
         content = base64.b64encode(
             json.dumps(result, separators=(",", ":")).encode()
@@ -322,6 +332,7 @@ class WorkerAgent:
                 PublishRequest(
                     item_id=lease.item_id,
                     fence=lease.fence,
+                    lane_index=lane_index,
                     source=lease.source,
                     provider=lease.credential.provider,
                     healthy_contact=result["status"] != "failed",
@@ -331,6 +342,15 @@ class WorkerAgent:
                     rows=tuple(tuple(row) for row in result["rows"]),
                     error_code=result["error_code"],
                     content=content,
+                    attempts=tuple(
+                        AttemptRecord(
+                            fetch_attempt=a["fetch_attempt"],
+                            outcome=a["outcome"],
+                            elapsed_ms=a["elapsed_ms"],
+                            error_code=a["error_code"],
+                        )
+                        for a in result["attempts"]
+                    ),
                 )
             ),
             headers={"Content-Type": "application/json"},
@@ -383,6 +403,15 @@ class WorkerAgent:
             "columns": list(site.columns),
             "rows": [list(row) for row in result.rows],
             "error_code": result.error_code,
+            "attempts": [
+                {
+                    "fetch_attempt": a.attempt,
+                    "outcome": a.status.value,
+                    "elapsed_ms": a.elapsed_ms,
+                    "error_code": a.error_code or None,
+                }
+                for a in result.attempts
+            ],
         }
 
     async def _claim_slot(

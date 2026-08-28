@@ -22,6 +22,7 @@ from portal.application.sessions import BrowserSessions, OneTimeTokens
 from portal.credentials.masterkey import MasterKeyring
 from portal.credentials.secrets import EnvelopeProtector
 from portal.domain.models import (
+    AttemptRecord,
     ClaimedWork,
     InputLine,
     ProtectedSecret,
@@ -462,6 +463,9 @@ async def publish_claimed(
     rows: tuple[tuple[object, ...], ...] | None = None,
     error_code: str | None = None,
     worker_id: str = "trabajador",
+    provider: str = "geonode",
+    lane_index: int = 0,
+    attempts: tuple[AttemptRecord, ...] = (),
 ) -> bool:
     """Publish a claimed item with a real entry payload, the shape every
     worker-api caller must supply since publish() started upserting
@@ -476,6 +480,7 @@ async def publish_claimed(
         claimed.lease_fence,
         document=claimed.document,
         source=claimed.source,
+        provider=provider,
         status=status,
         columns=columns,
         rows=rows if rows is not None else ((claimed.document,),),
@@ -485,6 +490,8 @@ async def publish_claimed(
             team_id,
             f"salida/{claimed.item_id}.json",
         ),
+        lane_index=lane_index,
+        attempts=attempts,
     )
 
 

@@ -5,7 +5,12 @@ from uuid import uuid4
 import msgspec
 import pytest
 
-from portal.worker.protocol import CredentialLease, PublishRequest, WorkLease
+from portal.worker.protocol import (
+    AttemptRecord,
+    CredentialLease,
+    PublishRequest,
+    WorkLease,
+)
 
 
 def _lease() -> WorkLease:
@@ -47,6 +52,7 @@ def test_a_publish_request_survives_the_wire_unchanged() -> None:
     request = PublishRequest(
         item_id=uuid4(),
         fence=7,
+        lane_index=2,
         source="osiptel",
         provider="geonode",
         healthy_contact=True,
@@ -56,6 +62,15 @@ def test_a_publish_request_survives_the_wire_unchanged() -> None:
         rows=(("10412345678",),),
         error_code=None,
         content="Y29udGVuaWRv",
+        attempts=(
+            AttemptRecord(
+                fetch_attempt=1,
+                outcome="failed",
+                elapsed_ms=340,
+                error_code="upstream_not_ready",
+            ),
+            AttemptRecord(fetch_attempt=2, outcome="ok", elapsed_ms=210),
+        ),
     )
 
     assert (

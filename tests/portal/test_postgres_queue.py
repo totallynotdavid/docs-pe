@@ -4,7 +4,7 @@ import asyncio
 import base64
 
 from typing import TYPE_CHECKING
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -31,8 +31,6 @@ from tests.portal.conftest import (
 
 
 if TYPE_CHECKING:
-    from uuid import UUID
-
     import asyncpg
 
     from litestar.testing import AsyncTestClient
@@ -129,11 +127,14 @@ async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results
             claimed.lease_fence,
             document="10412345678",
             source="osiptel",
+            provider="geonode",
             status="ok",
             columns=("documento",),
             rows=(("10412345678",),),
             error_code=None,
             result_object_id=result_reference,
+            lane_index=0,
+            attempts=(),
         )
         is False
     )
@@ -354,6 +355,7 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
         json={
             "item_id": claimed["item_id"],
             "fence": claimed["fence"],
+            "lane_index": 3,
             "source": claimed["source"],
             "provider": claimed["credential"]["provider"],
             "healthy_contact": True,
@@ -363,12 +365,49 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
             "rows": [["Postpago"]],
             "error_code": None,
             "content": base64.b64encode(b'{"lineas": []}').decode("ascii"),
+            "attempts": [
+                {
+                    "fetch_attempt": 1,
+                    "outcome": "failed",
+                    "elapsed_ms": 340,
+                    "error_code": "upstream_not_ready",
+                },
+                {
+                    "fetch_attempt": 2,
+                    "outcome": "ok",
+                    "elapsed_ms": 210,
+                    "error_code": None,
+                },
+            ],
         },
         headers=headers,
     )
 
     assert published.status_code == 200
     assert published.json() == {"published": True}
+
+    attempts = await pool.fetch(
+        "SELECT lane_index, fetch_attempt, outcome, error_code, elapsed_ms "
+        "FROM portal_lookup_attempts WHERE job_item_id = $1 ORDER BY fetch_attempt",
+        UUID(claimed["item_id"]),
+    )
+
+    assert [dict(row) for row in attempts] == [
+        {
+            "lane_index": 3,
+            "fetch_attempt": 1,
+            "outcome": "failed",
+            "error_code": "upstream_not_ready",
+            "elapsed_ms": 340,
+        },
+        {
+            "lane_index": 3,
+            "fetch_attempt": 2,
+            "outcome": "ok",
+            "error_code": None,
+            "elapsed_ms": 210,
+        },
+    ]
 
     finished = await pool.fetchrow(
         "SELECT state FROM portal_jobs WHERE id = $1",

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from core.domain.errors import ProviderSchemaError, RucNotFoundError
 from core.domain.policy import MAX_ATTEMPTS, classify_exception
-from core.domain.types import Result, Status
+from core.domain.types import AttemptOutcome, Result, Status
 from core.obs.events import (
     LOOKUP_FAILED,
     LOOKUP_NOT_FOUND,
@@ -47,9 +47,11 @@ async def fetch_one(
     cfg: WorkerConfig,
 ) -> Result:
     attempt = 0
+    attempts: list[AttemptOutcome] = []
 
     while True:
         attempt += 1
+        started = time.perf_counter()
 
         try:
             await breaker.acquire()
@@ -63,9 +65,13 @@ async def fetch_one(
                 lane_id=lane_id,
             )
 
-            lookup_started = time.perf_counter()
             rows = await site.lookup(session.client, doc)
             _enforce_allows_empty(site, rows)
+
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
+            attempts.append(
+                AttemptOutcome(attempt=attempt, status=Status.OK, elapsed_ms=elapsed_ms)
+            )
 
             logger.info(
                 "%s %s",
@@ -80,7 +86,7 @@ async def fetch_one(
                     egress_ip=session.egress_ip,
                     doc=doc,
                     attempt=attempt,
-                    elapsed_ms=int((time.perf_counter() - lookup_started) * 1000),
+                    elapsed_ms=elapsed_ms,
                     rows=len(rows),
                 ),
             )
@@ -94,6 +100,7 @@ async def fetch_one(
                 proxy_id=session.proxy.proxy_id,
                 provider=provider.name,
                 attempt=attempt,
+                attempts=tuple(attempts),
             )
 
             breaker.record_success()
@@ -105,6 +112,13 @@ async def fetch_one(
             return result
 
         except RucNotFoundError:
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
+            attempts.append(
+                AttemptOutcome(
+                    attempt=attempt, status=Status.NOT_FOUND, elapsed_ms=elapsed_ms
+                )
+            )
+
             logger.info(
                 "%s %s",
                 LOOKUP_NOT_FOUND,
@@ -117,6 +131,7 @@ async def fetch_one(
                     proxy_id=session.proxy.proxy_id,
                     doc=doc,
                     attempt=attempt,
+                    elapsed_ms=elapsed_ms,
                 ),
             )
 
@@ -128,6 +143,7 @@ async def fetch_one(
                 proxy_id=session.proxy.proxy_id,
                 provider=provider.name,
                 attempt=attempt,
+                attempts=tuple(attempts),
             )
 
             breaker.record_success()
@@ -139,11 +155,21 @@ async def fetch_one(
 
         except Exception as exc:  # ruff: ignore[blind-except]
             # Worker failures must not escape into the TaskGroup.
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
             decision = classify_exception(
                 exc,
                 ban_cooldown_s=cfg.ban_cooldown_s,
             )
             session_id, proxy_id = session_ids(state)
+
+            attempts.append(
+                AttemptOutcome(
+                    attempt=attempt,
+                    status=Status.FAILED,
+                    elapsed_ms=elapsed_ms,
+                    error_code=decision.error_code,
+                )
+            )
 
             logger.warning(
                 "%s %s",
@@ -157,6 +183,7 @@ async def fetch_one(
                     proxy_id=proxy_id,
                     doc=doc,
                     attempt=attempt,
+                    elapsed_ms=elapsed_ms,
                     error_code=decision.error_code,
                     error_type=type(exc).__name__,
                     error_detail=str(exc),
@@ -197,6 +224,7 @@ async def fetch_one(
                     proxy_id=proxy_id,
                     provider=provider.name,
                     attempt=attempt,
+                    attempts=tuple(attempts),
                 )
 
 

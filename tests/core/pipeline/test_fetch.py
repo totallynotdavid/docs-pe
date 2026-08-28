@@ -49,6 +49,8 @@ async def test_succeeds_on_the_first_attempt() -> None:
     assert result.status is Status.OK
     assert result.rows == (("value1",),)
     assert result.attempt == 1
+    assert [a.status for a in result.attempts] == [Status.OK]
+    assert result.attempts[0].attempt == 1
 
 
 async def test_a_ruc_not_found_error_is_a_terminal_not_found_with_no_retry() -> None:
@@ -70,6 +72,7 @@ async def test_a_ruc_not_found_error_is_a_terminal_not_found_with_no_retry() -> 
     )
     assert result.status is Status.NOT_FOUND
     assert result.attempt == 1
+    assert [a.status for a in result.attempts] == [Status.NOT_FOUND]
     assert not breaker.is_open()
 
 
@@ -93,6 +96,9 @@ async def test_allows_empty_false_and_empty_rows_retries_then_fails() -> None:
     assert result.status is Status.FAILED
     assert result.error_code == "provider_schema_error"
     assert result.attempt == MAX_ATTEMPTS
+    assert len(result.attempts) == MAX_ATTEMPTS
+    assert all(a.status is Status.FAILED for a in result.attempts)
+    assert [a.attempt for a in result.attempts] == list(range(1, MAX_ATTEMPTS + 1))
 
 
 @pytest.mark.parametrize(
@@ -122,6 +128,39 @@ async def test_a_fault_retries_up_to_max_attempts_with_the_classified_code(
     assert result.status is Status.FAILED
     assert result.error_code == expected_code
     assert result.attempt == MAX_ATTEMPTS
+
+
+async def test_a_transient_failure_then_success_keeps_both_attempts() -> None:
+    """A document that ultimately succeeds must not look like a clean,
+    single-try lookup: the failed attempt that preceded it is real cost
+    (portal_lookup_attempts is exactly where that stops being invisible)."""
+    calls = 0
+
+    def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            msg = "boom"
+            raise TransientTransportError(msg)
+        return (("value1",),)
+
+    result = await fetch_one(
+        site=fake_site("fake_site", "value", lookup=as_async(lookup)),
+        state=WorkerState(),
+        doc=Doc("20100000001"),
+        provider=FakeProvider(),
+        breaker=CircuitBreaker(provider="fake:fake", run_id="r"),
+        slot_id=1,
+        run_id="r",
+        lane_id=1,
+        cfg=_cfg(),
+    )
+    assert result.status is Status.OK
+    assert result.attempt == 2
+    assert [a.status for a in result.attempts] == [Status.FAILED, Status.OK]
+    assert result.attempts[0].error_code == "transport_error"
+    assert result.attempts[1].error_code == ""
+    assert [a.attempt for a in result.attempts] == [1, 2]
 
 
 async def test_a_ban_error_rotates_the_session_with_a_cooldown(

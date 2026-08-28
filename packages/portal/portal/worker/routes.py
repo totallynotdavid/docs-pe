@@ -20,7 +20,7 @@ from portal.domain.errors import (
     PortalError,
     Reason,
 )
-from portal.domain.models import AuditAction, AuditEvent, WorkerIdentity
+from portal.domain.models import AttemptRecord, AuditAction, AuditEvent, WorkerIdentity
 from portal.repository.audit import PostgresAuditLog
 from portal.repository.breakers import PostgresCircuitBreakers
 from portal.repository.jobs import PostgresJobRepository
@@ -220,11 +220,22 @@ async def worker_publish(
         data.fence,
         document=data.document,
         source=data.source,
+        provider=data.provider,
         status=data.status,
         columns=data.columns,
         rows=data.rows,
         error_code=data.error_code,
         result_object_id=reference.id,
+        lane_index=data.lane_index,
+        attempts=tuple(
+            AttemptRecord(
+                fetch_attempt=a.fetch_attempt,
+                outcome=a.outcome,
+                elapsed_ms=a.elapsed_ms,
+                error_code=a.error_code,
+            )
+            for a in data.attempts
+        ),
     )
 
     if published:

@@ -663,6 +663,40 @@ CREATE TRIGGER portal_job_items_set_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION portal_set_updated_at();
 
+-- One row per fetch_one attempt (success or failure), including the final
+-- attempt that resolves a document. portal_entries and portal_job_items only
+-- keep the terminal outcome, so a document that needed retries is
+-- indistinguishable from one that succeeded cleanly; this table is where
+-- retry cost and latency actually live, queryable instead of grepped from
+-- process logs. Written once per /publish call (portal/repository/jobs.py),
+-- regardless of whether that publish's fence still holds.
+CREATE TABLE portal_lookup_attempts (
+    id uuid PRIMARY KEY,
+    job_item_id uuid NOT NULL REFERENCES portal_job_items (id) ON DELETE CASCADE,
+
+    source text NOT NULL REFERENCES portal_sites (code),
+    provider text NOT NULL CONSTRAINT portal_lookup_attempts_provider_supported
+        CHECK (provider IN ('geonode', 'dataimpulse')),
+    worker_id text NOT NULL,
+    lane_index integer NOT NULL,
+
+    fetch_attempt integer NOT NULL CHECK (fetch_attempt >= 1),
+    outcome text NOT NULL CHECK (outcome IN ('ok', 'not_found', 'failed')),
+    error_code text,
+    elapsed_ms integer NOT NULL CHECK (elapsed_ms >= 0),
+
+    created_at timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT portal_lookup_attempts_error_code_consistent
+        CHECK ((outcome = 'failed') = (error_code IS NOT NULL))
+);
+
+CREATE INDEX portal_lookup_attempts_created_at_idx
+    ON portal_lookup_attempts (created_at);
+
+CREATE INDEX portal_lookup_attempts_source_provider_idx
+    ON portal_lookup_attempts (source, provider, created_at);
+
 CREATE TABLE portal_job_events (
     id uuid PRIMARY KEY,
     job_id uuid NOT NULL REFERENCES portal_jobs(id) ON DELETE CASCADE,

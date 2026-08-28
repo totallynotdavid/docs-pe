@@ -38,9 +38,19 @@ class WorkLease(msgspec.Struct, frozen=True):
     credential: CredentialLease
 
 
+class AttemptRecord(msgspec.Struct, frozen=True):
+    """One fetch_one try, wire shape for portal_lookup_attempts."""
+
+    fetch_attempt: int
+    outcome: str
+    elapsed_ms: int
+    error_code: str | None = None
+
+
 class PublishRequest(msgspec.Struct, frozen=True):
     item_id: UUID
     fence: int
+    lane_index: int
 
     # These fields drive fleet circuit-breaker accounting. `content` is opaque.
     source: str
@@ -56,6 +66,10 @@ class PublishRequest(msgspec.Struct, frozen=True):
 
     # Base64-encoded raw result for audit and replay.
     content: str
+
+    # Every attempt fetch_one made resolving this document, not just the
+    # final one: see portal_lookup_attempts (packages/portal/portal/migrations).
+    attempts: tuple[AttemptRecord, ...] = ()
 
 
 class PublishResult(msgspec.Struct, frozen=True):

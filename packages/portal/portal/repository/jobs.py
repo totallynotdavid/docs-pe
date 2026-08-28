@@ -11,6 +11,7 @@ from portal.domain.errors import Reason, SourceValidationError
 from portal.domain.models import (
     MAX_ACTIVE_JOBS,
     MAX_LEASE_ATTEMPTS,
+    AttemptRecord,
     ClaimedWork,
     ExcludedInput,
     ItemState,
@@ -30,6 +31,8 @@ from portal.storage.port import ObjectReference
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from asyncpg import Connection, Pool
 
 
@@ -153,6 +156,20 @@ UPDATE portal_job_items AS item
    AND job.state = 'running'
    AND job.lease_fence = $3
 RETURNING item.job_id
+"""
+
+# unnest(...) AS attempt(...) zips the four parallel arrays row-wise, the
+# same multi-column unnest idiom PostgresProxySlots.renew() uses (see
+# repository/slots.py) to write several rows in one round trip.
+_INSERT_ATTEMPTS = """
+INSERT INTO portal_lookup_attempts
+    (id, job_item_id, source, provider, worker_id, lane_index,
+     fetch_attempt, outcome, error_code, elapsed_ms)
+SELECT
+    attempt.id, $1, $2, $3, $4, $5,
+    attempt.fetch_attempt, attempt.outcome, attempt.error_code, attempt.elapsed_ms
+  FROM unnest($6::uuid[], $7::int[], $8::text[], $9::text[], $10::int[])
+    AS attempt(id, fetch_attempt, outcome, error_code, elapsed_ms)
 """
 
 _UPSERT_ENTRY = """
@@ -797,18 +814,21 @@ class PostgresJobRepository:
         *,
         document: str,
         source: str,
+        provider: str,
         status: str,
         columns: tuple[str, ...],
         rows: tuple[tuple[object, ...], ...],
         error_code: str | None,
         result_object_id: UUID,
+        lane_index: int,
+        attempts: Sequence[AttemptRecord],
     ) -> bool:
         """Publish only while the worker still owns both fences.
 
-        Upserts portal_entries first: it's a correct, useful answer for
-        (document, source) regardless of whether this particular item's
-        fence still holds, so there's no reason to gate it behind the
-        fencing check that follows.
+        Upserts portal_entries and records every fetch_one attempt first:
+        both are a correct, useful record of what actually happened against
+        the site regardless of whether this particular item's fence still
+        holds, so neither belongs behind the fencing check that follows.
         """
 
         async with self._pool.acquire() as connection, connection.transaction():
@@ -825,6 +845,21 @@ class PostgresJobRepository:
                 error_code,
                 item_id,
             )
+
+            if attempts:
+                await connection.execute(
+                    _INSERT_ATTEMPTS,
+                    item_id,
+                    source,
+                    provider,
+                    worker_id,
+                    lane_index,
+                    [uuid4() for _ in attempts],
+                    [a.fetch_attempt for a in attempts],
+                    [a.outcome for a in attempts],
+                    [a.error_code for a in attempts],
+                    [a.elapsed_ms for a in attempts],
+                )
 
             job_id = await connection.fetchval(
                 _PUBLISH_FENCED,
