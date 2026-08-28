@@ -4,13 +4,14 @@ The toolchain is pinned in mise.toml and only uv resolves it. Never invoke
 python, pytest, ruff, or mypy directly.
 
 ```
-mise run install     uv sync --all-groups
-mise run format      ruff format + ruff check --fix
-mise run check       mypy across the repository
-mise run test        pytest across every package, portal included
-mise run build       PyInstaller single binary for fetch
-mise run dev         start postgres, bootstrap, and run the portal (Ctrl+C stops everything)
-mise run reset       wipe the local postgres cluster; next `mise run dev` starts clean
+mise run install       uv sync --all-groups
+mise run install:core  reinstall core after editing it; core installs non-editable
+mise run format        ruff format + ruff check --fix
+mise run check         mypy across the repository
+mise run test          pytest across every package, portal included
+mise run build         PyInstaller single binary for fetch
+mise run dev           start postgres, bootstrap, and run the portal (Ctrl+C stops everything)
+mise run reset         wipe the local postgres cluster; next `mise run dev` starts clean
 ```
 
 Focused work, when a full run is too slow:

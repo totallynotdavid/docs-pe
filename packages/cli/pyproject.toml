@@ -15,7 +15,7 @@ fetch-fleet = "cli.fleet:main"
 fetch-status = "cli.status:main"
 
 [tool.uv.sources]
-core = { path = "../core" }
+core = { path = "../core", editable = false }
 
 [tool.setuptools.packages.find]
 include = ["cli*"]

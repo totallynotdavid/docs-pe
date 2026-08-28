@@ -17,7 +17,7 @@ package = false
 browser = { path = "packages/browser", editable = true }
 capture = { path = "packages/capture", editable = true }
 cli = { path = "packages/cli", editable = true }
-core = { path = "packages/core", editable = true }
+core = { path = "packages/core" }
 portal = { path = "packages/portal", editable = true }
 
 [tool.ruff]

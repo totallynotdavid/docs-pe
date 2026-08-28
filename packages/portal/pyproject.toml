@@ -30,7 +30,7 @@ dependencies = [
 portal = "portal.cli:main"
 
 [tool.uv.sources]
-core = { path = "../core" }
+core = { path = "../core", editable = false }
 
 [tool.setuptools.packages.find]
 include = ["portal*"]

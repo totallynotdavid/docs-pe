@@ -200,7 +200,7 @@ wheels = [
 [[package]]
 name = "browser"
 version = "0.1.0"
-source = { directory = "packages/browser" }
+source = { editable = "packages/browser" }
 dependencies = [
     { name = "pyautogui" },
     { name = "seleniumbase" },
@@ -215,7 +215,7 @@ requires-dist = [
 [[package]]
 name = "capture"
 version = "0.1.0"
-source = { directory = "packages/capture" }
+source = { editable = "packages/capture" }
 
 [[package]]
 name = "cbor2"
@@ -449,7 +449,7 @@ wheels = [
 [[package]]
 name = "cli"
 version = "0.1.0"
-source = { directory = "packages/cli" }
+source = { editable = "packages/cli" }
 dependencies = [
     { name = "core" },
 ]
@@ -1316,11 +1316,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "browser", directory = "packages/browser" },
-    { name = "capture", directory = "packages/capture" },
-    { name = "cli", directory = "packages/cli" },
+    { name = "browser", editable = "packages/browser" },
+    { name = "capture", editable = "packages/capture" },
+    { name = "cli", editable = "packages/cli" },
     { name = "core", directory = "packages/core" },
-    { name = "portal", directory = "packages/portal" },
+    { name = "portal", editable = "packages/portal" },
 ]
 
 [package.metadata.requires-dev]
@@ -1546,7 +1546,7 @@ wheels = [
 [[package]]
 name = "portal"
 version = "0.1.0"
-source = { directory = "packages/portal" }
+source = { editable = "packages/portal" }
 dependencies = [
     { name = "asyncpg" },
     { name = "core" },

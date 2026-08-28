@@ -7,6 +7,9 @@ node = "26.8.1"
 [tasks.install]
 run = "uv sync --all-groups"
 
+[tasks."install:core"]
+run = "uv sync --all-groups --reinstall-package core"
+
 [tasks.update]
 run = [
   "uv lock -U",
