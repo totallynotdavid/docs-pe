@@ -30,6 +30,16 @@ ID: `proxy-1-port-10023`). It allocates 901 sticky-port slots total, so with
 more than 900 concurrent lanes across all sites, ports collide and sessions
 interfere: reduce concurrency or split runs across boxes.
 
+Through the portal worker fleet (`portal worker`, not the standalone `fetch`
+CLI), slot assignment is coordinated automatically: each lane claims a row
+from `portal_proxy_slots` the first time it starts working a GeoNode-backed
+job, holds it for as long as it keeps working that (source, credential) pair,
+and releases it when it switches away or goes idle, so concurrent lanes across
+every worker node never collide on the same port regardless of which box
+they're on. The standalone CLI has no such coordination; it only guarantees
+uniqueness within its own process, so the operator must stay under the
+901-slot ceiling by hand across whatever else is running concurrently.
+
 DataImpulse is a rotating datacenter proxy, cheaper per request, but fails often
 against OSIPTEL's geo-gated WAF (see
 [sites/osiptel.md](sites/osiptel.md#provider-failure-modes) for the measured

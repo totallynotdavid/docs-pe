@@ -53,4 +53,17 @@ of provider traffic.
 ## Check GeoNode port pressure
 
 See [Proxy configuration](../proxies.md#providers) for GeoNode's sticky-port
-slot limit. Reduce concurrency or split the run across boxes past that limit.
+slot limit and how the portal worker fleet coordinates it automatically.
+
+See which slots are currently leased and to whom:
+
+```sql
+select worker_id, lane_index, slot_id
+from portal_proxy_slots
+where provider = 'geonode' and worker_id is not null
+order by worker_id, slot_id;
+```
+
+Every worker node's lanes should hold distinct `slot_id` values. Worker logs
+should show `proxy_id=proxy-1-port-<N>` varying per lane instead of pinned to
+one port.
