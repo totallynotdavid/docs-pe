@@ -52,7 +52,9 @@ _RELEASE_URL = "https://monitor.geonode.com/sessions/release/proxies"
 # GeoNode may return transient 5xx responses under gateway load.
 _RELEASE_RETRIES = 3
 
-_TUNING = ProviderTuning(workers=15, ban_cooldown_s=30.0)
+_TUNING = ProviderTuning(
+    workers=15, ban_cooldown_s=30.0, slot_pool=_HTTP_STICKY_SLOT_COUNT
+)
 
 
 @dataclass(frozen=True)

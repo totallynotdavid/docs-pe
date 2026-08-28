@@ -28,6 +28,9 @@ class ProviderTuning:
     # Provider defaults. PROXY_PROVIDER may override workers.
     workers: int
     ban_cooldown_s: float
+    # Total slot_id values the provider can hand distinct real ports for. None
+    # means slot_id has no fleet-wide meaning (safe to assign locally per lane).
+    slot_pool: int | None = None
 
 
 class ProxyProvider(Protocol):
