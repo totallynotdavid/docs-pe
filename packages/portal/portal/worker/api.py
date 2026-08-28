@@ -47,7 +47,13 @@ def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
     async def lifespan(app: Litestar) -> AsyncIterator[None]:
         import asyncpg
 
-        pool = await asyncpg.create_pool(settings.database_dsn)
+        # asyncpg's own default (10/10) is sized for a single process. Each of
+        # PORTAL_WORKER_API_WORKERS processes opens its own pool, so the
+        # unscaled default would multiply into far more Postgres connections
+        # than the fleet's actual concurrent claim/publish/heartbeat traffic
+        # needs. Confirmed live: 4 processes at the default held 40 open
+        # connections with at most 1 active at a time.
+        pool = await asyncpg.create_pool(settings.database_dsn, min_size=2, max_size=5)
 
         app.state.pool = pool
         app.state.worker_queue = PostgresJobRepository(pool)
