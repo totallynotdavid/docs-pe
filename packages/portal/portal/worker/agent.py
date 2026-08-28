@@ -7,6 +7,7 @@ import contextlib
 import json
 import logging
 import os
+import signal
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, TypedDict
@@ -29,6 +30,7 @@ from portal.worker.protocol import (
     EnrollRequest,
     EnrollResponse,
     HeartbeatRequest,
+    HeldSlot,
     PublishRequest,
     ReleaseSlotRequest,
     WorkLease,
@@ -103,6 +105,9 @@ class WorkerAgent:
         # concurrent lanes can each be mid-flight on a different job, so this is
         # whichever one claimed most recently, not a per-lane breakdown.
         self._current_job_id: UUID | None = None
+        # Owned by run()/_loop, read by _heartbeat_loop to report exactly
+        # which slots are still held on each tick (see PostgresProxySlots.renew).
+        self._lanes = [LaneSession() for _ in range(options.concurrency)]
 
     async def run(self) -> None:
         headers = {
@@ -132,13 +137,38 @@ class WorkerAgent:
             transport=transport,
             limits=limits,
         ) as client:
-            await asyncio.gather(
-                self._heartbeat_loop(client),
+            tasks = [
+                asyncio.create_task(self._heartbeat_loop(client)),
                 *(
-                    self._loop(client, lane_index)
+                    asyncio.create_task(self._loop(client, lane_index))
                     for lane_index in range(self.options.concurrency)
                 ),
-            )
+            ]
+
+            # Docker sends SIGTERM on stop/redeploy with no shell wrapper in
+            # front of this process (portal worker is the container's own
+            # command), and Python's default SIGTERM disposition kills the
+            # process immediately: none of _loop's `finally` blocks would
+            # run, leaving every lane's held GeoNode slot to expire on its
+            # own lease (PostgresProxySlots.LEASE_TTL) instead of freeing up
+            # right away. Catching the signal and cancelling instead lets
+            # each lane's finally reach _close_and_release before exit,
+            # inside Docker's stop grace period.
+            stop = asyncio.Event()
+            loop = asyncio.get_running_loop()
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                loop.add_signal_handler(sig, stop.set)
+
+            stop_waiter = asyncio.create_task(stop.wait())
+            try:
+                await asyncio.wait(
+                    [stop_waiter, *tasks], return_when=asyncio.FIRST_COMPLETED
+                )
+            finally:
+                stop_waiter.cancel()
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _heartbeat_loop(self, client: httpx.AsyncClient) -> None:
         process = psutil.Process()
@@ -146,6 +176,17 @@ class WorkerAgent:
 
         while True:
             await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
+
+            # Read fresh each tick: this is what actually renews every lane's
+            # slot lease (PostgresProxySlots.LEASE_TTL). A slot a lane no
+            # longer lists here just isn't renewed and expires on its own; a
+            # missed heartbeat itself is a missed renewal for everything, the
+            # same as a missed renewal for the worker's own liveness below.
+            held_slots = tuple(
+                HeldSlot(provider=lane.held_slot_provider, slot_id=lane.held_slot)
+                for lane in self._lanes
+                if lane.held_slot is not None and lane.held_slot_provider is not None
+            )
 
             try:
                 response = await client.post(
@@ -155,6 +196,7 @@ class WorkerAgent:
                             cpu_percent=process.cpu_percent(),
                             memory_mb=process.memory_info().rss / (1024 * 1024),
                             current_job_id=self._current_job_id,
+                            held_slots=held_slots,
                         )
                     ),
                     headers={"Content-Type": "application/json"},
@@ -166,7 +208,7 @@ class WorkerAgent:
                 pass
 
     async def _loop(self, client: httpx.AsyncClient, lane_index: int) -> None:
-        lane = LaneSession()
+        lane = self._lanes[lane_index]
 
         try:
             while True:
@@ -284,9 +326,12 @@ class WorkerAgent:
                 # Release can fail the same transient way claim/publish do
                 # (see run()'s connection-pooling comment). Keep the local
                 # claim on failure so the next call retries the release
-                # instead of leaking this row in portal_proxy_slots forever
-                # (release's own WHERE worker_id = $3 makes a retry safe
-                # even if the original request actually landed).
+                # instead of abandoning the row until its lease lapses on
+                # its own (release's own WHERE worker_id = $3 makes a retry
+                # safe even if the original request actually landed).
+                # Keeping held_slot set also keeps _heartbeat_loop renewing
+                # it in the meantime, which matters: this lane may still be
+                # actively using the real proxy port behind it.
                 pass
             else:
                 lane.held_slot = None

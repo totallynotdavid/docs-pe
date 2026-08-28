@@ -76,12 +76,21 @@ class ReleaseSlotRequest(msgspec.Struct, frozen=True):
     slot_id: int
 
 
+class HeldSlot(msgspec.Struct, frozen=True):
+    provider: str
+    slot_id: int
+
+
 class HeartbeatRequest(msgspec.Struct, frozen=True):
-    """Resource snapshot shown on the admin health page."""
+    """Resource snapshot shown on the admin health page, plus proof of life
+    for every proxy slot lease the caller currently holds (see
+    PostgresProxySlots.renew): a slot missing from held_slots on the next
+    heartbeat gets no renewal and expires on its own schedule."""
 
     cpu_percent: float | None = None
     memory_mb: float | None = None
     current_job_id: UUID | None = None
+    held_slots: tuple[HeldSlot, ...] = ()
 
 
 class EnrollRequest(msgspec.Struct, frozen=True):

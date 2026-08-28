@@ -270,12 +270,17 @@ async def worker_heartbeat(
     data: HeartbeatRequest,
     worker: NamedDependency[WorkerIdentity],
     workers: NamedDependency[PostgresWorkerRegistry],
+    slots: NamedDependency[PostgresProxySlots],
 ) -> None:
     await workers.record_heartbeat(
         worker.worker_id,
         cpu_percent=data.cpu_percent,
         memory_mb=data.memory_mb,
         current_job_id=data.current_job_id,
+    )
+    await slots.renew(
+        worker_id=worker.worker_id,
+        held=tuple((slot.provider, slot.slot_id) for slot in data.held_slots),
     )
 
 

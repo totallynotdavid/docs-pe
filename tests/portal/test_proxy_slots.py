@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 async def _row(pool: asyncpg.Pool, slot_id: int) -> asyncpg.Record:
     row = await pool.fetchrow(
-        "SELECT worker_id, lane_index, leased_at FROM portal_proxy_slots "
+        "SELECT worker_id, lane_index, lease_expires_at FROM portal_proxy_slots "
         "WHERE provider = 'geonode' AND slot_id = $1",
         slot_id,
     )
@@ -41,7 +41,7 @@ async def test_claim_leases_the_lowest_free_slot(pool: asyncpg.Pool) -> None:
     row = await _row(pool, 1)
     assert row["worker_id"] == "trabajador"
     assert row["lane_index"] == 0
-    assert row["leased_at"] is not None
+    assert row["lease_expires_at"] is not None
 
 
 async def test_concurrent_claims_never_collide(pool: asyncpg.Pool) -> None:
@@ -72,7 +72,7 @@ async def test_release_frees_the_slot_for_someone_else(pool: asyncpg.Pool) -> No
 
     row = await _row(pool, first)
     assert row["worker_id"] is None
-    assert row["leased_at"] is None
+    assert row["lease_expires_at"] is None
 
     second = await slots.claim(provider="geonode", worker_id="b", lane_index=0)
     assert second == first
@@ -92,9 +92,10 @@ async def test_release_with_the_wrong_worker_id_is_a_no_op(pool: asyncpg.Pool) -
     assert row["worker_id"] == "a"
 
 
-async def test_a_stale_workers_slot_is_reclaimable_without_release(
-    pool: asyncpg.Pool,
-) -> None:
+async def test_a_slot_with_an_expired_lease_is_reclaimable(pool: asyncpg.Pool) -> None:
+    """The lease alone decides reclaimability: no dependency on the holder's
+    worker_id being revoked or its heartbeat going stale, since a restarted
+    process reuses the same worker_id and would otherwise mask this."""
     await _issue(pool, "gone")
     await _issue(pool, "here")
     slots = PostgresProxySlots(pool)
@@ -103,8 +104,9 @@ async def test_a_stale_workers_slot_is_reclaimable_without_release(
     assert claimed is not None
 
     await pool.execute(
-        "UPDATE portal_workers SET last_seen_at = now() - interval '1 hour' "
-        "WHERE worker_id = 'gone'"
+        "UPDATE portal_proxy_slots SET lease_expires_at = now() - interval '1 hour' "
+        "WHERE provider = 'geonode' AND slot_id = $1",
+        claimed,
     )
 
     reclaimed = await slots.claim(provider="geonode", worker_id="here", lane_index=0)
@@ -114,44 +116,7 @@ async def test_a_stale_workers_slot_is_reclaimable_without_release(
     assert row["worker_id"] == "here"
 
 
-async def test_a_revoked_workers_slot_is_reclaimable(pool: asyncpg.Pool) -> None:
-    await _issue(pool, "gone")
-    await _issue(pool, "here")
-    slots = PostgresProxySlots(pool)
-
-    claimed = await slots.claim(provider="geonode", worker_id="gone", lane_index=0)
-    assert claimed is not None
-
-    await PostgresWorkerRegistry(pool).revoke("gone")
-
-    reclaimed = await slots.claim(provider="geonode", worker_id="here", lane_index=0)
-    assert reclaimed == claimed
-
-
-async def test_a_slot_held_by_a_worker_that_never_heartbeat_frees_after_the_window(
-    pool: asyncpg.Pool,
-) -> None:
-    """`issue()` leaves last_seen_at NULL until the first heartbeat, so a
-    worker that crashes before sending one is judged by how long ago its slot
-    was leased instead."""
-    await _issue(pool, "gone")
-    await _issue(pool, "here")
-    slots = PostgresProxySlots(pool)
-
-    claimed = await slots.claim(provider="geonode", worker_id="gone", lane_index=0)
-    assert claimed is not None
-
-    await pool.execute(
-        "UPDATE portal_proxy_slots SET leased_at = now() - interval '1 hour' "
-        "WHERE provider = 'geonode' AND slot_id = $1",
-        claimed,
-    )
-
-    reclaimed = await slots.claim(provider="geonode", worker_id="here", lane_index=0)
-    assert reclaimed == claimed
-
-
-async def test_claim_returns_none_once_every_slot_is_held_by_a_live_worker(
+async def test_claim_returns_none_once_every_slot_has_an_unexpired_lease(
     pool: asyncpg.Pool,
 ) -> None:
     await _issue(pool, "hog")
@@ -159,7 +124,7 @@ async def test_claim_returns_none_once_every_slot_is_held_by_a_live_worker(
 
     await pool.execute(
         "UPDATE portal_proxy_slots SET worker_id = 'hog', lane_index = 0, "
-        "leased_at = now() WHERE provider = 'geonode'"
+        "lease_expires_at = now() + interval '60 seconds' WHERE provider = 'geonode'"
     )
 
     result = await slots.claim(
@@ -167,3 +132,49 @@ async def test_claim_returns_none_once_every_slot_is_held_by_a_live_worker(
     )
 
     assert result is None
+
+
+async def test_renew_extends_a_held_leases_expiry(pool: asyncpg.Pool) -> None:
+    await _issue(pool, "a")
+    slots = PostgresProxySlots(pool)
+
+    claimed = await slots.claim(provider="geonode", worker_id="a", lane_index=0)
+    assert claimed is not None
+
+    await pool.execute(
+        "UPDATE portal_proxy_slots SET lease_expires_at = now() + interval '1 second' "
+        "WHERE provider = 'geonode' AND slot_id = $1",
+        claimed,
+    )
+
+    await slots.renew(worker_id="a", held=[("geonode", claimed)])
+
+    still_fresh = await pool.fetchval(
+        "SELECT lease_expires_at > now() + interval '30 seconds' "
+        "FROM portal_proxy_slots WHERE provider = 'geonode' AND slot_id = $1",
+        claimed,
+    )
+    assert still_fresh
+
+
+async def test_renew_ignores_a_slot_this_worker_does_not_hold(
+    pool: asyncpg.Pool,
+) -> None:
+    await _issue(pool, "a")
+    await _issue(pool, "b")
+    slots = PostgresProxySlots(pool)
+
+    claimed = await slots.claim(provider="geonode", worker_id="a", lane_index=0)
+    assert claimed is not None
+
+    await slots.renew(worker_id="b", held=[("geonode", claimed)])
+
+    row = await _row(pool, claimed)
+    assert row["worker_id"] == "a"
+
+
+async def test_renew_with_no_held_slots_is_a_no_op(pool: asyncpg.Pool) -> None:
+    await _issue(pool, "a")
+    slots = PostgresProxySlots(pool)
+
+    await slots.renew(worker_id="a", held=[])
