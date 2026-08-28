@@ -19,15 +19,18 @@ from fetch.domain.types import Cell, Doc
 from fetch.pipeline.breaker import CircuitBreaker
 from fetch.pipeline.fetch import fetch_one
 from fetch.pipeline.session import WorkerConfig, WorkerState, close_session
-from fetch.proxy.registry import provider_from_values
+from fetch.proxy.registry import provider_from_values, spec_for
 from fetch.sites.registry import SITES
 
 from portal.worker.protocol import (
     ClaimRequest,
+    ClaimSlotRequest,
+    ClaimSlotResponse,
     EnrollRequest,
     EnrollResponse,
     HeartbeatRequest,
     PublishRequest,
+    ReleaseSlotRequest,
     WorkLease,
 )
 
@@ -61,6 +64,8 @@ class LaneSession:
     provider: ProxyProvider | None = None
     key: tuple[str, UUID] | None = None
     idle_polls: int = 0
+    held_slot: int | None = None
+    held_slot_provider: str | None = None
 
 
 class ExecuteResult(TypedDict):
@@ -129,7 +134,10 @@ class WorkerAgent:
         ) as client:
             await asyncio.gather(
                 self._heartbeat_loop(client),
-                *(self._loop(client) for _ in range(self.options.concurrency)),
+                *(
+                    self._loop(client, lane_index)
+                    for lane_index in range(self.options.concurrency)
+                ),
             )
 
     async def _heartbeat_loop(self, client: httpx.AsyncClient) -> None:
@@ -157,7 +165,7 @@ class WorkerAgent:
                 # it must never take down the claim/execute/publish loops.
                 pass
 
-    async def _loop(self, client: httpx.AsyncClient) -> None:
+    async def _loop(self, client: httpx.AsyncClient, lane_index: int) -> None:
         lane = LaneSession()
 
         try:
@@ -175,12 +183,21 @@ class WorkerAgent:
                     continue
 
                 if lease is None:
-                    await self._idle(lane)
+                    await self._idle(client, lane)
                     continue
 
-                provider = await self._adopt(lane, lease)
-
-                result = await self._execute(lane, lease, provider)
+                try:
+                    provider = await self._adopt(client, lane, lease, lane_index)
+                    result = await self._execute(lane, lease, provider, lane_index)
+                except httpx.HTTPError:
+                    # Claiming or releasing a GeoNode slot is a worker-api
+                    # call like /claim and /publish, so it can fail the same
+                    # transient way and must not take down every other
+                    # concurrent lane either. This item's lease is left to
+                    # expire and gets swept back to pending for another lane.
+                    logger.warning("worker_slot_failed", exc_info=True)
+                    await asyncio.sleep(IDLE_POLL_SECONDS)
+                    continue
 
                 try:
                     await self._publish(client, lease, result)
@@ -194,40 +211,77 @@ class WorkerAgent:
                     logger.warning("worker_publish_failed", exc_info=True)
         finally:
             # Cancellation (process shutdown) must not leak a held sticky
-            # session: every other exit from this loop already routes through
-            # _idle/_adopt, which close on their own terms.
-            if lane.provider is not None:
-                with contextlib.suppress(Exception):
-                    await close_session(lane.state, provider=lane.provider)
+            # session or GeoNode slot: every other exit from this loop
+            # already routes through _idle/_adopt, which close on their own
+            # terms.
+            await self._close_and_release(client, lane)
 
-    async def _idle(self, lane: LaneSession) -> None:
+    async def _idle(self, client: httpx.AsyncClient, lane: LaneSession) -> None:
         lane.idle_polls += 1
 
         if lane.provider is not None and lane.idle_polls >= IDLE_SESSION_CLOSE_AFTER:
-            with contextlib.suppress(Exception):
-                await close_session(lane.state, provider=lane.provider)
+            await self._close_and_release(client, lane)
             lane.provider = None
             lane.key = None
 
         await asyncio.sleep(IDLE_POLL_SECONDS)
 
-    async def _adopt(self, lane: LaneSession, lease: WorkLease) -> ProxyProvider:
+    async def _adopt(
+        self,
+        client: httpx.AsyncClient,
+        lane: LaneSession,
+        lease: WorkLease,
+        lane_index: int,
+    ) -> ProxyProvider:
         """Point the lane at this lease's (source, credential), closing
-        whatever session it was holding if that's actually changing."""
+        whatever session/slot it was holding if that's actually changing.
+
+        The held slot is kept for as long as the lane works this provider,
+        not reclaimed per session: GeoNode rotates exit identity through a
+        fresh session id on the same port, so a session reopening under
+        session_budget reuses the slot already held instead of a worker-api
+        round trip. See PostgresProxySlots for the lease contract.
+        """
         key = (lease.source, lease.credential_version_id)
 
-        if lane.key is not None and lane.key != key and lane.provider is not None:
-            with contextlib.suppress(Exception):
-                await close_session(lane.state, provider=lane.provider)
+        if lane.key is not None and lane.key != key:
+            await self._close_and_release(client, lane)
 
         provider = provider_from_values(
             lease.credential.provider, lease.credential.config
         )
+
+        if lane.held_slot is None:
+            lane.held_slot = await self._claim_slot(
+                client, lease.credential.provider, lane_index
+            )
+            lane.held_slot_provider = lease.credential.provider
+
         lane.key = key
         lane.provider = provider
         lane.idle_polls = 0
 
         return provider
+
+    async def _close_and_release(
+        self, client: httpx.AsyncClient, lane: LaneSession
+    ) -> None:
+        """Stop using this provider entirely: close whatever session is open
+        and release the held slot back to the fleet-wide pool. Called when a
+        lane switches to a different (source, credential), goes idle, or
+        shuts down, not on every session reopen. Safe to call whether or not
+        either is currently held."""
+        if lane.provider is not None:
+            with contextlib.suppress(Exception):
+                await close_session(lane.state, provider=lane.provider)
+
+        if lane.held_slot is not None and lane.held_slot_provider is not None:
+            with contextlib.suppress(Exception):
+                await self._release_slot(
+                    client, lane.held_slot_provider, lane.held_slot
+                )
+            lane.held_slot = None
+            lane.held_slot_provider = None
 
     async def _claim(
         self, client: httpx.AsyncClient, affinity: tuple[str, UUID] | None
@@ -284,7 +338,11 @@ class WorkerAgent:
         response.raise_for_status()
 
     async def _execute(
-        self, lane: LaneSession, lease: WorkLease, provider: ProxyProvider
+        self,
+        lane: LaneSession,
+        lease: WorkLease,
+        provider: ProxyProvider,
+        lane_index: int,
     ) -> ExecuteResult:
         provider_name = lease.credential.provider
         site = SITES[lease.source]
@@ -297,15 +355,18 @@ class WorkerAgent:
             ),
         )
 
+        # _adopt runs before _execute in the loop and always sets a slot.
+        assert lane.held_slot is not None
+
         result = await fetch_one(
             site=site,
             state=lane.state,
             doc=Doc(lease.document),
             provider=provider,
             breaker=breaker,
-            slot_id=1,
+            slot_id=lane.held_slot,
             run_id=self.options.worker_id,
-            lane_id=1,
+            lane_id=lane_index + 1,
             cfg=WorkerConfig(
                 session_budget=site.tuning.session_budget,
                 wait_min_s=0,
@@ -322,6 +383,51 @@ class WorkerAgent:
             "rows": [list(row) for row in result.rows],
             "error_code": result.error_code,
         }
+
+    async def _claim_slot(
+        self, client: httpx.AsyncClient, provider_name: str, lane_index: int
+    ) -> int:
+        """A provider's slot_id only needs fleet-wide uniqueness when it maps
+        to a real shared resource (GeoNode's sticky ports). Everything else
+        gets a cheap, purely local assignment with no worker-api round trip."""
+        if spec_for(provider_name).tuning.slot_pool is None:
+            return lane_index + 1
+
+        while True:
+            response = await client.post(
+                "/claim-slot",
+                content=msgspec.json.encode(
+                    ClaimSlotRequest(provider=provider_name, lane_index=lane_index)
+                ),
+                headers={"Content-Type": "application/json"},
+            )
+            response.raise_for_status()
+
+            claimed = msgspec.json.decode(
+                response.content, type=ClaimSlotResponse | None
+            )
+
+            if claimed is not None:
+                return claimed.slot_id
+
+            # Every real slot is leased to a still-live worker somewhere in
+            # the fleet: back off and retry rather than fail this lookup.
+            await asyncio.sleep(IDLE_POLL_SECONDS)
+
+    async def _release_slot(
+        self, client: httpx.AsyncClient, provider_name: str, slot_id: int
+    ) -> None:
+        if spec_for(provider_name).tuning.slot_pool is None:
+            return
+
+        response = await client.post(
+            "/release-slot",
+            content=msgspec.json.encode(
+                ReleaseSlotRequest(provider=provider_name, slot_id=slot_id)
+            ),
+            headers={"Content-Type": "application/json"},
+        )
+        response.raise_for_status()
 
 
 async def self_enroll(

@@ -24,17 +24,21 @@ from portal.domain.models import AuditAction, AuditEvent, WorkerIdentity
 from portal.repository.audit import PostgresAuditLog
 from portal.repository.breakers import PostgresCircuitBreakers
 from portal.repository.jobs import PostgresJobRepository
+from portal.repository.slots import PostgresProxySlots
 from portal.repository.workers import PostgresWorkerRegistry
 from portal.security import new_worker_credential
 from portal.storage.port import ObjectReference, ObjectStorage
 from portal.worker.protocol import (
     ClaimRequest,
+    ClaimSlotRequest,
+    ClaimSlotResponse,
     CredentialLease,
     EnrollRequest,
     EnrollResponse,
     HeartbeatRequest,
     PublishRequest,
     PublishResult,
+    ReleaseSlotRequest,
     WorkLease,
 )
 
@@ -74,6 +78,10 @@ def provide_audit(state: State) -> PostgresAuditLog:
 
 def provide_breakers(state: State) -> PostgresCircuitBreakers:
     return state.breakers
+
+
+def provide_slots(state: State) -> PostgresProxySlots:
+    return state.slots
 
 
 def provide_storage(state: State) -> ObjectStorage:
@@ -229,6 +237,34 @@ async def worker_publish(
     return PublishResult(published=published)
 
 
+@post("/claim-slot", status_code=200)
+async def worker_claim_slot(
+    data: ClaimSlotRequest,
+    worker: NamedDependency[WorkerIdentity],
+    slots: NamedDependency[PostgresProxySlots],
+) -> ClaimSlotResponse | None:
+    slot_id = await slots.claim(
+        provider=data.provider,
+        worker_id=worker.worker_id,
+        lane_index=data.lane_index,
+    )
+
+    return None if slot_id is None else ClaimSlotResponse(slot_id=slot_id)
+
+
+@post("/release-slot", status_code=204)
+async def worker_release_slot(
+    data: ReleaseSlotRequest,
+    worker: NamedDependency[WorkerIdentity],
+    slots: NamedDependency[PostgresProxySlots],
+) -> None:
+    await slots.release(
+        provider=data.provider,
+        slot_id=data.slot_id,
+        worker_id=worker.worker_id,
+    )
+
+
 @post("/heartbeat", status_code=204)
 async def worker_heartbeat(
     data: HeartbeatRequest,
@@ -263,7 +299,14 @@ def _unusable_credential(
     return _reason_response(error, status_code=409)
 
 
-handlers = (worker_enroll, worker_claim, worker_publish, worker_heartbeat)
+handlers = (
+    worker_enroll,
+    worker_claim,
+    worker_publish,
+    worker_claim_slot,
+    worker_release_slot,
+    worker_heartbeat,
+)
 
 EXCEPTION_HANDLERS: ExceptionHandlersMap = {
     CredentialConfigurationError: _unusable_credential,

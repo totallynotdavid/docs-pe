@@ -62,6 +62,20 @@ class PublishResult(msgspec.Struct, frozen=True):
     published: bool
 
 
+class ClaimSlotRequest(msgspec.Struct, frozen=True):
+    provider: str
+    lane_index: int
+
+
+class ClaimSlotResponse(msgspec.Struct, frozen=True):
+    slot_id: int
+
+
+class ReleaseSlotRequest(msgspec.Struct, frozen=True):
+    provider: str
+    slot_id: int
+
+
 class HeartbeatRequest(msgspec.Struct, frozen=True):
     """Resource snapshot shown on the admin health page."""
 
