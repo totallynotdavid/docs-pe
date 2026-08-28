@@ -642,8 +642,12 @@ CREATE UNIQUE INDEX portal_job_items_excluded_unique_idx
     ON portal_job_items (job_id, ordinal)
     WHERE source IS NULL;
 
+-- Keyed (job_id, source, ordinal) rather than just (job_id, ordinal): the
+-- claim queries in portal/repository/jobs.py filter by source per tier, and
+-- without source in the index a per-job scan has to walk every pending item
+-- in ordinal order until one matches instead of seeking straight to it.
 CREATE INDEX portal_job_items_claim_idx
-    ON portal_job_items (job_id, ordinal)
+    ON portal_job_items (job_id, source, ordinal)
     WHERE state = 'pending';
 
 CREATE INDEX portal_job_items_team_entry_idx

@@ -64,29 +64,44 @@ UPDATE portal_jobs job
 RETURNING job.id
 """
 
-_CLAIM_ONE = """
+# Claiming is split into two queries rather than one CASE-prioritized ORDER BY,
+# and each picks its item through a LATERAL join rather than a flat one.
+# A CASE over runtime parameters isn't index-servable, and neither is a flat
+# ORDER BY job.queue_sequence, item.ordinal across a join: portal_job_items
+# has no queue_sequence column, so an index can only order items within one
+# job, never across the running jobs being compared. A flat join therefore
+# has to pull every pending item for every candidate job into one set before
+# it can sort and take the top one (confirmed live: tens of thousands of rows
+# materialized and disk-sorted per claim, ~1-1.7s, even after adding the
+# per-job partial index). The running-jobs set is small (single digits), so
+# LATERAL inverts this: for each candidate job, pull just its own best item
+# with an ordered index-scan LIMIT 1, then sort only that handful of winners
+# by queue_sequence. Confirmed against a full production copy: both tiers
+# dropped to single-digit milliseconds, index scans throughout, no sort
+# spilling to disk.
+_CLAIM_AFFINITY = """
 WITH candidate AS (
-    SELECT item.id, job.lease_fence, job.credential_version_id
-      FROM portal_job_items AS item
-      JOIN portal_jobs AS job ON job.id = item.job_id
+    SELECT top_item.id AS item_id, job.lease_fence, job.credential_version_id
+      FROM portal_jobs AS job
       JOIN portal_team_proxy_credential_versions AS version
         ON version.id = job.credential_version_id
-      LEFT JOIN portal_circuit_breakers AS breaker
-        ON breaker.source = item.source
-       AND breaker.provider = version.provider
-     WHERE item.state = 'pending'
-       AND job.state = 'running'
-       AND item.source = ANY($2::text[])
-       AND (breaker.open_until IS NULL OR breaker.open_until <= now())
-     ORDER BY
-       -- Prefer work matching the lane's current provider session.
-       CASE
-           WHEN item.source = $3 AND job.credential_version_id = $4 THEN 0
-           ELSE 1
-       END,
-       job.queue_sequence,
-       item.ordinal
-     FOR UPDATE OF item SKIP LOCKED
+      CROSS JOIN LATERAL (
+          SELECT item.id
+            FROM portal_job_items AS item
+            LEFT JOIN portal_circuit_breakers AS breaker
+              ON breaker.source = item.source
+             AND breaker.provider = version.provider
+           WHERE item.job_id = job.id
+             AND item.state = 'pending'
+             AND item.source = $2
+             AND (breaker.open_until IS NULL OR breaker.open_until <= now())
+           ORDER BY item.ordinal
+           FOR UPDATE OF item SKIP LOCKED
+           LIMIT 1
+      ) AS top_item
+     WHERE job.state = 'running'
+       AND job.credential_version_id = $3
+     ORDER BY job.queue_sequence
      LIMIT 1
 )
 UPDATE portal_job_items AS item
@@ -96,7 +111,63 @@ UPDATE portal_job_items AS item
        lease_expires_at = now() + interval '5 minutes',
        attempts = item.attempts + 1
   FROM candidate
- WHERE item.id = candidate.id
+ WHERE item.id = candidate.item_id
+RETURNING
+    item.id,
+    item.job_id,
+    item.source,
+    item.document,
+    item.lease_fence,
+    candidate.credential_version_id
+"""
+
+# Plain FIFO fallback: no session to prefer, or the affinity tier found
+# nothing to claim. `sources` can hold several values, so the per-job LATERAL
+# nests one level deeper: unnest the source list and take each source's own
+# claim_idx-served top item, then pick the lowest-ordinal one of those before
+# ever comparing across jobs. Picking a single item.source = ANY($2) directly
+# (no inner per-source LATERAL) made Postgres fall back to an ordinal-first
+# index instead of the per-source partial index, which has to walk past every
+# already-claimed item ahead of the next pending one (confirmed live: ~185ms
+# on a job deep in its backlog, vs <10ms with the extra nesting).
+_CLAIM_ANY = """
+WITH candidate AS (
+    SELECT top_item.id AS item_id, job.lease_fence, job.credential_version_id
+      FROM portal_jobs AS job
+      JOIN portal_team_proxy_credential_versions AS version
+        ON version.id = job.credential_version_id
+      CROSS JOIN LATERAL (
+          SELECT top_source.id
+            FROM unnest($2::text[]) AS wanted(source)
+            CROSS JOIN LATERAL (
+                SELECT item.id, item.ordinal
+                  FROM portal_job_items AS item
+                  LEFT JOIN portal_circuit_breakers AS breaker
+                    ON breaker.source = item.source
+                   AND breaker.provider = version.provider
+                 WHERE item.job_id = job.id
+                   AND item.state = 'pending'
+                   AND item.source = wanted.source
+                   AND (breaker.open_until IS NULL OR breaker.open_until <= now())
+                 ORDER BY item.ordinal
+                 FOR UPDATE OF item SKIP LOCKED
+                 LIMIT 1
+            ) AS top_source
+           ORDER BY top_source.ordinal
+           LIMIT 1
+      ) AS top_item
+     WHERE job.state = 'running'
+     ORDER BY job.queue_sequence
+     LIMIT 1
+)
+UPDATE portal_job_items AS item
+   SET state = 'running',
+       lease_owner = $1,
+       lease_fence = candidate.lease_fence,
+       lease_expires_at = now() + interval '5 minutes',
+       attempts = item.attempts + 1
+  FROM candidate
+ WHERE item.id = candidate.item_id
 RETURNING
     item.id,
     item.job_id,
@@ -783,13 +854,25 @@ class PostgresJobRepository:
         async with self._pool.acquire() as connection, connection.transaction():
             await self._sweep_expired_locked(connection)
 
-            row = await connection.fetchrow(
-                _CLAIM_ONE,
-                worker_id,
-                list(sources),
-                affinity_source,
-                affinity_credential_version_id,
-            )
+            row = None
+
+            if (
+                affinity_source is not None
+                and affinity_credential_version_id is not None
+            ):
+                row = await connection.fetchrow(
+                    _CLAIM_AFFINITY,
+                    worker_id,
+                    affinity_source,
+                    affinity_credential_version_id,
+                )
+
+            if row is None:
+                row = await connection.fetchrow(
+                    _CLAIM_ANY,
+                    worker_id,
+                    list(sources),
+                )
 
         if row is None:
             return None
@@ -1032,9 +1115,7 @@ class PostgresJobRepository:
             job_id,
             JobState(row["state"]),
         )
-        # Promotion reads and updates the fleet-wide active-job count, so it
-        # needs the queue gate. Only a drain reaches this point, so claim()
-        # and publish() no longer serialize on every call just to get here.
+        # Promotion updates the fleet-wide active-job count under the queue gate.
         await self._lock_queue_gate(connection)
         await self._promote_locked(connection)
 
