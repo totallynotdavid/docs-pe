@@ -130,13 +130,15 @@ class Result:
     # The HTTP session UUID and sticky proxy identifier are different values.
     http_session_id: str = ""
     proxy_id: str = ""
+    provider: str = ""
 
     attempt: int = 0
 
 
-# Workers update this in place so partial progress survives a failed run.
 @dataclass
 class RunTotals:
+    """In-memory counters used for the summary of one process run."""
+
     processed: int = 0
     succeeded: int = 0
     not_found: int = 0

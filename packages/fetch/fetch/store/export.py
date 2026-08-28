@@ -20,6 +20,7 @@ ERROR_HEADERS = [
     "attempt",
     "session_id",
     "proxy_id",
+    "provider",
     "timestamp",
 ]
 NOT_FOUND_HEADERS = ["doc", "timestamp"]

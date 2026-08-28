@@ -51,9 +51,9 @@ async def _ready(client: httpx.AsyncClient, site: Site) -> None:
     last_error = ""
 
     while time.monotonic() < deadline:
+        # Redirect errors bypass the custom transport normalization.
         try:
             response = await client.get(_HOME.url)
-        # Redirect failures escape the custom transport normalization.
         except (TransientTransportError, httpx.HTTPError) as exc:
             last_error = f"{type(exc).__name__}: {exc}"
             await asyncio.sleep(_READY_POLL_S)

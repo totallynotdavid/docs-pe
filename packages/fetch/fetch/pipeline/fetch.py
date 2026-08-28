@@ -92,6 +92,7 @@ async def fetch_one(
                 rows=rows,
                 http_session_id=session.session_id,
                 proxy_id=session.proxy.proxy_id,
+                provider=provider.name,
                 attempt=attempt,
             )
 
@@ -125,6 +126,7 @@ async def fetch_one(
                 status=Status.NOT_FOUND,
                 http_session_id=session.session_id,
                 proxy_id=session.proxy.proxy_id,
+                provider=provider.name,
                 attempt=attempt,
             )
 
@@ -193,6 +195,7 @@ async def fetch_one(
                     made_healthy_contact=not breaker.is_open(),
                     http_session_id=session_id,
                     proxy_id=proxy_id,
+                    provider=provider.name,
                     attempt=attempt,
                 )
 

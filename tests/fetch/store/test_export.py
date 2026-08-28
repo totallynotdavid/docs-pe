@@ -36,6 +36,7 @@ def _failure(site: str, doc: str) -> Result:
         attempt=4,
         http_session_id="sess",
         proxy_id="proxy",
+        provider="geonode",
     )
 
 
@@ -131,9 +132,10 @@ def test_export_site_writes_error_rows_with_the_fixed_headers(
         "sess",
         "proxy",
     ]
+    assert rows[1][6] == "geonode"
     assert re.fullmatch(
         r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(\+\d{2}:\d{2}|Z)?",
-        rows[1][6],
+        rows[1][7],
     )
 
 

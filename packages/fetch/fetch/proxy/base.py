@@ -44,7 +44,7 @@ class ProxyProvider(Protocol):
 
 @dataclass(frozen=True)
 class Field:
-    """One configuration field shared by env loading, the portal, and provider construction."""
+    """One configuration field shared by loading, validation, and the portal."""
 
     name: str
     secret: bool = False
@@ -52,10 +52,7 @@ class Field:
     default: str = ""
     # Empty means free text; normalize still validates.
     choices: tuple[str, ...] = ()
-    # A fine-tuning knob the portal collapses behind "advanced settings" by
-    # default. Independent of required: lifetime_minutes is required (it
-    # always has a value, just a defaulted one) but still advanced, same as
-    # gateway/proxy_type/country are required but not advanced.
+    # The portal hides fine-tuning fields until the advanced settings are shown.
     advanced: bool = False
 
 
@@ -109,7 +106,7 @@ def country_code(raw: Mapping[str, str], name: str, *, lowercase: bool = False) 
     value = required(raw, name)
     code = value.lower() if lowercase else value.upper()
     if len(code) != 2 or not code.isalpha():
-        # OSIPTEL requires Peru exits, so reject malformed country codes early.
+        # Reject malformed country codes before provider construction.
         msg = f"{name} must be a two-letter country code"
         raise ProxyConfigurationError(msg)
     return code

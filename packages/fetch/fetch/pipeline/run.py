@@ -39,6 +39,13 @@ async def run(cfg: RunConfig, *, run_id: str) -> None:
     providers = load_proxy_providers()
 
     with OutcomeStore(state_path_for_output(cfg.output_csv)) as store:
+        store.start_run(
+            run_id=run_id,
+            input_path=cfg.input_csv,
+            output_path=cfg.output_csv,
+            sites=tuple(site.name for site in sites),
+            providers=tuple(provider.name for provider in providers),
+        )
         if cfg.do_import:
             for site in sites:
                 imported = import_site(
@@ -115,6 +122,7 @@ async def run(cfg: RunConfig, *, run_id: str) -> None:
                 totals=totals,
                 unrouted=unrouted,
             )
+            store.finish_run(run_id)
 
 
 async def _run_workers(
@@ -148,8 +156,14 @@ async def _run_workers(
             for provider in providers:
                 # Isolate outages by site and provider.
                 breaker = CircuitBreaker(
-                    provider=f"{site.name}:{provider.name}",
+                    provider=provider.name,
+                    source=site.name,
                     run_id=run_id,
+                    initial=store.breaker_state(
+                        source=site.name,
+                        provider=provider.name,
+                    ),
+                    on_change=store.record_breaker,
                 )
                 worker_cfg = WorkerConfig(
                     session_budget=budget,

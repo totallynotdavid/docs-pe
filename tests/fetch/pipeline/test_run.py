@@ -163,6 +163,7 @@ def test_run_exports_failures_to_the_errors_csv(
         "attempt",
         "session_id",
         "proxy_id",
+        "provider",
         "timestamp",
     ]
     assert rows[1][0] == "20100000001"

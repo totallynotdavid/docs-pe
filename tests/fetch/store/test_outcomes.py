@@ -19,6 +19,7 @@ def _success(site: str, doc: str, rows: tuple[Row, ...]) -> Result:
         rows=rows,
         http_session_id="sess",
         proxy_id="proxy",
+        provider="geonode",
     )
 
 
@@ -29,6 +30,7 @@ def _not_found(site: str, doc: str) -> Result:
         status=Status.NOT_FOUND,
         http_session_id="sess",
         proxy_id="proxy",
+        provider="geonode",
         attempt=1,
     )
 
@@ -40,6 +42,7 @@ def _failure(site: str, doc: str, *, attempt: int, healthy: bool = True) -> Resu
         status=Status.FAILED,
         error_code="ban_signal",
         error_detail="blocked",
+        provider="dataimpulse",
         made_healthy_contact=healthy,
         attempt=attempt,
     )
@@ -65,6 +68,13 @@ def test_failed_attempts_accumulate_across_records(store: OutcomeStore) -> None:
     store.record_failure(_failure("osiptel", "20100000001", attempt=4))
     attempt_column = next(iter(store.error_rows("osiptel")))[3]
     assert attempt_column == "8"
+
+
+def test_outcome_records_the_provider_without_parsing_the_proxy_id(
+    store: OutcomeStore,
+) -> None:
+    store.record_failure(_failure("osiptel", "20100000001", attempt=1))
+    assert next(iter(store.error_rows("osiptel")))[6] == "dataimpulse"
 
 
 def test_a_pair_retires_once_attempts_reach_the_cap(store: OutcomeStore) -> None:
