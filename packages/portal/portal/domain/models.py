@@ -360,6 +360,7 @@ class Job:
 class ClaimedWork:
     item_id: UUID
     job_id: UUID
+    team_id: UUID
     source: str
     document: str
     lease_fence: int

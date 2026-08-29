@@ -25,7 +25,7 @@ from portal.repository.audit import PostgresAuditLog
 from portal.repository.breakers import PostgresCircuitBreakers
 from portal.repository.jobs import PostgresJobRepository
 from portal.repository.slots import PostgresProxySlots
-from portal.repository.workers import PostgresWorkerRegistry
+from portal.repository.workers import PostgresWorkerRegistry, worker_database_dsn
 from portal.security import new_worker_credential
 from portal.storage.port import ObjectReference, ObjectStorage
 from portal.worker.protocol import (
@@ -39,6 +39,7 @@ from portal.worker.protocol import (
     PublishRequest,
     PublishResult,
     ReleaseSlotRequest,
+    RevealCredentialRequest,
     WorkLease,
 )
 
@@ -117,6 +118,14 @@ async def worker_enroll(
         data.tailscale_hostname,
     )
 
+    database_password = new_worker_credential()
+    await workers.provision_login_role(data.worker_id, database_password)
+    database_dsn = worker_database_dsn(
+        state.settings.database_dsn,
+        data.worker_id,
+        database_password,
+    )
+
     await audit.record(
         AuditEvent(
             action=AuditAction.WORKER_ISSUED,
@@ -130,7 +139,7 @@ async def worker_enroll(
         )
     )
 
-    return EnrollResponse(credential=credential)
+    return EnrollResponse(credential=credential, database_dsn=database_dsn)
 
 
 @post("/claim", status_code=200)
@@ -156,9 +165,8 @@ async def worker_claim(
     if credential is None:
         raise HTTPException(status_code=409, detail="credential not available")
 
-    # The only place stored proxy configuration is decrypted. The plaintext goes
-    # straight into the response and is never written back to the database or
-    # the log, and the audit row below is what makes the read accountable.
+    # Keep plaintext configuration out of storage and logs. The audit row below
+    # records each reveal.
     config = decode_config(protector.reveal(credential.config))
 
     await audit.record(
@@ -180,6 +188,35 @@ async def worker_claim(
         credential_version_id=claim.credential_version_id,
         credential=CredentialLease(provider=credential.provider, config=config),
     )
+
+
+@post("/reveal-credential", status_code=200)
+async def worker_reveal_credential(
+    data: RevealCredentialRequest,
+    worker: NamedDependency[WorkerIdentity],
+    worker_jobs: NamedDependency[PostgresJobRepository],
+    protector: NamedDependency[EnvelopeProtector],
+    audit: NamedDependency[PostgresAuditLog],
+) -> CredentialLease:
+    """Return the selected proxy configuration to an authenticated worker."""
+    credential = await worker_jobs.credential_for_version(data.credential_version_id)
+
+    if credential is None:
+        raise HTTPException(status_code=409, detail="credential not available")
+
+    config = decode_config(protector.reveal(credential.config))
+
+    await audit.record(
+        AuditEvent(
+            action=AuditAction.CREDENTIAL_REVEALED,
+            actor_id=worker.id,
+            target_type="credential_version",
+            target_id=data.credential_version_id,
+            metadata={"worker_id": worker.worker_id},
+        )
+    )
+
+    return CredentialLease(provider=credential.provider, config=config)
 
 
 @post("/publish", status_code=200)
@@ -317,6 +354,7 @@ def _unusable_credential(
 
 handlers = (
     worker_enroll,
+    worker_reveal_credential,
     worker_claim,
     worker_publish,
     worker_claim_slot,

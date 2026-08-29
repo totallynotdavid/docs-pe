@@ -5,6 +5,7 @@ import re
 
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
 from portal.domain.errors import PermissionDenied, ProvisioningError, Reason
@@ -23,7 +24,7 @@ HEARTBEAT_STALE_AFTER = timedelta(seconds=45)
 
 
 class PostgresWorkerRegistry:
-    """Per-worker identities for portal-worker-api.
+    """Per-worker identities for `worker-api`.
 
     Being on the tailnet says a request came from some worker node; this says
     which one, and lets a single compromised node be cut off immediately
@@ -118,6 +119,37 @@ class PostgresWorkerRegistry:
             current_job_id,
         )
 
+    async def provision_login_role(self, worker_id: str, password: str) -> None:
+        """Create or re-key the worker's scoped Postgres login role."""
+        role = worker_role_name(worker_id)
+        escaped_password = password.replace("'", "''")
+
+        async with self._pool.acquire() as connection, connection.transaction():
+            exists = await connection.fetchval(
+                "SELECT 1 FROM pg_roles WHERE rolname = $1", role
+            )
+
+            if not exists:
+                await connection.execute(f'CREATE ROLE "{role}" NOLOGIN')
+
+            await connection.execute(
+                f'ALTER ROLE "{role}" LOGIN '
+                f"PASSWORD '{escaped_password}' CONNECTION LIMIT 5"
+            )
+            await connection.execute(f'GRANT portal_worker_base TO "{role}"')
+
+    async def revoke_login_role(self, worker_id: str) -> None:
+        """Disable a worker's direct Postgres login role when it exists."""
+        role = worker_role_name(worker_id)
+
+        async with self._pool.acquire() as connection:
+            exists = await connection.fetchval(
+                "SELECT 1 FROM pg_roles WHERE rolname = $1", role
+            )
+
+            if exists:
+                await connection.execute(f'ALTER ROLE "{role}" NOLOGIN')
+
     async def all_workers_with_status(self) -> tuple[WorkerStatus, ...]:
         rows = await self._pool.fetch(
             """
@@ -153,3 +185,24 @@ def valid_worker_id(worker_id: str) -> str:
         raise ProvisioningError(Reason.WORKER_ID_INVALID)
 
     return candidate
+
+
+def worker_role_name(worker_id: str) -> str:
+    """Return the Postgres login role name for a worker."""
+    role = f"portal_worker_{valid_worker_id(worker_id)}"
+
+    if len(role) > 63:
+        raise ProvisioningError(Reason.WORKER_ID_INVALID)
+
+    return role
+
+
+def worker_database_dsn(admin_dsn: str, worker_id: str, password: str) -> str:
+    """Return the portal database DSN for a worker's scoped login role."""
+    parts = urlsplit(admin_dsn)
+    netloc = f"{worker_role_name(worker_id)}:{password}@{parts.hostname}"
+
+    if parts.port:
+        netloc += f":{parts.port}"
+
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))

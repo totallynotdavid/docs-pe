@@ -10,7 +10,6 @@ from core.domain.types import Row
 class ClaimRequest(msgspec.Struct, frozen=True):
     sources: tuple[str, ...] = ()
 
-    # The session currently held by the requesting lane, if any.
     affinity_source: str | None = None
     affinity_credential_version_id: UUID | None = None
 
@@ -48,27 +47,24 @@ class AttemptRecord(msgspec.Struct, frozen=True):
 
 
 class PublishRequest(msgspec.Struct, frozen=True):
+    """A worker result and the facts needed for fleet accounting."""
+
     item_id: UUID
     fence: int
     lane_index: int
 
-    # These fields drive fleet circuit-breaker accounting. `content` is opaque.
     source: str
     provider: str
     healthy_contact: bool
 
-    # The queryable result for this (document, source) pair.
     document: str
     status: str
     columns: tuple[str, ...]
     rows: tuple[Row, ...]
     error_code: str | None
 
-    # Base64-encoded raw result for audit and replay.
     content: str
 
-    # Every attempt fetch_one made resolving this document, not just the
-    # final one: see portal_lookup_attempts (packages/portal/portal/migrations).
     attempts: tuple[AttemptRecord, ...] = ()
 
 
@@ -113,3 +109,9 @@ class EnrollRequest(msgspec.Struct, frozen=True):
 
 class EnrollResponse(msgspec.Struct, frozen=True):
     credential: str
+
+    database_dsn: str
+
+
+class RevealCredentialRequest(msgspec.Struct, frozen=True):
+    credential_version_id: UUID

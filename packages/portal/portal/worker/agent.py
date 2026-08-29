@@ -8,10 +8,14 @@ import json
 import logging
 import os
 import signal
+import sys
+import time
 
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, TypedDict
 
+import asyncpg
 import httpx
 import msgspec
 import psutil
@@ -23,17 +27,16 @@ from core.pipeline.session import WorkerConfig, WorkerState, close_session
 from core.proxy.registry import provider_from_values, spec_for
 from core.sites.registry import SITES
 
+from portal.repository.jobs import PostgresJobRepository
+from portal.repository.slots import PostgresProxySlots
+from portal.repository.workers import PostgresWorkerRegistry
 from portal.worker.protocol import (
     AttemptRecord,
-    ClaimRequest,
-    ClaimSlotRequest,
-    ClaimSlotResponse,
+    CredentialLease,
     EnrollRequest,
     EnrollResponse,
-    HeartbeatRequest,
-    HeldSlot,
     PublishRequest,
-    ReleaseSlotRequest,
+    RevealCredentialRequest,
     WorkLease,
 )
 
@@ -44,19 +47,36 @@ if TYPE_CHECKING:
 
     from core.proxy.base import ProxyProvider
 
+    from portal.domain.models import ClaimedWork
+
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONCURRENCY = 4
-IDLE_POLL_SECONDS = 2
 
-# How many consecutive empty claims (no matching work anywhere) a lane waits
-# before releasing a session it's holding open. Keeps a quiet lane from
-# sitting on a sticky proxy session indefinitely while nothing needs it.
+# Close a sticky session after repeated empty dispatch cycles.
 IDLE_SESSION_CLOSE_AFTER = 5
 
 # Keep the heartbeat shorter than the worker staleness window.
 HEARTBEAT_INTERVAL_SECONDS = 15
+
+# Polling catches a missed notification and a breaker reopening without a row
+# change.
+DISPATCH_BASE_BACKOFF_SECONDS = 5.0
+DISPATCH_MAX_BACKOFF_SECONDS = 20.0
+
+DISPATCH_DEBOUNCE_SECONDS = 0.25
+
+LISTEN_CHANNEL = "portal_work_available"
+LISTEN_RECONNECT_BASE_SECONDS = 1.0
+LISTEN_RECONNECT_MAX_SECONDS = 30.0
+
+# Expire cached credentials so rotation takes effect without a worker restart.
+CREDENTIAL_CACHE_SIZE = 32
+CREDENTIAL_CACHE_TTL_SECONDS = 300
+
+# How long a slot-claim retry waits when every real slot is leased elsewhere.
+SLOT_WAIT_SECONDS = 2
 
 
 @dataclass
@@ -95,72 +115,95 @@ class ExecuteResult(TypedDict):
 class AgentOptions:
     worker_api_url: str
     credential: str
+    database_dsn: str
     worker_id: str
     sources: tuple[str, ...]
     concurrency: int = DEFAULT_CONCURRENCY
 
 
 class WorkerAgent:
-    """Claim, execute, and publish work through the worker API.
-
-    Each lane keeps a provider session for compatible claims. Workers hold no
-    database credentials.
-    """
+    """Claim, execute, and publish work through the worker API and Postgres."""
 
     def __init__(self, options: AgentOptions) -> None:
         self.options = options
         self._breakers: dict[tuple[str, str], CircuitBreaker] = {}
         # The health page shows the most recently claimed job, not per-lane state.
         self._current_job_id: UUID | None = None
-        # The heartbeat renews the slots currently held by these lanes.
         self._lanes = [LaneSession() for _ in range(options.concurrency)]
+        self._queues: list[asyncio.Queue[ClaimedWork]] = [
+            asyncio.Queue(maxsize=1) for _ in range(options.concurrency)
+        ]
+        self._idle_lanes: set[int] = set()
+        self._wake = asyncio.Event()
+        self._credential_cache: OrderedDict[UUID, tuple[CredentialLease, float]] = (
+            OrderedDict()
+        )
 
     async def run(self) -> None:
+        """Run the worker with resources created from its configuration."""
+        pool = await asyncpg.create_pool(
+            self.options.database_dsn,
+            min_size=2,
+            max_size=max(4, self.options.concurrency + 2),
+        )
+
         headers = {
             "Authorization": f"Bearer {self.options.credential}",
             "X-Portal-Worker": self.options.worker_id,
         }
 
-        # Idle pooled connections can be closed by a relayed tailnet path while
-        # a lookup is in progress. These control-plane calls avoid keep-alive
-        # reuse so the next request establishes a fresh connection.
+        # Avoid reusing an idle HTTP connection after a long lookup.
         transport = httpx.AsyncHTTPTransport(retries=2)
         limits = httpx.Limits(max_keepalive_connections=0)
 
-        async with httpx.AsyncClient(
-            base_url=self.options.worker_api_url,
-            headers=headers,
-            timeout=90,
-            transport=transport,
-            limits=limits,
-        ) as client:
-            tasks = [
-                asyncio.create_task(self._heartbeat_loop(client)),
-                *(
-                    asyncio.create_task(self._loop(client, lane_index))
-                    for lane_index in range(self.options.concurrency)
-                ),
-            ]
+        try:
+            async with httpx.AsyncClient(
+                base_url=self.options.worker_api_url,
+                headers=headers,
+                timeout=90,
+                transport=transport,
+                limits=limits,
+            ) as client:
+                await self.run_with(pool, client)
+        finally:
+            await pool.close()
 
-            # Cancellation lets each lane release its session and slot before
-            # the container stop grace period ends.
-            stop = asyncio.Event()
-            loop = asyncio.get_running_loop()
-            for sig in (signal.SIGTERM, signal.SIGINT):
-                loop.add_signal_handler(sig, stop.set)
+    async def run_with(self, pool: asyncpg.Pool, client: httpx.AsyncClient) -> None:
+        jobs = PostgresJobRepository(pool)
+        workers = PostgresWorkerRegistry(pool)
+        slots = PostgresProxySlots(pool)
 
-            stop_waiter = asyncio.create_task(stop.wait())
-            try:
-                await asyncio.wait(
-                    [stop_waiter, *tasks], return_when=asyncio.FIRST_COMPLETED
-                )
-            finally:
-                stop_waiter.cancel()
-                for task in tasks:
-                    task.cancel()
-                await asyncio.gather(*tasks, return_exceptions=True)
+        tasks = [
+            asyncio.create_task(self._heartbeat_loop(workers, slots)),
+            asyncio.create_task(self._listen_loop()),
+            asyncio.create_task(self._dispatch_loop(jobs)),
+            *(
+                asyncio.create_task(self._lane_loop(client, slots, lane_index))
+                for lane_index in range(self.options.concurrency)
+            ),
+        ]
 
-    async def _heartbeat_loop(self, client: httpx.AsyncClient) -> None:
+        # Cancellation lets each lane release its session and slot before the
+        # container stop grace period ends.
+        stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, stop.set)
+
+        stop_waiter = asyncio.create_task(stop.wait())
+        try:
+            await asyncio.wait(
+                [stop_waiter, *tasks], return_when=asyncio.FIRST_COMPLETED
+            )
+        finally:
+            stop_waiter.cancel()
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _heartbeat_loop(
+        self, workers: PostgresWorkerRegistry, slots: PostgresProxySlots
+    ) -> None:
         process = psutil.Process()
         process.cpu_percent()  # First call only primes the internal baseline.
 
@@ -170,109 +213,250 @@ class WorkerAgent:
             # Renew only the slots still held by these lanes. A removed slot
             # must expire instead of being renewed by stale process state.
             held_slots = tuple(
-                HeldSlot(provider=lane.held_slot_provider, slot_id=lane.held_slot)
+                (lane.held_slot_provider, lane.held_slot)
                 for lane in self._lanes
                 if lane.held_slot is not None and lane.held_slot_provider is not None
             )
 
             try:
-                response = await client.post(
-                    "/heartbeat",
-                    content=msgspec.json.encode(
-                        HeartbeatRequest(
-                            cpu_percent=process.cpu_percent(),
-                            memory_mb=process.memory_info().rss / (1024 * 1024),
-                            current_job_id=self._current_job_id,
-                            held_slots=held_slots,
-                        )
-                    ),
-                    headers={"Content-Type": "application/json"},
+                await workers.record_heartbeat(
+                    self.options.worker_id,
+                    cpu_percent=process.cpu_percent(),
+                    memory_mb=process.memory_info().rss / (1024 * 1024),
+                    current_job_id=self._current_job_id,
                 )
-                response.raise_for_status()
-            except httpx.HTTPError:
+                await slots.renew(worker_id=self.options.worker_id, held=held_slots)
+            except (asyncpg.PostgresError, OSError):
                 # A missed heartbeat just makes the worker look briefly stale;
                 # it must never take down the claim/execute/publish loops.
-                pass
+                logger.warning("worker_heartbeat_failed", exc_info=True)
 
-    async def _loop(self, client: httpx.AsyncClient, lane_index: int) -> None:
+    async def _listen_loop(self) -> None:
+        """Wake the dispatcher when PostgreSQL reports claimable work."""
+        delay = LISTEN_RECONNECT_BASE_SECONDS
+
+        while True:
+            try:
+                connection = await asyncpg.connect(self.options.database_dsn)
+            except (asyncpg.PostgresError, OSError):
+                logger.warning("worker_listen_connect_failed", exc_info=True)
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, LISTEN_RECONNECT_MAX_SECONDS)
+                continue
+
+            delay = LISTEN_RECONNECT_BASE_SECONDS
+
+            try:
+                await self._listen_until_terminated(connection)
+            except (asyncpg.PostgresError, OSError):
+                logger.warning("worker_listen_failed", exc_info=True)
+            finally:
+                with contextlib.suppress(Exception):
+                    await connection.close()
+
+    async def _listen_until_terminated(self, connection: asyncpg.Connection) -> None:
+        terminated = asyncio.Event()
+
+        def _on_terminate(*_args: object) -> None:
+            terminated.set()
+
+        await connection.add_listener(LISTEN_CHANNEL, lambda *_args: self._wake.set())
+        connection.add_termination_listener(_on_terminate)
+        self._wake.set()
+        await terminated.wait()
+
+    async def _dispatch_loop(self, jobs: PostgresJobRepository) -> None:
+        backoff = DISPATCH_BASE_BACKOFF_SECONDS
+
+        while True:
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self._wake.wait(), timeout=backoff)
+            self._wake.clear()
+
+            await asyncio.sleep(DISPATCH_DEBOUNCE_SECONDS)
+            self._wake.clear()
+
+            try:
+                claimed_total = await self._dispatch_once(jobs)
+            except (asyncpg.PostgresError, OSError):
+                claimed_total = 0
+                logger.warning("worker_claim_failed", exc_info=True)
+
+            backoff = (
+                DISPATCH_BASE_BACKOFF_SECONDS
+                if claimed_total
+                else min(backoff * 2, DISPATCH_MAX_BACKOFF_SECONDS)
+            )
+
+    async def _dispatch_once(self, jobs: PostgresJobRepository) -> int:
+        idle = list(self._idle_lanes)
+
+        if not idle:
+            return 0
+
+        groups: dict[tuple[str, UUID] | None, list[int]] = {}
+
+        for lane_index in idle:
+            groups.setdefault(self._lanes[lane_index].key, []).append(lane_index)
+
+        claimed_total = 0
+        remaining: list[int] = []
+
+        for key, lane_indices in groups.items():
+            if key is None:
+                remaining.extend(lane_indices)
+                continue
+
+            claimed = await jobs.claim_many(
+                self.options.worker_id,
+                self.options.sources,
+                len(lane_indices),
+                affinity_source=key[0],
+                affinity_credential_version_id=key[1],
+            )
+            claimed_total += len(claimed)
+            remaining.extend(self._assign(lane_indices, claimed))
+
+        if remaining:
+            claimed = await jobs.claim_many(
+                self.options.worker_id, self.options.sources, len(remaining)
+            )
+            claimed_total += len(claimed)
+
+            for lane_index in self._assign(remaining, claimed):
+                self._lanes[lane_index].idle_polls += 1
+
+        return claimed_total
+
+    def _assign(
+        self, lane_indices: list[int], claimed: tuple[ClaimedWork, ...]
+    ) -> list[int]:
+        """Hand each claimed item to one idle lane."""
+        for lane_index, work in zip(lane_indices, claimed, strict=False):
+            self._queues[lane_index].put_nowait(work)
+            self._idle_lanes.discard(lane_index)
+            self._lanes[lane_index].idle_polls = 0
+
+        return lane_indices[len(claimed) :]
+
+    async def _lane_loop(
+        self,
+        client: httpx.AsyncClient,
+        slots: PostgresProxySlots,
+        lane_index: int,
+    ) -> None:
         lane = self._lanes[lane_index]
+        queue = self._queues[lane_index]
 
         try:
             while True:
-                try:
-                    lease = await self._claim(client, lane.key)
-                except httpx.HTTPError:
-                    # A control-plane failure in one lane must not stop the
-                    # other lanes or the heartbeat.
-                    logger.warning("worker_claim_failed", exc_info=True)
-                    await asyncio.sleep(IDLE_POLL_SECONDS)
-                    continue
+                self._idle_lanes.add(lane_index)
 
-                if lease is None:
-                    await self._idle(client, lane)
-                    continue
+                if (
+                    lane.provider is not None
+                    and lane.idle_polls >= IDLE_SESSION_CLOSE_AFTER
+                ):
+                    await self._close_and_release(client, slots, lane)
+                    lane.provider = None
+                    lane.key = None
 
-                try:
-                    provider = await self._adopt(client, lane, lease, lane_index)
-                    result = await self._execute(lane, lease, provider, lane_index)
-                except httpx.HTTPError:
-                    # Leave this item for lease expiry and let another lane
-                    # retry it. A slot failure must not stop other lanes.
-                    logger.warning("worker_slot_failed", exc_info=True)
-                    await asyncio.sleep(IDLE_POLL_SECONDS)
-                    continue
+                claimed = await queue.get()
 
                 try:
+                    lease = await self._adopt(client, slots, lane, claimed, lane_index)
+                    assert lane.provider is not None
+                    result = await self._execute(lane, lease, lane.provider, lane_index)
                     await self._publish(client, lease, result, lane_index)
-                except httpx.HTTPError:
-                    # A rejected or expired lease cannot publish. Other lanes
-                    # continue and the item is retried under a new lease.
-                    logger.warning("worker_publish_failed", exc_info=True)
+                except (asyncpg.PostgresError, httpx.HTTPError, OSError):
+                    # Leave this item for lease expiry and let another lane
+                    # retry it. One lane's failure must not stop the others.
+                    logger.warning("worker_lane_failed", exc_info=True)
+                finally:
+                    self._wake.set()
         finally:
-            # Release resources held by this lane during cancellation.
-            await self._close_and_release(client, lane)
-
-    async def _idle(self, client: httpx.AsyncClient, lane: LaneSession) -> None:
-        lane.idle_polls += 1
-
-        if lane.provider is not None and lane.idle_polls >= IDLE_SESSION_CLOSE_AFTER:
-            await self._close_and_release(client, lane)
-            lane.provider = None
-            lane.key = None
-
-        await asyncio.sleep(IDLE_POLL_SECONDS)
+            self._idle_lanes.discard(lane_index)
+            await self._close_and_release(client, slots, lane)
 
     async def _adopt(
         self,
         client: httpx.AsyncClient,
+        slots: PostgresProxySlots,
         lane: LaneSession,
-        lease: WorkLease,
+        claimed: ClaimedWork,
         lane_index: int,
-    ) -> ProxyProvider:
-        """Use this lease's provider credential and close a changed one."""
-        key = (lease.source, lease.credential_version_id)
+    ) -> WorkLease:
+        """Use this claim's provider credential and close a changed one."""
+        key = (claimed.source, claimed.credential_version_id)
 
         if lane.key is not None and lane.key != key:
-            await self._close_and_release(client, lane)
+            await self._close_and_release(client, slots, lane)
 
-        provider = provider_from_values(
-            lease.credential.provider, lease.credential.config
+        credential = await self._reveal_credential(
+            client, claimed.credential_version_id
         )
+        provider = provider_from_values(credential.provider, credential.config)
 
         if lane.held_slot is None:
             lane.held_slot = await self._claim_slot(
-                client, lease.credential.provider, lane_index
+                slots, credential.provider, lane_index
             )
-            lane.held_slot_provider = lease.credential.provider
+            lane.held_slot_provider = credential.provider
 
         lane.key = key
         lane.provider = provider
         lane.idle_polls = 0
+        self._current_job_id = claimed.job_id
 
-        return provider
+        return WorkLease(
+            item_id=claimed.item_id,
+            job_id=claimed.job_id,
+            source=claimed.source,
+            document=claimed.document,
+            fence=claimed.lease_fence,
+            credential_version_id=claimed.credential_version_id,
+            credential=credential,
+        )
+
+    async def _reveal_credential(
+        self, client: httpx.AsyncClient, credential_version_id: UUID
+    ) -> CredentialLease:
+        cached = self._credential_cache.get(credential_version_id)
+
+        if cached is not None:
+            credential, expires_at = cached
+
+            if time.monotonic() < expires_at:
+                self._credential_cache.move_to_end(credential_version_id)
+                return credential
+
+            # Re-reveal after the TTL so credential rotation reaches this worker.
+            del self._credential_cache[credential_version_id]
+
+        response = await client.post(
+            "/reveal-credential",
+            content=msgspec.json.encode(
+                RevealCredentialRequest(credential_version_id=credential_version_id)
+            ),
+            headers={"Content-Type": "application/json"},
+        )
+        response.raise_for_status()
+
+        credential = msgspec.json.decode(response.content, type=CredentialLease)
+
+        self._credential_cache[credential_version_id] = (
+            credential,
+            time.monotonic() + CREDENTIAL_CACHE_TTL_SECONDS,
+        )
+        if len(self._credential_cache) > CREDENTIAL_CACHE_SIZE:
+            self._credential_cache.popitem(last=False)
+
+        return credential
 
     async def _close_and_release(
-        self, client: httpx.AsyncClient, lane: LaneSession
+        self,
+        client: httpx.AsyncClient,
+        slots: PostgresProxySlots,
+        lane: LaneSession,
     ) -> None:
         """Close the lane session and release its provider slot, if held."""
         if lane.provider is not None:
@@ -281,39 +465,14 @@ class WorkerAgent:
 
         if lane.held_slot is not None and lane.held_slot_provider is not None:
             try:
-                await self._release_slot(
-                    client, lane.held_slot_provider, lane.held_slot
-                )
-            except httpx.HTTPError:
+                await self._release_slot(slots, lane.held_slot_provider, lane.held_slot)
+            except (asyncpg.PostgresError, OSError):
                 # Keep the local claim so a later cleanup can retry the
                 # idempotent release while the lane may still use the slot.
                 pass
             else:
                 lane.held_slot = None
                 lane.held_slot_provider = None
-
-    async def _claim(
-        self, client: httpx.AsyncClient, affinity: tuple[str, UUID] | None
-    ) -> WorkLease | None:
-        response = await client.post(
-            "/claim",
-            content=msgspec.json.encode(
-                ClaimRequest(
-                    sources=self.options.sources,
-                    affinity_source=affinity[0] if affinity else None,
-                    affinity_credential_version_id=affinity[1] if affinity else None,
-                )
-            ),
-            headers={"Content-Type": "application/json"},
-        )
-        response.raise_for_status()
-
-        lease = msgspec.json.decode(response.content, type=WorkLease | None)
-
-        if lease is not None:
-            self._current_job_id = lease.job_id
-
-        return lease
 
     async def _publish(
         self,
@@ -414,49 +573,37 @@ class WorkerAgent:
         }
 
     async def _claim_slot(
-        self, client: httpx.AsyncClient, provider_name: str, lane_index: int
+        self, slots: PostgresProxySlots, provider_name: str, lane_index: int
     ) -> int:
-        """A provider's slot_id only needs fleet-wide uniqueness when it maps
-        to a real shared resource (GeoNode's sticky ports). Everything else
-        gets a cheap, purely local assignment with no worker-api round trip."""
+        """Return a fleet slot for providers that use a shared pool."""
         if spec_for(provider_name).tuning.slot_pool is None:
             return lane_index + 1
 
         while True:
-            response = await client.post(
-                "/claim-slot",
-                content=msgspec.json.encode(
-                    ClaimSlotRequest(provider=provider_name, lane_index=lane_index)
-                ),
-                headers={"Content-Type": "application/json"},
-            )
-            response.raise_for_status()
-
-            claimed = msgspec.json.decode(
-                response.content, type=ClaimSlotResponse | None
+            slot_id = await slots.claim(
+                provider=provider_name,
+                worker_id=self.options.worker_id,
+                lane_index=lane_index,
             )
 
-            if claimed is not None:
-                return claimed.slot_id
+            if slot_id is not None:
+                return slot_id
 
             # Every real slot is leased to a still-live worker somewhere in
             # the fleet: back off and retry rather than fail this lookup.
-            await asyncio.sleep(IDLE_POLL_SECONDS)
+            await asyncio.sleep(SLOT_WAIT_SECONDS)
 
     async def _release_slot(
-        self, client: httpx.AsyncClient, provider_name: str, slot_id: int
+        self, slots: PostgresProxySlots, provider_name: str, slot_id: int
     ) -> None:
         if spec_for(provider_name).tuning.slot_pool is None:
             return
 
-        response = await client.post(
-            "/release-slot",
-            content=msgspec.json.encode(
-                ReleaseSlotRequest(provider=provider_name, slot_id=slot_id)
-            ),
-            headers={"Content-Type": "application/json"},
+        await slots.release(
+            provider=provider_name,
+            slot_id=slot_id,
+            worker_id=self.options.worker_id,
         )
-        response.raise_for_status()
 
 
 async def self_enroll(
@@ -464,8 +611,8 @@ async def self_enroll(
     bootstrap_token: str,
     worker_id: str,
     tailscale_hostname: str,
-) -> str:
-    """Mint a worker credential from the enrollment endpoint."""
+) -> tuple[str, str]:
+    """Mint a worker credential and direct-DB role from the enrollment endpoint."""
     # Enrollment is a control-plane request. Retry transient connection
     # failures, including after a worker restart.
     transport = httpx.AsyncHTTPTransport(retries=2)
@@ -487,13 +634,14 @@ async def self_enroll(
         )
         response.raise_for_status()
 
-        return msgspec.json.decode(response.content, type=EnrollResponse).credential
+        enrolled = msgspec.json.decode(response.content, type=EnrollResponse)
+        return enrolled.credential, enrolled.database_dsn
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="portal worker",
-        description="Claim documents from portal-worker-api and publish results.",
+        prog="worker",
+        description="Claim documents directly from Postgres and publish results.",
     )
     parser.add_argument(
         "--worker-api-url",
@@ -512,6 +660,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--tailscale-hostname",
         default=os.environ.get("PORTAL_WORKER_TAILSCALE_HOSTNAME", ""),
         help="This node's tailnet hostname. Required to self-enroll.",
+    )
+    parser.add_argument(
+        "--database-dsn",
+        default=os.environ.get("PORTAL_WORKER_DATABASE_DSN", ""),
+        help="Fixed direct-DB DSN, paired with --credential. Ignored when "
+        "self-enrolling, which mints both on every start.",
     )
     parser.add_argument("--sources", default="sunat,osiptel,sunat_reps")
     parser.add_argument(
@@ -534,7 +688,7 @@ def run(argv: Sequence[str]) -> None:
                 "PORTAL_WORKER_TAILSCALE_HOSTNAME is required to self-enroll."
             )
 
-        credential = asyncio.run(
+        credential, database_dsn = asyncio.run(
             self_enroll(
                 args.worker_api_url.rstrip("/"),
                 args.bootstrap_token,
@@ -544,11 +698,12 @@ def run(argv: Sequence[str]) -> None:
         )
     else:
         credential = os.environ.get("PORTAL_WORKER_CREDENTIAL", "")
-        if not credential:
+        database_dsn = args.database_dsn
+        if not credential or not database_dsn:
             raise SystemExit(
-                "PORTAL_WORKER_BOOTSTRAP_TOKEN (to self-enroll) or "
-                "PORTAL_WORKER_CREDENTIAL (issued with `portal enroll-worker`) "
-                "is required."
+                "PORTAL_WORKER_BOOTSTRAP_TOKEN (to self-enroll) or both "
+                "PORTAL_WORKER_CREDENTIAL and PORTAL_WORKER_DATABASE_DSN "
+                "(issued with `portal-admin worker issue`) are required."
             )
 
     sources = tuple(value.strip() for value in args.sources.split(",") if value.strip())
@@ -561,9 +716,18 @@ def run(argv: Sequence[str]) -> None:
     options = AgentOptions(
         worker_api_url=args.worker_api_url.rstrip("/"),
         credential=credential,
+        database_dsn=database_dsn,
         worker_id=args.worker_id,
         sources=sources,
         concurrency=args.concurrency,
     )
 
     asyncio.run(WorkerAgent(options).run())
+
+
+def main() -> None:
+    run(sys.argv[1:])
+
+
+if __name__ == "__main__":
+    main()

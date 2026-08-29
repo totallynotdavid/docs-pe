@@ -269,6 +269,42 @@ async def test_claim_prefers_a_lane_s_held_session_over_plain_fifo(
     assert claimed.credential_version_id == team_later.credential_id
 
 
+async def test_claim_many_returns_every_requested_item_from_one_affinity_group(
+    pool: asyncpg.Pool,
+    service: PortalService,
+    job_repository: PostgresJobRepository,
+) -> None:
+    """claim_many's affinity query is a flat join, not a per-job LATERAL
+    capped at the batch size: it must still return every item a batch asks
+    for when one job holds all of them, not just the first."""
+    team = await seed_team(pool)
+
+    job = await service.submit(
+        SubmitJob(
+            actor_id=team.actor_id,
+            team_id=team.team_id,
+            credential_version_id=team.credential_id,
+            input_object_id=await object_reference(pool, team.team_id, "e.csv"),
+            filename="entrada.csv",
+            sources=("osiptel",),
+            lines=tuple(InputLine(i, f"1041234567{i - 1}") for i in range(1, 5)),
+        )
+    )
+    assert job.state is JobState.RUNNING
+
+    claimed = await job_repository.claim_many(
+        "trabajador",
+        ("osiptel",),
+        3,
+        affinity_source="osiptel",
+        affinity_credential_version_id=team.credential_id,
+    )
+
+    assert len(claimed) == 3
+    assert {item.job_id for item in claimed} == {job.id}
+    assert len({item.item_id for item in claimed}) == 3
+
+
 async def test_claim_falls_back_to_fifo_without_a_matching_affinity(
     pool: asyncpg.Pool,
     service: PortalService,
@@ -438,6 +474,67 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
     assert breaker["consecutive_failures"] == 0
     assert breaker["level"] == 0
     assert breaker["open_until"] is None
+
+
+async def test_reveal_credential_decrypts_by_credential_version_id(
+    pool: asyncpg.Pool,
+    service: PortalService,
+    worker_client: AsyncTestClient,
+    protector: EnvelopeProtector,
+) -> None:
+    """A direct-DB worker reveals the version id returned by its claim."""
+    config = protector.protect(
+        encode_config({"username": "equipo", "password": "clave"})
+    )
+    job = await _submit_one(pool, service, config=config)
+    headers = await enroll_worker(pool)
+
+    response = await worker_client.post(
+        "/reveal-credential",
+        json={"credential_version_id": str(job.credential_version_id)},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "provider": "geonode",
+        "config": {"username": "equipo", "password": "clave"},
+    }
+
+    audited = await pool.fetchrow(
+        "SELECT actor_id, target_type, target_id FROM portal_audit_log "
+        "WHERE action = 'credential.revealed' ORDER BY occurred_at DESC LIMIT 1"
+    )
+
+    assert audited is not None
+    assert audited["target_type"] == "credential_version"
+    assert audited["target_id"] == job.credential_version_id
+
+
+async def test_reveal_credential_rejects_an_unknown_version(
+    pool: asyncpg.Pool,
+    worker_client: AsyncTestClient,
+) -> None:
+    headers = await enroll_worker(pool)
+
+    response = await worker_client.post(
+        "/reveal-credential",
+        json={"credential_version_id": str(uuid4())},
+        headers=headers,
+    )
+
+    assert response.status_code == 409
+
+
+async def test_reveal_credential_refuses_an_unauthenticated_caller(
+    worker_client: AsyncTestClient,
+) -> None:
+    response = await worker_client.post(
+        "/reveal-credential",
+        json={"credential_version_id": str(uuid4())},
+    )
+
+    assert response.status_code == 403
 
 
 async def test_a_heartbeat_updates_status_and_staleness_flips_it_offline(

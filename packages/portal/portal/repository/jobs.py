@@ -64,21 +64,7 @@ UPDATE portal_jobs job
 RETURNING job.id
 """
 
-# Claiming is split into two queries rather than one CASE-prioritized ORDER BY,
-# and each picks its item through a LATERAL join rather than a flat one.
-# A CASE over runtime parameters isn't index-servable, and neither is a flat
-# ORDER BY job.queue_sequence, item.ordinal across a join: portal_job_items
-# has no queue_sequence column, so an index can only order items within one
-# job, never across the running jobs being compared. A flat join therefore
-# has to pull every pending item for every candidate job into one set before
-# it can sort and take the top one (confirmed live: tens of thousands of rows
-# materialized and disk-sorted per claim, ~1-1.7s, even after adding the
-# per-job partial index). The running-jobs set is small (single digits), so
-# LATERAL inverts this: for each candidate job, pull just its own best item
-# with an ordered index-scan LIMIT 1, then sort only that handful of winners
-# by queue_sequence. Confirmed against a full production copy: both tiers
-# dropped to single-digit milliseconds, index scans throughout, no sort
-# spilling to disk.
+# Claim the first pending item from the oldest eligible job.
 _CLAIM_AFFINITY = """
 WITH candidate AS (
     SELECT top_item.id AS item_id, job.lease_fence, job.credential_version_id
@@ -115,21 +101,54 @@ UPDATE portal_job_items AS item
 RETURNING
     item.id,
     item.job_id,
+    item.team_id,
     item.source,
     item.document,
     item.lease_fence,
     candidate.credential_version_id
 """
 
-# Plain FIFO fallback: no session to prefer, or the affinity tier found
-# nothing to claim. `sources` can hold several values, so the per-job LATERAL
-# nests one level deeper: unnest the source list and take each source's own
-# claim_idx-served top item, then pick the lowest-ordinal one of those before
-# ever comparing across jobs. Picking a single item.source = ANY($2) directly
-# (no inner per-source LATERAL) made Postgres fall back to an ordinal-first
-# index instead of the per-source partial index, which has to walk past every
-# already-claimed item ahead of the next pending one (confirmed live: ~185ms
-# on a job deep in its backlog, vs <10ms with the extra nesting).
+# The batch limit also bounds the rows locked by this query.
+_CLAIM_AFFINITY_MANY = """
+WITH candidate AS (
+    SELECT item.id AS item_id, item.ordinal, job.lease_fence,
+           job.credential_version_id, job.queue_sequence
+      FROM portal_jobs AS job
+      JOIN portal_team_proxy_credential_versions AS version
+        ON version.id = job.credential_version_id
+      JOIN portal_job_items AS item
+        ON item.job_id = job.id
+      LEFT JOIN portal_circuit_breakers AS breaker
+        ON breaker.source = item.source
+       AND breaker.provider = version.provider
+     WHERE job.state = 'running'
+       AND job.credential_version_id = $3
+       AND item.state = 'pending'
+       AND item.source = $2
+       AND (breaker.open_until IS NULL OR breaker.open_until <= now())
+     ORDER BY job.queue_sequence, item.ordinal
+     FOR UPDATE OF item SKIP LOCKED
+     LIMIT $4
+)
+UPDATE portal_job_items AS item
+   SET state = 'running',
+       lease_owner = $1,
+       lease_fence = candidate.lease_fence,
+       lease_expires_at = now() + interval '5 minutes',
+       attempts = item.attempts + 1
+  FROM candidate
+ WHERE item.id = candidate.item_id
+RETURNING
+    item.id,
+    item.job_id,
+    item.team_id,
+    item.source,
+    item.document,
+    item.lease_fence,
+    candidate.credential_version_id
+"""
+
+# Preserve requested source order within each job before comparing jobs.
 _CLAIM_ANY = """
 WITH candidate AS (
     SELECT top_item.id AS item_id, job.lease_fence, job.credential_version_id
@@ -171,14 +190,65 @@ UPDATE portal_job_items AS item
 RETURNING
     item.id,
     item.job_id,
+    item.team_id,
     item.source,
     item.document,
     item.lease_fence,
     candidate.credential_version_id
 """
 
-# Only running jobs may recover expired items. Cancellation makes its items
-# terminal and advances the job fence before a late worker can publish.
+# Give each selected item its own lease.
+_CLAIM_ANY_MANY = """
+WITH candidate AS (
+    SELECT top_item.id AS item_id, top_item.ordinal, job.lease_fence,
+           job.credential_version_id, job.queue_sequence
+      FROM portal_jobs AS job
+      JOIN portal_team_proxy_credential_versions AS version
+        ON version.id = job.credential_version_id
+      CROSS JOIN LATERAL (
+          SELECT per_source.id, per_source.ordinal
+            FROM unnest($2::text[]) AS wanted(source)
+            CROSS JOIN LATERAL (
+                SELECT item.id, item.ordinal
+                  FROM portal_job_items AS item
+                  LEFT JOIN portal_circuit_breakers AS breaker
+                    ON breaker.source = item.source
+                   AND breaker.provider = version.provider
+                 WHERE item.job_id = job.id
+                   AND item.state = 'pending'
+                   AND item.source = wanted.source
+                   AND (breaker.open_until IS NULL OR breaker.open_until <= now())
+                 ORDER BY item.ordinal
+                 FOR UPDATE OF item SKIP LOCKED
+                 LIMIT $3
+            ) AS per_source
+           ORDER BY per_source.ordinal
+           LIMIT $3
+      ) AS top_item
+     WHERE job.state = 'running'
+     ORDER BY job.queue_sequence, top_item.ordinal
+     LIMIT $3
+)
+UPDATE portal_job_items AS item
+   SET state = 'running',
+       lease_owner = $1,
+       lease_fence = candidate.lease_fence,
+       lease_expires_at = now() + interval '5 minutes',
+       attempts = item.attempts + 1
+  FROM candidate
+ WHERE item.id = candidate.item_id
+RETURNING
+    item.id,
+    item.job_id,
+    item.team_id,
+    item.source,
+    item.document,
+    item.lease_fence,
+    candidate.credential_version_id
+"""
+
+# Only running jobs may recover expired items. Cancellation makes items terminal
+# and advances the job fence before a late worker can publish.
 _SWEEP_EXPIRED = """
 WITH expired AS (
     SELECT item.id, item.attempts
@@ -229,7 +299,7 @@ UPDATE portal_job_items AS item
 RETURNING item.job_id
 """
 
-# The arrays are positional, so unnest writes all attempts in one round trip.
+# `unnest` keeps the attempt arrays aligned in one insert.
 _INSERT_ATTEMPTS = """
 INSERT INTO portal_lookup_attempts
     (id, job_item_id, source, provider, worker_id, lane_index,
@@ -285,9 +355,7 @@ class PostgresJobRepository:
             max_active = await self._lock_queue_gate(connection)
             active = await connection.fetchval(_ACTIVE_COUNT)
 
-            # A job with nothing left to fetch is done the instant it's
-            # created, whether that's because every line was excluded or
-            # because this team already had a fresh answer for all of it.
+            # Nothing left to fetch is a completed job, including all-reused jobs.
             state = (
                 JobState.COMPLETED
                 if not to_fetch
@@ -479,7 +547,7 @@ class PostgresJobRepository:
                     None,
                 )
 
-            # Published objects remain valid. The advanced fence rejects late writes.
+            # Published objects remain valid; the advanced fence rejects late writes.
             await connection.execute(
                 """
                 UPDATE portal_job_items
@@ -877,14 +945,59 @@ class PostgresJobRepository:
         if row is None:
             return None
 
-        return ClaimedWork(
-            item_id=row["id"],
-            job_id=row["job_id"],
-            source=row["source"],
-            document=row["document"],
-            lease_fence=int(row["lease_fence"]),
-            credential_version_id=row["credential_version_id"],
-        )
+        return self._claimed_work(row)
+
+    async def claim_many(
+        self,
+        worker_id: str,
+        sources: tuple[str, ...],
+        limit: int,
+        *,
+        affinity_source: str | None = None,
+        affinity_credential_version_id: UUID | None = None,
+    ) -> tuple[ClaimedWork, ...]:
+        """Claim up to `limit` pending items, preferring the current affinity."""
+        if limit < 1:
+            return ()
+
+        if not sources:
+            raise SourceValidationError(Reason.WORKER_SOURCE_REQUIRED)
+
+        invalid = sorted(set(sources).difference(STABLE_SITES))
+
+        if invalid:
+            raise SourceValidationError(
+                Reason.SOURCE_NOT_ENABLED,
+                invalid=", ".join(invalid),
+                allowed=", ".join(sorted(STABLE_SITES)),
+            )
+
+        async with self._pool.acquire() as connection, connection.transaction():
+            await self._sweep_expired_locked(connection)
+
+            rows = []
+
+            if (
+                affinity_source is not None
+                and affinity_credential_version_id is not None
+            ):
+                rows = await connection.fetch(
+                    _CLAIM_AFFINITY_MANY,
+                    worker_id,
+                    affinity_source,
+                    affinity_credential_version_id,
+                    limit,
+                )
+
+            if len(rows) < limit:
+                rows = list(rows) + await connection.fetch(
+                    _CLAIM_ANY_MANY,
+                    worker_id,
+                    list(sources),
+                    limit - len(rows),
+                )
+
+        return tuple(self._claimed_work(row) for row in rows)
 
     async def publish(
         self,
@@ -987,6 +1100,33 @@ class PostgresJobRepository:
             ),
         )
 
+    async def credential_for_version(
+        self,
+        credential_version_id: UUID,
+    ) -> JobCredential | None:
+        """Load the credential selected for a claimed item."""
+        row = await self._pool.fetchrow(
+            """
+            SELECT provider, config_ciphertext, wrapped_data_key, master_key_version
+              FROM portal_team_proxy_credential_versions
+             WHERE id = $1
+               AND wrapped_data_key IS NOT NULL
+            """,
+            credential_version_id,
+        )
+
+        if row is None:
+            return None
+
+        return JobCredential(
+            row["provider"],
+            ProtectedSecret(
+                ciphertext=bytes(row["config_ciphertext"]),
+                wrapped_data_key=bytes(row["wrapped_data_key"]),
+                master_key_version=str(row["master_key_version"]),
+            ),
+        )
+
     async def object_reference(
         self,
         reference_id: UUID,
@@ -1069,7 +1209,7 @@ class PostgresJobRepository:
         connection: Connection,
         job_id: UUID,
     ) -> None:
-        # A drained job with no published item failed; it was not an empty success.
+        # A drained job without a published item is a failure, not an empty success.
         row = await connection.fetchrow(
             """
             UPDATE portal_jobs AS job
@@ -1115,7 +1255,6 @@ class PostgresJobRepository:
             job_id,
             JobState(row["state"]),
         )
-        # Promotion updates the fleet-wide active-job count under the queue gate.
         await self._lock_queue_gate(connection)
         await self._promote_locked(connection)
 
@@ -1189,6 +1328,18 @@ class PostgresJobRepository:
                 )
                 for channel in ("in_app", "email", "kapso_whatsapp")
             ],
+        )
+
+    @staticmethod
+    def _claimed_work(row: object) -> ClaimedWork:
+        return ClaimedWork(
+            item_id=row["id"],  # type: ignore[index]
+            job_id=row["job_id"],  # type: ignore[index]
+            team_id=row["team_id"],  # type: ignore[index]
+            source=row["source"],  # type: ignore[index]
+            document=row["document"],  # type: ignore[index]
+            lease_fence=int(row["lease_fence"]),  # type: ignore[index]
+            credential_version_id=row["credential_version_id"],  # type: ignore[index]
         )
 
     @staticmethod
