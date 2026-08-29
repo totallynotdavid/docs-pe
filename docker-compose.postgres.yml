@@ -37,10 +37,15 @@ services:
       TS_EXTRA_ARGS: --advertise-tags=tag:core
     entrypoint: ["/bin/sh", "-c"]
     command:
+      # $$boot_pid (not $boot_pid): Compose's own variable interpolation
+      # matches bare $VAR too, not just ${VAR}, and silently strips it to an
+      # empty string if undefined -- confirmed live by running plain
+      # `docker compose up` directly against this file (Dokploy's own deploy
+      # path does not hit this). $$ escapes to a literal $ for the shell.
       - |
         /usr/local/bin/containerboot &
         boot_pid=$!
-        while kill -0 "$boot_pid" 2>/dev/null; do
+        while kill -0 "$$boot_pid" 2>/dev/null; do
           tailscale --socket=/tmp/tailscaled.sock serve --service=svc:database --tcp=5432 tcp://localhost:5432 >/dev/null 2>&1
           sleep 10
         done
