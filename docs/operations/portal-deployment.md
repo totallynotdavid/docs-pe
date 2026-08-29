@@ -14,16 +14,24 @@ The worker API has no public route. Workers reach it over the tailnet for
 enrollment, credential reveals, and result publication. Queue, heartbeat, and
 proxy-slot operations use the worker's scoped PostgreSQL role.
 
+PostgreSQL, object storage, and `worker-api` each run behind a Tailscale
+sidecar that advertises a `svc:` Service (`svc:database`, `svc:objectstorage`,
+`svc:worker-api`) instead of binding a host port directly. The ACL policy must
+grant those services to `tag:worker-fleet` only.
+
 ## Prerequisites
 
 Prepare these resources before starting:
 
-- PostgreSQL reachable by `web`, `worker-api`, and worker nodes.
-- An S3-compatible bucket for uploaded inputs and result payloads, with a
-  read/write credential shared by `web` and `worker-api`.
+- A tailnet ACL policy that grants `tag:worker-fleet` access to
+  `svc:database:5432`, `svc:objectstorage:9000`, and `svc:worker-api:8443`.
+  Add `tag:worker-fleet` to every worker node. `tag:core` belongs on the
+  shared-service sidecars, not on their host.
+- One reusable Tailscale auth key with ephemeral nodes enabled per
+  shared-service sidecar (`TS_AUTHKEY_DATABASE`, `TS_AUTHKEY_OBJECTSTORAGE`,
+  `TS_AUTHKEY_WORKER_API`).
 - A master-key file mounted read-only into both portal processes.
 - A Cloudflare tunnel and public HTTPS origin for `web`.
-- A Tailscale path and ACL from worker nodes to `worker-api`.
 - Resend credentials for account setup and notification mail.
 
 Copy `.env.example` and set every production value. The web and worker-api
@@ -33,13 +41,21 @@ and all four `PORTAL_OBJECT_STORAGE_*` variables.
 `PORTAL_TLS_TERMINATED_UPSTREAM=true` when an upstream terminates TLS before
 the application receives the request.
 
-When using `docker-compose.worker-api.yml`, also set the host-side paths and
-tailnet binding that Compose interpolates:
+When using `docker-compose.worker-api.yml`, also set the host-side path
+Compose interpolates and the sidecar's auth key:
 
 ```env
+PORTAL_MASTER_KEY_FILE=/run/secrets/portal-master-key
 PORTAL_MASTER_KEY_HOST_PATH=/etc/portal/master.key
-PORTAL_WORKER_API_BIND_IP=100.64.0.10
+PORTAL_DATABASE_DSN=postgresql://<user>:<password>@postgres:5432/<database>
+PORTAL_OBJECT_STORAGE_ENDPOINT=http://minio:9000
+TS_AUTHKEY_WORKER_API=tskey-auth-...
 ```
+
+The service names in this example require all Compose projects to use the
+external `dokploy-network`. The worker API Compose file sets its container
+value for `PORTAL_MASTER_KEY_FILE`; configure the web container with the path
+where its own read-only key mount appears.
 
 ## Initial installation
 
@@ -80,11 +96,20 @@ worker-api python -m portal.worker.api
 worker     python -m portal.worker.agent
 ```
 
-Expose only `web` through the tunnel. Bind `worker-api` to the tailnet
-interface or publish it only on a tailnet address.
+Expose only `web` through the tunnel. `worker-api` publishes no host port at
+all; it's reachable only through `svc:worker-api` and the `tag:worker-fleet`
+grant.
 
 `worker-api` serves enrollment, credential reveals, and result publication.
 Queue and slot traffic goes directly from each worker node to PostgreSQL.
+
+The Tailscale sidecars load their Serve configuration from the mounted
+directories under `ops/tailscale/`. Keep those mounts as directories so the
+sidecars can reload configuration.
+
+For an existing installation, set `POSTGRES_VOLUME_NAME` and
+`MINIO_VOLUME_NAME` to the current Docker volume names. Confirm them with
+`docker volume ls` before starting Compose. A new name creates an empty store.
 
 Budget PostgreSQL connections for every web, worker-api, worker, admin, and
 operator process. Each worker also keeps a dedicated connection for
@@ -139,7 +164,9 @@ worker node. Confirm that:
 - the initial team has an active proxy credential;
 - a small job reaches `running` and returns a result;
 - worker heartbeats appear in `portal_workers`;
-- the worker API is unreachable from the public network; and
+- the worker API is unreachable from the public network;
+- a device on the tailnet without `tag:worker-fleet` cannot reach
+  `svc:database`, `svc:objectstorage`, or `svc:worker-api`; and
 - cancellation prevents a late worker publish.
 
 Use [Portal operations](../../packages/portal/operations.md) for database

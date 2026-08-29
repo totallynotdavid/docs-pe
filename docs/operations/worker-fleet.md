@@ -10,6 +10,9 @@ master host are configured in `ops/worker_node.py`; it is not a general Dokploy
 or cloud provisioning tool. Review those values before using it for a different
 environment.
 
+The host must already have Tailscale installed, authenticated, and tagged with
+`tag:worker-fleet`. The script does not change tailnet membership or ACLs.
+
 ## Commands
 
 Set `DOKPLOY_URL` and `DOKPLOY_API_KEY` in the operator environment:
@@ -51,7 +54,7 @@ API credential and the node's scoped PostgreSQL login, so no credential needs to
 be copied by hand when the bootstrap configuration is present.
 
 The operation is idempotent after the SSH and sudo boundary. Rerun `add` after a
-failed step and inspect the step that failed before changing the host.
+failed step; it reconciles the Dokploy application before deploying it.
 
 ## Remove and decommission
 
@@ -61,5 +64,4 @@ It does not remove Tailscale membership, Docker, Swarm state, SSH access, or
 host data. Decommission those separately after confirming the node has no active
 work.
 
-Configure Tailscale ACLs so the worker tag can reach the private worker API
-port. Verify the node in `list` after adding or removing it.
+Verify the node in `list` after adding or removing it.
