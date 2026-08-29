@@ -3,7 +3,7 @@
 Start with `fetch-status` or the portal database for the run you are
 investigating. Read [Architecture](../../ARCHITECTURE.md#outcome-state) for the
 state model, [Proxy configuration](../proxies.md) for provider behavior, and the
-matching [site note](../sites/) for site-specific failures.
+[site notes](../readme.md) for site-specific failures.
 
 ## Inspect a standalone run
 

@@ -64,7 +64,6 @@ UPDATE portal_jobs job
 RETURNING job.id
 """
 
-# Claim the first pending item from the oldest eligible job.
 _CLAIM_AFFINITY = """
 WITH candidate AS (
     SELECT top_item.id AS item_id, job.lease_fence, job.credential_version_id
@@ -197,7 +196,6 @@ RETURNING
     candidate.credential_version_id
 """
 
-# Give each selected item its own lease.
 _CLAIM_ANY_MANY = """
 WITH candidate AS (
     SELECT top_item.id AS item_id, top_item.ordinal, job.lease_fence,

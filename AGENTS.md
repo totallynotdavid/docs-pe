@@ -44,7 +44,7 @@ restate its content in a package readme:
 
 - `docs/proxies.md`: provider tuning and behavior
 - `docs/operations/troubleshooting.md`: runbook, log interpretation
-- `docs/sites/`: per-site wire protocol, gates, failure modes (entel, osiptel,
+- `docs/sites/*.md`: per-site wire protocol, gates, failure modes (entel, osiptel,
   sunat, portabilidad)
 - `docs/adding-a-site.md`: capture → browser → core workflow
 - `docs/reports/results.md`: historical job measurements

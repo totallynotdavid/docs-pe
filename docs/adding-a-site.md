@@ -10,9 +10,9 @@ capture -> browser -> core
 
 ## 1. Discover the request
 
-Start by defining the site under `packages/capture/capture/sites/<name>/` and
-registering it in that package's registry. Run capture with your own Chrome
-profile:
+If the request is not understood, define the site under
+`packages/capture/capture/sites/<name>/` and register it in that package's
+registry. Run capture with your own Chrome profile:
 
 ```sh
 uv run capture \

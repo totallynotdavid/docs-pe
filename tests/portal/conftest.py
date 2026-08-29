@@ -61,9 +61,6 @@ POSTGRES_DSN = (
     os.environ.get("PORTAL_TEST_DSN") or "postgresql://postgres@127.0.0.1:5432/postgres"
 )
 
-# `mise run test` starts a local minio at this address (see mise.toml's
-# objects:start task); a shared bucket across the whole session is fine since
-# every object key already carries a random uuid.
 OBJECT_STORAGE_ENDPOINT = (
     os.environ.get("PORTAL_TEST_OBJECT_STORAGE_ENDPOINT") or "http://127.0.0.1:9100"
 )

@@ -18,7 +18,7 @@ uv run --env-file .env fetch \
 
 The input is a CSV whose first column contains identifiers. Empty and malformed
 rows are ignored and duplicate identifiers are removed by default. See the
-[site notes](../../docs/sites/) for accepted inputs and output columns.
+[site notes](../../docs/readme.md) for accepted inputs and output columns.
 
 ## Providers
 

@@ -127,7 +127,6 @@ class WorkerAgent:
     def __init__(self, options: AgentOptions) -> None:
         self.options = options
         self._breakers: dict[tuple[str, str], CircuitBreaker] = {}
-        # The health page shows the most recently claimed job, not per-lane state.
         self._current_job_id: UUID | None = None
         self._lanes = [LaneSession() for _ in range(options.concurrency)]
         self._queues: list[asyncio.Queue[ClaimedWork]] = [
