@@ -126,16 +126,20 @@ description = "Start the local minio server"
 depends = ["objects:init"]
 run = """
 if ! curl -sf http://127.0.0.1:9100/minio/health/live >/dev/null 2>&1; then
-  MINIO_ROOT_USER=portal-dev MINIO_ROOT_PASSWORD=portal-dev-secret \\
+  nohup env MINIO_ROOT_USER=portal-dev MINIO_ROOT_PASSWORD=portal-dev-secret \\
     mise x minio -- minio server "$PWD/.data/minio" \\
       --address 127.0.0.1:9100 --console-address 127.0.0.1:9101 \\
       > "$PWD/.data/minio/server.log" 2>&1 &
-  disown
 
   for _ in $(seq 1 50); do
-    curl -sf http://127.0.0.1:9100/minio/health/live >/dev/null 2>&1 && break
+    if curl -sf http://127.0.0.1:9100/minio/health/live >/dev/null 2>&1; then
+      exit 0
+    fi
     sleep 0.1
   done
+
+  echo "MinIO did not become ready" >&2
+  exit 1
 fi
 """
 

@@ -52,6 +52,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: jdx/mise-action@v4
+        with:
+          install: false
+
+      - name: Install pinned MinIO
+        run: mise install minio
+
+      - name: Start MinIO
+        run: mise run --skip-tools objects:start
+
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
