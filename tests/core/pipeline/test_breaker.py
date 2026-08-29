@@ -106,8 +106,7 @@ async def test_acquire_returns_immediately_when_closed(
 async def test_acquire_waits_out_the_cooldown_before_returning(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # acquire()'s own loop (open, sleep, recheck) is what every lane sits in while a
-    # provider is unhealthy; this pins that the loop actually terminates.
+    # Every lane waits in this loop while the provider is unhealthy.
     clock = FakeClock()
 
     def advance(seconds: float) -> None:

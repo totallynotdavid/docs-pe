@@ -15,17 +15,17 @@ The debt request is a POST to the OutSystems `DataActionGetData` endpoint:
 OnlinePayment_Step2/DataActionGetData
 ```
 
-The request body is captured from the live application. The fields that the
-automation changes are:
+The request body is captured from the live application. The automation changes
+these fields:
 
-| Field                                 | Requirement                                 |
-| ------------------------------------- | ------------------------------------------- |
-| `screenData.variables.DocumentType`   | `DNI` or `RUC`.                             |
-| `screenData.variables.DocumentNumber` | The identifier being queried.               |
-| `screenData.variables.RecaptchaId`    | The string `"0"`.                           |
-| `clientVariables.TokenCaptchaV3`      | A fresh token minted in the page.           |
-| `viewName`                            | `OnlinePaymentFlow.OnlinePayment`.          |
-| `versionInfo.moduleVersion`           | The current value from `moduleversioninfo`. |
+| Field | Captured value or per-lookup mutation |
+| --- | --- |
+| `screenData.variables.DocumentType` | Replace with `DNI` or `RUC`. |
+| `screenData.variables.DocumentNumber` | Replace with the identifier being queried. |
+| `screenData.variables.RecaptchaId` | Keep the captured string `"0"`. |
+| `clientVariables.TokenCaptchaV3` | Replace with a fresh token minted in the page. |
+| `viewName` | Keep `OnlinePaymentFlow.OnlinePayment`. |
+| `versionInfo.moduleVersion` | Keep the current value from `moduleversioninfo`. |
 
 Keep the complete captured body. Constructing a smaller body or copying a token
 into an HTTP client omits browser state that Entel validates.
@@ -37,8 +37,9 @@ distinguish a valid zero-debt result from a rejected lookup.
 
 ## Browser sequence
 
-The application uses `XMLHttpRequest`, not `window.fetch`, for the debt call.
-The browser implementation therefore:
+The application uses `XMLHttpRequest` for the debt call. The browser
+implementation captures that request, then sends the modified body with
+`window.fetch`:
 
 1. captures the Step 2 request template from `XMLHttpRequest.prototype.send`;
 2. blocks that request so the application remains on the input step;

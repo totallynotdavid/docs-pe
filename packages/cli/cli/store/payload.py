@@ -16,8 +16,7 @@ def encode_rows(rows: tuple[Row, ...]) -> str:
 
 
 def decode_rows(text: str) -> tuple[Row, ...]:
-    # The one dynamic hop in the store; validate and narrow it here so a hand-edited
-    # or corrupt payload fails loudly.
+    # Validate persisted data before narrowing its type.
     raw = json.loads(text)
     if not isinstance(raw, list):
         msg = "stored payload is not a list"

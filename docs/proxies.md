@@ -2,7 +2,6 @@
 
 `fetch` and `browser` use proxy providers. `capture` uses the operator's own
 Chrome profile. This document defines provider configuration and coordination.
-Historical measurements are in [the historical results](reports/results.md).
 
 ## Configure providers
 
@@ -61,9 +60,7 @@ GEONODE_COUNTRY=PE
 DATAIMPULSE_COUNTRY=pe
 ```
 
-Run a preflight before a large job. It reports the exit IP for one provider
-session. The [OSIPTEL note](sites/osiptel.md) describes the site's blocked-exit
-signal.
+The [OSIPTEL note](sites/osiptel.md) describes the site's blocked-exit signal.
 
 ## Sticky slots
 
@@ -87,25 +84,13 @@ The provider registry exposes a preflight helper that opens a real session and
 returns the observed exit IP. Run it with the same environment used by the job:
 
 ```sh
-uv run --env-file .env python - <<'PY'
-import asyncio
-
-from core.proxy.base import values_from_environment
-from core.proxy.registry import preflight, spec_for
-
-
-async def main() -> None:
-    name = "geonode"
-    raw = values_from_environment(spec_for(name))
-    print(await preflight(name, raw))
-
-
-asyncio.run(main())
-PY
+uv run --env-file .env fetch-preflight --provider geonode
 ```
 
-Use the provider name that will run the job. A preflight verifies provider
-connectivity for one session. Run a small target-site job before a large one.
+Use the provider name that will run the job. The command prints the provider
+name and observed exit IP, without printing credentials. A successful preflight
+verifies provider connectivity for one session, not acceptance by the target
+site. Run a small target-site job before a large one.
 
 ## Diagnose provider failures
 

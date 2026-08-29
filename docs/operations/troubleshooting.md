@@ -1,10 +1,9 @@
 # Troubleshooting
 
-Start with the durable state for the run you are investigating. Logs explain
-what a process attempted, and CSV files are projections. Neither is a complete
-progress ledger. Read [Architecture](../../ARCHITECTURE.md#outcome-state) for
-the state model, [Proxy configuration](../proxies.md) for provider behavior, and
-the matching [site note](../sites/) for site-specific failures.
+Start with `fetch-status` or the portal database for the run you are
+investigating. Read [Architecture](../../ARCHITECTURE.md#outcome-state) for the
+state model, [Proxy configuration](../proxies.md) for provider behavior, and the
+matching [site note](../sites/) for site-specific failures.
 
 ## Inspect a standalone run
 
@@ -16,9 +15,8 @@ uv run fetch-status --output results/out.csv
 uv run fetch-status --output results/out.csv --minutes 10
 ```
 
-The command reports `ok`, `not_found`, and failed rows. A failed row may still
-be retryable. It also reads the recorded provider directly, shows the persisted
-breaker state, and can summarize recent outcomes with `--minutes`.
+The command reports outcomes, the recorded provider, breaker state, and recent
+activity with `--minutes`. A failed row may still be retryable.
 
 ## Query the state database
 
@@ -30,8 +28,7 @@ sqlite3 results/out.state.sqlite3 \
 ```
 
 If the host does not provide the SQLite CLI, use a short script through the
-development environment. Do not infer succeeded documents from result CSV rows:
-an `ok` lookup with zero returned rows produces no CSV row.
+development environment. Do not use CSV row counts as progress.
 
 To inspect one document's attempts:
 
@@ -81,16 +78,15 @@ where worker_id is not null
 order by provider, worker_id, slot_id;
 ```
 
-Run these queries through the
-[portal SQL runbook](../../packages/portal/operations.md) with the portal
-database connection. Do not run them against a standalone SQLite state database.
+Run these queries through the [portal SQL runbook](../../packages/portal/operations.md)
+with the portal database connection.
 
 ## Session rotation
 
 Inspect `session_id` and `proxy_id` in the outcome row or exported error row.
 The fetch session budget is site-specific and can be lowered with
 `--session-budget`. Browser rejection retries and session restarts are
-independent settings. Read the relevant package README before changing either.
+independent settings. Read the relevant package `readme.md` before changing either.
 
 If restarting a session does not change the rejection class, check the provider
 and site gate before increasing retry counts. Retries cannot repair invalid

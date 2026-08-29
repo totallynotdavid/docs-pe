@@ -71,12 +71,7 @@ class PostgresCredentialRepository:
         credential_id: UUID,
         team_id: UUID,
     ) -> None:
-        """Hide a connection from the team without touching its version
-        history: portal_team_proxy_credential_versions never mutates rows
-        outside portal_reject_proxy_credential_version_mutation's allowance,
-        so deletion happens one level up, on the label row. Reconfiguring
-        under the same label (start_credential_validation) clears this again.
-        """
+        """Hide a team's connection while preserving its version history."""
         async with self._pool.acquire() as connection:
             updated = await connection.execute(
                 """
@@ -156,8 +151,7 @@ class PostgresCredentialRepository:
                     created_by,
                 )
             else:
-                # Reconfiguring a retired connection is how a team un-deletes
-                # it: same label, so it's the same logical connection.
+                # Reusing a retired label restores the same logical connection.
                 await connection.execute(
                     """
                     UPDATE portal_team_proxy_credentials

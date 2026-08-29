@@ -19,12 +19,7 @@ VALUES ($1, $2)
 ON CONFLICT (source, provider) DO NOTHING
 """
 
-# A single atomic UPDATE, not a SELECT ... FOR UPDATE followed by a
-# Python-side branch: the earlier version held the row lock across an
-# extra network round trip, and every lookup for a given (source, provider)
-# contends on the same row, so that gap serializes the whole fleet the same
-# way the queue gate lock once did. $3 = healthy_contact, $4 = threshold,
-# $5 = base_cooldown_s, $6 = max_cooldown_s.
+# Keep breaker transitions atomic so concurrent workers cannot lose failures.
 _RECORD_OUTCOME = """
 UPDATE portal_circuit_breakers b
    SET consecutive_failures = CASE

@@ -37,8 +37,6 @@ def _classify(exc: FetchError, *, ban_cooldown_s: float) -> RetryDecision:
         return RetryDecision("parse_error", cooldown_s=0.0)
 
     if isinstance(exc, ProviderSchemaError):
-        # Rotate unexpected responses. Repeated failures trip the breaker or
-        # eventually retire the document through MAX_TOTAL_ATTEMPTS.
         return RetryDecision("provider_schema_error", cooldown_s=0.0)
 
     if isinstance(exc, TransientTransportError):

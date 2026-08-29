@@ -443,8 +443,7 @@ CREATE TABLE portal_queue_control (
 INSERT INTO portal_queue_control (singleton, max_active_jobs)
 VALUES (true, 5);
 
--- SQL entry point for the queue mutex. Repositories issue the same
--- SELECT ... FOR UPDATE directly.
+-- Serializes queue promotion with claim and cancellation transactions.
 CREATE OR REPLACE FUNCTION portal_lock_queue_control()
 RETURNS smallint
 LANGUAGE plpgsql
@@ -642,10 +641,8 @@ CREATE UNIQUE INDEX portal_job_items_excluded_unique_idx
     ON portal_job_items (job_id, ordinal)
     WHERE source IS NULL;
 
--- Keyed (job_id, source, ordinal) rather than just (job_id, ordinal): the
--- claim queries in portal/repository/jobs.py filter by source per tier, and
--- without source in the index a per-job scan has to walk every pending item
--- in ordinal order until one matches instead of seeking straight to it.
+-- Claim queries filter pending items by source and preserve ordinal order, so
+-- source belongs in the index before ordinal.
 CREATE INDEX portal_job_items_claim_idx
     ON portal_job_items (job_id, source, ordinal)
     WHERE state = 'pending';
@@ -667,13 +664,8 @@ CREATE TRIGGER portal_job_items_set_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION portal_set_updated_at();
 
--- One row per fetch_one attempt (success or failure), including the final
--- attempt that resolves a document. portal_entries and portal_job_items only
--- keep the terminal outcome, so a document that needed retries is
--- indistinguishable from one that succeeded cleanly; this table is where
--- retry cost and latency actually live, queryable instead of grepped from
--- process logs. Written once per /publish call (portal/repository/jobs.py),
--- regardless of whether that publish's fence still holds.
+-- One row per fetch attempt, including attempts from a publish whose lease fence
+-- is stale. The terminal tables retain only the final outcome.
 CREATE TABLE portal_lookup_attempts (
     id uuid PRIMARY KEY,
     job_item_id uuid NOT NULL REFERENCES portal_job_items (id) ON DELETE CASCADE,

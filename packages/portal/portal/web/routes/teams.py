@@ -295,8 +295,7 @@ async def _proxy_context(
         ),
         None,
     )
-    # Editing keeps the connection's own provider: switching providers isn't
-    # "editing", it's replacing the connection, which "Añadir conexión" already does.
+    # An edit cannot change provider. Use the add flow to replace a connection.
     active_provider = editing.provider if editing else provider
     fields = ProvisioningService.provider_fields(active_provider)
 
@@ -312,9 +311,6 @@ async def _proxy_context(
         "providers": provider_names(),
         "basic_fields": tuple(field for field in fields if not field.advanced),
         "advanced_fields": tuple(field for field in fields if field.advanced),
-        # Progressive disclosure: a team with connections already sees the
-        # list first: the form is a deliberate "+ Add" action, not something
-        # to fill in on every visit. A team with none goes straight to it.
         "show_form": show_form or not connections,
         "error": error,
     }

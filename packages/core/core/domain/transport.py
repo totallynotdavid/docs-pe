@@ -13,9 +13,6 @@ if TYPE_CHECKING:
     from core.domain.types import Endpoint
 
 
-# The one owner of "which HTTP status means what" across every site. A site wanting
-# its own diagnostic message calls classify_status; everyone else calls
-# raise_for_status.
 _TRANSIENT_STATUSES = frozenset({502, 503, 504})
 _BAN_STATUSES = frozenset({403, 429})
 

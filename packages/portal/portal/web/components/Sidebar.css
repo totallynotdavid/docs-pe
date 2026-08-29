@@ -144,9 +144,6 @@
     max-width: 220px;
   }
 
-  /* Non-minimal mobile: the account trigger moves into the nav overlay
-     (below), since "above" placement only makes sense with a tall sidebar
-     behind it. Without this, the popover opens off the top of the screen. */
   .drawer:not(.drawer--minimal) .drawer__footer {
     display: none;
   }

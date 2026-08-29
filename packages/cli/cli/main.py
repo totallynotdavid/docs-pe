@@ -29,7 +29,6 @@ class RunConfig:
     sites: tuple[Site, ...]
     dedupe: bool
     debug: bool
-    # None uses the site or provider default.
     session_budget: int | None
     ban_cooldown_s: float | None
     wait_min_s: float

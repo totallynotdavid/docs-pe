@@ -207,7 +207,6 @@ async def new_job_post(
 
         return render("JobForm", **context)
 
-    # A review is useful only when at least one item can be reused.
     if not review.reusable:
         job = await service.confirm_submission(
             actor_id=session.user.id,
@@ -326,10 +325,8 @@ async def job_items_page(
         page=current_page,
     )
 
-    # Full context even though a page-turn click is always an HTMX request:
-    # render_hx falls back to the whole JobDetail page on a direct/non-HTMX
-    # hit (a bookmarked or pasted items?page=2 URL), which needs everything
-    # JobDetail itself requires, not just what the fragment uses.
+    # Direct page requests need the full JobDetail context; pagination normally
+    # uses the fragment through HTMX.
     return render_hx(
         request,
         "JobDetail",

@@ -21,7 +21,6 @@ class RepRecord:
 _TBODY_RE = re.compile(r"<tbody>(?P<body>.*?)</tbody>", re.IGNORECASE | re.DOTALL)
 _ROW_RE = re.compile(r"<tr>(?P<row>.*?)</tr>", re.IGNORECASE | re.DOTALL)
 _CELL_RE = re.compile(r"<td[^>]*>(?P<cell>.*?)</td>", re.IGNORECASE | re.DOTALL)
-# 5 cells in SUNAT's reps row, in order: doc_type, num_doc, nombre, cargo, fecha_desde.
 _REP_CELL_COUNT = 5
 _NO_REPS_MARKER = "No se encontro información para representantes legales"
 

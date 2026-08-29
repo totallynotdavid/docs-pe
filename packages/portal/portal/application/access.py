@@ -14,16 +14,11 @@ if TYPE_CHECKING:
     from uuid import UUID
 
 
-# Authorization is declared on service methods instead of being left to each
-# handler. The class hook below rejects an undeclared public method at import
-# time, so a new operation cannot silently omit its access rule.
-# https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html
+# Service methods declare their own authorization. The class hook rejects a
+# public method without an access rule when the service is defined.
 _MARKER = "_portal_access_control"
 
-# OWASP Multifactor Authentication Cheat Sheet calls for step-up MFA on sensitive
-# actions and privilege elevation. 15 minutes matches how long a login's MFA
-# proof is trusted before a sensitive action asks for it again.
-# https://cheatsheetseries.owasp.org/cheatsheets/Multifactor_Authentication_Cheat_Sheet.html
+# Sensitive actions require a second-factor proof no older than this window.
 STEP_UP_WINDOW = timedelta(minutes=15)
 
 F = TypeVar("F", bound="Callable[..., Any]")
@@ -191,19 +186,7 @@ def is_step_up_fresh(
 
 
 def _step_up(*, within: timedelta = STEP_UP_WINDOW) -> Callable[[F], F]:
-    """Layers a freshness check on top of whatever role check already guards
-    this method. Private: only site_admin_step_up composes it. Any signed-in
-    user can self-enroll a second factor, but only a site admin is ever
-    required to hold one, so only admin-gated methods can assume every actor
-    who reaches them has fresh MFA proof available at all. A step-up check on
-    any other role could be a permanent, silent deny for an actor who never
-    enrolled and was never asked to, not a real access control.
-
-    The wrapped method must declare a parameter literally named
-    `mfa_verified_at` (datetime | None) with no default, so a caller cannot
-    forget to decide what to pass; it has to be `session.mfa_verified_at` or
-    an explicit `None`, not an omission.
-    """
+    """Require fresh MFA proof in addition to the role check."""
 
     def decorator(fn: F) -> F:
         _require_parameter(fn, "mfa_verified_at")

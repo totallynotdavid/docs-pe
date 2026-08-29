@@ -236,10 +236,7 @@
     border-collapse: collapse;
   }
 
-  /* Author `display` rules outrank the UA sheet's [hidden] regardless of
-     specificity, so anything laid out with flex or grid stayed on screen
-     while hidden: the account menu and the CSV detection banner both did.
-     Important inside a layer is what beats an unlayered display. */
+  /* This layered rule must override unlayered component display rules. */
   [hidden] {
     display: none !important;
   }

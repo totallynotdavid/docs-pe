@@ -369,7 +369,6 @@ async def test_deactivating_the_last_active_site_admin_is_blocked(
     admin_id = await seed_site_admin(pool, "unico@osiptel.test")
     other_admin_id = await seed_site_admin(pool, "otro@osiptel.test")
 
-    # With two admins, either can deactivate the other.
     await provisioning.deactivate_user(
         admin_id,
         user_id=other_admin_id,
@@ -436,7 +435,7 @@ async def test_deleting_a_user_requires_zero_history(
     team = await seed_team(pool)
     unused = await seed_user(pool, email="sin-uso@osiptel.test")
 
-    # Preserve a second active leader so this test reaches the history guard.
+    # Keep another leader so the deletion reaches the history guard.
     second_leader = await seed_user(pool, email="segunda-lider@osiptel.test")
     await team_repository.add_member(
         team.team_id,

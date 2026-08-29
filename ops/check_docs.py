@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check local Markdown links and heading anchors."""
+"""Check local Markdown links, directory indexes, and heading anchors."""
 
 from __future__ import annotations
 
@@ -67,6 +67,12 @@ def check_link(source: Path, target: str, line: int) -> str | None:
 
     if not destination.exists():
         return f"{source.relative_to(ROOT)}:{line}: missing link target: {target}"
+
+    if destination.is_dir() and not (destination / "readme.md").is_file():
+        return (
+            f"{source.relative_to(ROOT)}:{line}: "
+            f"linked directory has no readme.md: {target}"
+        )
 
     if (
         fragment

@@ -1,18 +1,9 @@
 # Historical results
 
-This file is a historical snapshot of completed jobs. It is useful for asking
-whether a new result looks surprising, but it is not a runtime specification or
-a performance promise.
-
-The entries do not carry a run ID, commit, complete provider configuration, or
-the source state-database path. They cannot support a reproducible comparison;
-the tables below are observations, not benchmarks.
-
-For live reconciliation, use the
-[standalone outcome contract](../../ARCHITECTURE.md#outcome-state), the relevant
-[site note](../sites/), and the
-[troubleshooting runbook](../operations/troubleshooting.md). This file contains
-historical observations only.
+This is a historical snapshot, not a runtime specification or benchmark. The
+entries lack the metadata needed for reproducible comparisons. Use the
+[outcome contract](../../ARCHITECTURE.md#outcome-state) and
+[troubleshooting runbook](../operations/troubleshooting.md) for live jobs.
 
 ## OSIPTEL snapshot
 

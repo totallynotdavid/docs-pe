@@ -26,7 +26,6 @@ class ProxySession:
 
 @dataclass(frozen=True)
 class ProviderTuning:
-    # Provider defaults. PROXY_PROVIDER may override workers.
     workers: int
     ban_cooldown_s: float
     # Total slot_id values the provider can hand distinct real ports for. None
@@ -115,7 +114,6 @@ def country_code(raw: Mapping[str, str], name: str, *, lowercase: bool = False) 
     value = required(raw, name)
     code = value.lower() if lowercase else value.upper()
     if len(code) != 2 or not code.isalpha():
-        # Reject malformed country codes before provider construction.
         msg = f"{name} must be a two-letter country code"
         raise ProxyConfigurationError(msg)
     return code

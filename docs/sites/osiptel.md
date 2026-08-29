@@ -39,4 +39,4 @@ large one.
 ## Empty results
 
 An empty `data` array with `iTotalRecords=0` is an `ok` lookup with no
-registered lines. Reconcile OSIPTEL by document outcome in SQLite.
+registered lines.

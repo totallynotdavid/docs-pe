@@ -30,10 +30,10 @@ cluster. Do not use a system Python, pytest, Ruff, or mypy.
 ## Before changing code
 
 Read [Architecture](ARCHITECTURE.md) for package boundaries and durable
-contracts. Read the README for the package being changed. For a new site, follow
+contracts. Read the package's `readme.md` before changing it. For a new site, follow
 [Adding a site](docs/adding-a-site.md).
 
-Documentation has one owner for each current fact. The root README is the user
+Documentation has one owner for each current fact. The root `readme.md` is the user
 entry point, Architecture owns runtime contracts, site notes own wire behavior,
 operations guides own procedures, and reports own dated measurements. Link to
 the owner instead of copying its rules.

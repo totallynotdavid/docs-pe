@@ -104,7 +104,7 @@ class Site:
     columns: tuple[str, ...]
     accepts: Callable[[Doc], bool]
 
-    # False turns an empty parser result into an error.
+    # An empty parser result is valid only when the site allows it.
     allows_empty: bool
 
     tuning: SiteTuning

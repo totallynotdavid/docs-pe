@@ -208,7 +208,7 @@ async def test_global_search_is_gated_by_site_admin_or_team_entitlement(
 
     await service.set_global_search(admin_id, team.team_id, enabled=True)
 
-    # No longer denied, whether or not anything matches.
+    # Global-search entitlement is sufficient even when the query has no matches.
     await service.global_search(team.actor_id, "104", page=1)
 
 

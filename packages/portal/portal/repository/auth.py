@@ -457,10 +457,7 @@ class PostgresAuthRepository:
         return user_row(row)
 
     async def demote(self, user_id: UUID) -> PortalUser:
-        """Revoke site-admin status, or cancel a promotion still pending the
-        user's own enrollment. Promotion itself lives in ProvisioningService,
-        since it must also enroll a second factor before is_site_admin can
-        become true (portal_admin_requires_second_factor)."""
+        """Revoke site-admin status and cancel any pending promotion."""
         async with self._pool.acquire() as connection:
             row = await connection.fetchrow(
                 f"""

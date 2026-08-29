@@ -137,7 +137,7 @@ async def _run_workers(
     run_id: str,
     totals: dict[str, RunTotals],
 ) -> None:
-    # Allocate provider slots across sites so sticky ports never collide.
+    # Slot ids are process-global because sticky proxy ports cannot collide.
     next_slot = {provider.name: 0 for provider in providers}
     lane_id = 0
 
@@ -156,7 +156,6 @@ async def _run_workers(
             budget = _budget(cfg, site)
 
             for provider in providers:
-                # Isolate outages by site and provider.
                 breaker = CircuitBreaker(
                     provider=provider.name,
                     source=site.name,
@@ -196,9 +195,7 @@ async def _run_workers(
 
 def _budget(cfg: RunConfig, site: Site) -> int:
     if cfg.session_budget is not None:
-        # A site's tuning is a ceiling, not just a default: OSIPTEL requires a
-        # fresh session per lookup, and --session-budget must not be able to
-        # relax that for a multi-site run.
+        # Site tuning is a ceiling for the command-line override.
         return min(cfg.session_budget, site.tuning.session_budget)
 
     return site.tuning.session_budget

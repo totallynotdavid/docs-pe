@@ -197,8 +197,7 @@ def test_run_drops_already_done_rucs_on_a_resumed_run(
     asyncio.run(run(cfg, run_id="r1"))
     assert sorted(first_hits) == ["20100000001", "20100000002"]
 
-    # Re-run with one new Doc: the durable store is the source of truth, so only
-    # the new Doc is fetched.
+    # Reruns skip pairs already recorded as terminal.
     cfg2 = _cfg(
         tmp_path,
         _write_input(tmp_path, "20100000001", "20100000002", "20100000003"),

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from portal.admin.rewrap import rewrap
 from portal.credentials.masterkey import MasterKeyring, new_master_key_line
 from portal.credentials.secrets import (
     EnvelopeProtector,
@@ -12,7 +13,6 @@ from portal.credentials.secrets import (
 )
 from portal.domain.models import ProtectedSecret
 from portal.repository.auth import PostgresAuthRepository
-from portal.rewrap import rewrap
 from portal.security import token_hash
 
 from tests.portal.conftest import (

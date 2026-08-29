@@ -1,8 +1,9 @@
 # Worker fleet
 
-The fleet is a set of named worker nodes. The provisioning script configures a
-single-node Docker Swarm manager, registers the node with Dokploy, creates its
-worker application, and waits for the worker heartbeat.
+The fleet is a set of named worker nodes. Each node needs Tailscale access to
+the worker API and PostgreSQL. The provisioning script configures the host,
+registers it with Dokploy, creates its worker application, and waits for the
+worker heartbeat.
 
 The script is deployment-specific. Its project, repository, branch, tailnet, and
 master host are configured in `ops/worker_node.py`; it is not a general Dokploy
@@ -45,18 +46,20 @@ single-node Swarm, the Dokploy overlay network, Dokploy SSH access, the Dokploy
 server registration, and the `portal-worker-<name>` application. It obtains the
 worker API address and bootstrap token from the existing Dokploy deployment.
 
-The worker self-enrolls when its application starts. No worker credential needs
-to be copied by hand when the bootstrap configuration is present.
+The worker self-enrolls when its application starts. Enrollment provisions the
+API credential and the node's scoped PostgreSQL login, so no credential needs to
+be copied by hand when the bootstrap configuration is present.
 
 The operation is idempotent after the SSH and sudo boundary. Rerun `add` after a
 failed step and inspect the step that failed before changing the host.
 
 ## Remove and decommission
 
-`remove --yes` revokes the worker credential, stops and deletes the Dokploy
-application, and removes the Dokploy server row. It does not remove Tailscale
-membership, Docker, Swarm state, SSH access, or host data. Decommission those
-separately after confirming the node has no active work.
+`remove --yes` revokes the API credential and disables the worker's PostgreSQL
+login, then stops and deletes the Dokploy application and Dokploy server row.
+It does not remove Tailscale membership, Docker, Swarm state, SSH access, or
+host data. Decommission those separately after confirming the node has no active
+work.
 
 Configure Tailscale ACLs so the worker tag can reach the private worker API
 port. Verify the node in `list` after adding or removing it.

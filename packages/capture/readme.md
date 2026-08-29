@@ -4,7 +4,7 @@
 It is useful before automation and can remain the correct execution mode when
 the site accepts an established browser but rejects a new one.
 
-The current capture implementation supports the Entel site and RUC input:
+For example, capture an Entel lookup with a RUC input:
 
 ```sh
 uv run capture \

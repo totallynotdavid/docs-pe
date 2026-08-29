@@ -440,9 +440,6 @@ class ProvisioningService(AuthorizedService):
             user=user_id,
         )
 
-    # These methods act on the caller's own account and therefore require no
-    # administrative role. Site-admin enrollment is enforced separately.
-
     @public
     async def begin_totp_setup(self, actor_id: UUID) -> TotpSetup:
         user = await self._reload(actor_id)

@@ -11,13 +11,10 @@ function setupSidebarCollapse() {
     if (localStorage.getItem(key) === "1") {
       shell.dataset.sidebarCollapsed = "1";
     }
-  } catch {
-    // No persisted preference to read; the shell stays expanded for this load.
-  }
+  } catch {}
 
   for (const toggle of toggles) {
     toggle.addEventListener("click", () => {
-      // Animate user-triggered changes, not the page-load correction.
       shell.classList.add("app-shell--transitioning");
 
       const collapsed = shell.dataset.sidebarCollapsed === "1";
@@ -30,16 +27,12 @@ function setupSidebarCollapse() {
 
       try {
         localStorage.setItem(key, collapsed ? "0" : "1");
-      } catch {
-        // Toggles for this load regardless; just doesn't persist.
-      }
+      } catch {}
     });
   }
 }
 
 function setupDropdownMenus() {
-  // One handler per [data-dropdown] container: the account menu and the
-  // team switcher both use this, independently, on the same page.
   const containers = document.querySelectorAll("[data-dropdown]");
 
   for (const container of containers) {
@@ -129,11 +122,8 @@ function setupCsvDropzone() {
     status.textContent = `${(file.size / 1024).toFixed(1)} KB · listo para consultar`;
   }
 
-  // A file over the limit still uploads and hangs the tab instead of
-  // failing fast: the server rejects it by Content-Length before reading
-  // the body, and the ASGI server closes the connection mid-upload rather
-  // than draining it, which browsers don't surface as a clean error.
-  // Blocking submission here means those bytes never go over the wire.
+  // Reject oversized files before the browser starts an upload. The server's
+  // early Content-Length response is not surfaced consistently by browsers.
   function validateSize(file) {
     const maxBytes = Number(input.dataset.csvMaxBytes);
 
@@ -275,9 +265,7 @@ function setupNavSections() {
     section.addEventListener("toggle", () => {
       try {
         localStorage.setItem(key, section.open ? "open" : "closed");
-      } catch {
-        // Nothing to persist to; the section still toggles for this load.
-      }
+      } catch {}
     });
   }
 }
@@ -417,10 +405,7 @@ async function postJson(url, body) {
   return { ok: response.ok, data: await response.json() };
 }
 
-// Shared by Login.jinja (no pending_mfa cookie: passwordless) and
-// MfaChallenge.jinja (cookie present: a passkey offered instead of a TOTP
-// code). Which case applies is decided server-side from that cookie, so the
-// client script is identical either way.
+// Both password and MFA pages use this passkey endpoint.
 function setupPasskeyLogin() {
   const form = document.querySelector('form[action="/login/passkey/verify"]');
 
@@ -472,7 +457,6 @@ function setupPasskeyLogin() {
   });
 }
 
-// Add a passkey to the signed-in account and submit the WebAuthn result.
 function setupPasskeyEnrollment() {
   const form = document.querySelector('form[action="/security/passkey/register"]');
 

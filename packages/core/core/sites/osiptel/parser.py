@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class ParsedPage:
     total_records: int
-    # One raw row per phone line; carrier counts are derived later.
     rows: tuple[Row, ...]
 
 

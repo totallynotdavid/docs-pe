@@ -14,7 +14,7 @@ def test_random_token_is_52_base36_characters() -> None:
 
 
 def test_random_token_is_not_constant() -> None:
-    # 500 calls: a seeded or deterministic RNG would collide before this.
+    # Repeated requests must produce more than one token.
     tokens = {random_token() for _ in range(500)}
     assert len(tokens) > 1
 

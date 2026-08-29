@@ -1,14 +1,13 @@
 # fetch
 
-`fetch` is the standalone command-line tool. It plans document/site pairs, loads
-proxy credentials from the environment, records outcomes in SQLite, and exports
-site-specific CSV projections. [core](../core/readme.md) performs each lookup.
+`fetch` is the standalone command-line tool. It plans document/site pairs, runs
+lookups through [core](../core/readme.md), and writes site-specific CSV output.
 
 Use it when the site works without Chrome. Use [browser](../browser/readme.md)
 when a browser gate or browser state is part of the protocol. Use
 [capture](../capture/readme.md) to discover a request before automating it.
 
-## Run a lookup
+## Run
 
 ```sh
 uv run --env-file .env fetch \
@@ -18,20 +17,8 @@ uv run --env-file .env fetch \
 ```
 
 The input is a CSV whose first column contains identifiers. Empty and malformed
-rows are ignored. Duplicate identifiers are removed by default. A document is
-sent only to sites that accept its kind.
-
-## Sites
-
-| Site         | Accepted input     | Successful output                                                           |
-| ------------ | ------------------ | --------------------------------------------------------------------------- |
-| `osiptel`    | DNI or RUC         | One row per phone line, plus the `counts` projection.                       |
-| `sunat`      | Natural-person RUC | Identity fields: `tipo_doc`, `num_doc`, `nombre`, and `tipo_contribuyente`. |
-| `sunat_reps` | Legal-entity RUC   | One row per legal representative.                                           |
-
-The current request and response contract for each site lives in
-[`docs/sites/`](../../docs/sites/). Retry behavior is shared by the pipeline;
-site adapters report facts and do not choose retry actions.
+rows are ignored and duplicate identifiers are removed by default. See the
+[site notes](../../docs/sites/) for accepted inputs and output columns.
 
 ## Providers
 
@@ -45,12 +32,9 @@ The value is a comma-separated list of `name[:lanes]`. Provider fields,
 defaults, country requirements, and portal slot coordination are documented in
 [Proxy configuration](../../docs/proxies.md).
 
-## State and exports
+## Output
 
-For `--output results/out.csv`, fetch uses `results/out.state.sqlite3` as its
-durable ledger. It records outcomes, proxy providers, run metadata, and
-circuit-breaker state. Reuse the same output path to resume. Delete the state
-database only when starting a new run is intended.
+`--output` is the base path for a run. Reuse it to resume the run.
 
 The process exports these files for each selected site:
 
@@ -58,13 +42,12 @@ The process exports these files for each selected site:
 | ----------------------------- | ----------------------------------------------------------------------------------------- |
 | `out.<site>.csv`              | Rows from successful lookups.                                                             |
 | `out.<site>.<projection>.csv` | A derived site projection, such as carrier counts.                                        |
-| `out.<site>.errors.csv`       | The latest failure for each failed document, including failures that are still retryable. |
+| `out.<site>.errors.csv`       | The latest failure for each failed document.                                      |
 | `out.<site>.not_found.csv`    | Documents the site explicitly confirmed absent.                                           |
-| `out.state.sqlite3`           | The outcome ledger and attempt counts.                                                    |
+| `out.state.sqlite3`           | The durable outcome ledger.                                                         |
 
-An `ok` outcome can contain zero rows when the site allows an empty result. Use
-the state database for reconciliation. See [Architecture](../../ARCHITECTURE.md)
-and [Troubleshooting](../../docs/operations/troubleshooting.md).
+Use `fetch-status` to inspect progress and
+[Troubleshooting](../../docs/operations/troubleshooting.md) to diagnose failures.
 
 Inspect a run without parsing logs or CSV projections:
 
@@ -72,9 +55,8 @@ Inspect a run without parsing logs or CSV projections:
 uv run fetch-status --output results/out.csv
 ```
 
-For multi-host work, create a manifest before starting shards, reconcile it, and
-merge only a complete job. See
-[Sharded fetch jobs](../../docs/operations/sharded-fetch.md).
+For multi-host work, create a manifest before starting shards and merge only a
+complete job. See [Sharded fetch jobs](../../docs/operations/sharded-fetch.md).
 
 ## Command reference
 
@@ -85,6 +67,5 @@ uv run fetch --help
 ```
 
 Important options include `--session-budget`, `--ban-cooldown-s`, `--dedupe`,
-`--import`, and the output path. The site's session budget is a ceiling, so a
-command-line value can lower it but cannot make a site reuse a session when its
-contract requires a fresh one.
+and `--import`. Site-specific session rules are documented with the site
+contract.

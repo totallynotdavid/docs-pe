@@ -47,13 +47,8 @@ async def dashboard(
     def destination(team_id: UUID) -> str:
         return f"/teams/{team_id}/search" if minimal else f"/teams/{team_id}"
 
-    # With a single team, or a remembered one from the last visit, there is no
-    # real choice to present: skip straight past the picker. Search-only
-    # sessions have always skipped it on a single team; a remembered team
-    # removes the same hop for everyone else too. `?switch=1` is the explicit
-    # escape hatch: without it, a member of several teams could never see the
-    # picker again once the cookie was set, since every visit to `/` would
-    # bounce straight back into whichever team they last touched.
+    # A remembered team or a single available team bypasses the picker.
+    # `?switch=1` forces the picker.
     if not switch:
         if len(teams) == 1:
             return Redirect(destination(teams[0].id), status_code=303)

@@ -33,6 +33,13 @@ implementation code. A site can therefore remain in `capture` while its protocol
 is investigated, or remain in `browser` when plain HTTP is not a valid
 implementation.
 
+The portal has three service processes and one administrative interface. `web`
+serves the browser application, `worker-api` owns credential decryption and
+result publication, and `worker` claims queue work directly through a scoped
+PostgreSQL role. `portal-admin` owns migrations, provisioning, worker identity,
+and key management. Service processes do not run administrative commands during
+startup.
+
 ## Standalone fetch lifecycle
 
 ```text
@@ -78,11 +85,14 @@ state.
 ## Portal lifecycle
 
 The portal creates one queue item per accepted document/site pair. A worker
-claims an item through the worker API, executes a core lookup in its own
-process, and publishes the result. Claim leases and lease fences prevent a late
-worker from publishing after cancellation or reassignment.
+self-enrolls through `worker-api`, claims queue and proxy-slot state through its
+scoped PostgreSQL role, executes a core lookup in its own process, and sends
+credential reveals and results to `worker-api`. Claim leases and lease fences
+prevent a late worker from publishing after cancellation or reassignment.
 
 PostgreSQL owns queue leases, cancellation fences, reusable entries, team
 access, worker identities, fleet proxy-slot leases, and the fleet circuit
 breaker. Uploaded inputs and result payloads live in the configured object
-store. Workers do not need direct PostgreSQL credentials.
+store. The worker role is limited to queue, lease, heartbeat, slot, and result
+metadata operations. Stored credential ciphertext remains accessible only to
+`worker-api`, which holds the master key.
