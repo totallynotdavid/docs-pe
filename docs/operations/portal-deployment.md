@@ -24,9 +24,18 @@ grant those services to `tag:worker-fleet` only.
 Prepare these resources before starting:
 
 - A tailnet ACL policy that grants `tag:worker-fleet` access to
-  `svc:database:5432`, `svc:objectstorage:9000`, and `svc:worker-api:8443`.
-  Add `tag:worker-fleet` to every worker node. `tag:core` belongs on the
-  shared-service sidecars, not on their host.
+  `svc:database:5432`, `svc:objectstorage:9000`, and `svc:worker-api:8443`
+  (see `ops/org.jsonc`). Add `tag:worker-fleet` to every worker node.
+  `tag:core` belongs on the shared-service sidecars, not on their host.
+- Each of the three Services (`database`, `objectstorage`, `worker-api`)
+  defined in the admin console (Services page) with its port and
+  `do-not-validate` in the endpoint field. All three carry a raw, non-HTTP
+  protocol (Postgres wire protocol, S3, and the worker API's own HTTP without
+  a scheme Tailscale can probe), so the default endpoint validation never
+  succeeds and leaves the host stuck in "Needs configuration." An ACL grant
+  and a running sidecar are not enough on their own: a Service that has never
+  been defined this way has no admin-console resource for autoApprovers or
+  an advertising host to attach to at all.
 - One reusable Tailscale auth key with ephemeral nodes enabled per
   shared-service sidecar (`TS_AUTHKEY_DATABASE`, `TS_AUTHKEY_OBJECTSTORAGE`,
   `TS_AUTHKEY_WORKER_API`).
@@ -103,9 +112,12 @@ grant.
 `worker-api` serves enrollment, credential reveals, and result publication.
 Queue and slot traffic goes directly from each worker node to PostgreSQL.
 
-The Tailscale sidecars load their Serve configuration from the mounted
-directories under `ops/tailscale/`. Keep those mounts as directories so the
-sidecars can reload configuration.
+Each Tailscale sidecar runs `tailscale serve --service=...` directly as its
+container command, reasserting it every 10s: `TS_SERVE_CONFIG` does not
+reliably apply a `services:` endpoint mapping through containerboot (confirmed
+against production — it leaves `tailscale serve get-config --all` showing
+`endpoints: null` indefinitely), and the endpoint does not persist across a
+container restart even once set, unlike the underlying tailnet identity.
 
 For an existing installation, set `POSTGRES_VOLUME_NAME` and
 `MINIO_VOLUME_NAME` to the current Docker volume names. Confirm them with

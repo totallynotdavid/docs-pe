@@ -12,6 +12,8 @@ services:
     networks: [dokploy-network]
     restart: unless-stopped
 
+  # See docker-compose.postgres.yml for why this runs `tailscale serve`
+  # directly instead of relying on TS_SERVE_CONFIG.
   tailscale:
     image: tailscale/tailscale:latest
     network_mode: "service:worker-api"
@@ -21,13 +23,16 @@ services:
       TS_HOSTNAME: portal-worker-api
       TS_STATE_DIR: /var/lib/tailscale
       TS_EXTRA_ARGS: --advertise-tags=tag:core
-      TS_SERVE_CONFIG: /config/serve.json
-      # See docker-compose.postgres.yml: required in practice for containerboot
-      # to actually advertise the svc: entry from TS_SERVE_CONFIG on startup.
-      TS_EXPERIMENTAL_SERVICE_AUTO_ADVERTISEMENT: "true"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        /usr/local/bin/containerboot &
+        while true; do
+          tailscale --socket=/tmp/tailscaled.sock serve --service=svc:worker-api --tcp=8443 tcp://localhost:8443 >/dev/null 2>&1
+          sleep 10
+        done
     volumes:
       - ts-worker-api-state:/var/lib/tailscale
-      - ./ops/tailscale/worker-api:/config:ro
     restart: unless-stopped
     depends_on: [worker-api]
 

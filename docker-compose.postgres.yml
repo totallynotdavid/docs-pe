@@ -11,6 +11,16 @@ services:
     networks: [dokploy-network]
     restart: unless-stopped
 
+  # containerboot's TS_SERVE_CONFIG does not reliably apply a `services:`
+  # endpoint mapping: confirmed against production that it leaves
+  # `tailscale serve get-config --all` showing endpoints: null indefinitely,
+  # even with TS_EXPERIMENTAL_SERVICE_AUTO_ADVERTISEMENT=true (that flag only
+  # sets AdvertiseServices, not the port forward itself). The CLI command is
+  # the only mechanism confirmed to work, so containerboot runs as a
+  # background process and this reasserts the endpoint on top of it, every
+  # 10s, so it's self-healing across containerboot's own reconnects and
+  # survives this container's own restarts (the endpoint does not persist in
+  # tailscaled's state across a restart, unlike the tailnet identity itself).
   tailscale:
     image: tailscale/tailscale:latest
     network_mode: "service:postgres"
@@ -20,15 +30,16 @@ services:
       TS_HOSTNAME: portal-database
       TS_STATE_DIR: /var/lib/tailscale
       TS_EXTRA_ARGS: --advertise-tags=tag:core
-      TS_SERVE_CONFIG: /config/serve.json
-      # Undocumented-as-required in practice: TS_SERVE_CONFIG alone does not
-      # advertise a `services:` entry on startup without this. Confirmed by
-      # testing against production: the file was applied but svc:database
-      # never appeared as an advertised service until this was set.
-      TS_EXPERIMENTAL_SERVICE_AUTO_ADVERTISEMENT: "true"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        /usr/local/bin/containerboot &
+        while true; do
+          tailscale --socket=/tmp/tailscaled.sock serve --service=svc:database --tcp=5432 tcp://localhost:5432 >/dev/null 2>&1
+          sleep 10
+        done
     volumes:
       - ts-database-state:/var/lib/tailscale
-      - ./ops/tailscale/database:/config:ro
     restart: unless-stopped
     depends_on: [postgres]
 
