@@ -96,6 +96,25 @@ the team. To validate and activate its first proxy credential, add
 `PORTAL_PROVISION_GEONODE_<FIELD>` environment variables. The proxy validation
 opens a real provider session and releases it before provisioning completes.
 
+`web` runs as a Dokploy "application" (a Swarm service), unlike `worker-api`
+and the shared services (plain Compose). Confirmed live: a Swarm-managed
+service's containers get their `/etc/resolv.conf` generated from
+`/run/systemd/resolve/resolv.conf` (the raw upstream ISP/VPS resolvers, no
+`*.ts.net` knowledge), while a plain Compose container on the same host
+consistently gets the working, tailscale-aware chain through the
+`127.0.0.53` stub. Dokploy exposes no field to set a container's DNS servers,
+so after every deploy of `web`, run once:
+
+```sh
+docker service update --dns-add 100.100.100.100 <web's Swarm service name>
+```
+
+This isn't optional or one-time: Dokploy recreates the Swarm service from its
+own stored spec on each deploy, which has no memory of this override, so `web`
+silently loses `*.ts.net` resolution (and crash-loops on `PORTAL_DATABASE_DSN`)
+again after every redeploy until this is reapplied. Find the service name with
+`docker service ls`, matching Dokploy's `appName` for the `web` application.
+
 Deploy `web` and `worker-api` from the same revision with the same database,
 object store, and master-key file. Configure their commands as follows:
 
