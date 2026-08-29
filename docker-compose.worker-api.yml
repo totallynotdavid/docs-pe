@@ -3,17 +3,15 @@ services:
     build:
       context: .
       dockerfile: packages/portal/Dockerfile
-    command: ["portal", "worker-api"]
+    command: ["python", "-m", "portal.worker.api"]
     env_file: [.env]
     environment:
-      # The container's own interface. What keeps this off the internet is the
-      # host binding in `ports:` below, not this value.
+      # The host binding below controls exposure.
       PORTAL_WORKER_API_HOST: "0.0.0.0"
     volumes:
-      - ${PORTAL_OBJECT_ROOT_HOST}:/app/.data/objects
       - ${PORTAL_MASTER_KEY_HOST_PATH}:/run/secrets/portal-master-key:ro
     ports:
-      # Bind the published port to the host's tailnet address.
+      # Publish on the tailnet address.
       - "${PORTAL_WORKER_API_BIND_IP}:8443:8443"
     networks: [dokploy-network]
     restart: unless-stopped

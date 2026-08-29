@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
@@ -16,7 +18,7 @@ from portal.repository.jobs import PostgresJobRepository
 from portal.repository.slots import PostgresProxySlots
 from portal.repository.workers import PostgresWorkerRegistry
 from portal.settings import PortalSettings
-from portal.storage.files import FileObjectStorage
+from portal.storage.s3 import S3ObjectStorage
 from portal.worker.routes import (
     EXCEPTION_HANDLERS,
     handlers,
@@ -47,12 +49,7 @@ def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
     async def lifespan(app: Litestar) -> AsyncIterator[None]:
         import asyncpg
 
-        # asyncpg's own default (10/10) is sized for a single process. Each of
-        # PORTAL_WORKER_API_WORKERS processes opens its own pool, so the
-        # unscaled default would multiply into far more Postgres connections
-        # than the fleet's actual concurrent claim/publish/heartbeat traffic
-        # needs. Confirmed live: 4 processes at the default held 40 open
-        # connections with at most 1 active at a time.
+        # Each uvicorn process owns a pool, so keep the per-process pool bounded.
         pool = await asyncpg.create_pool(settings.database_dsn, min_size=2, max_size=5)
 
         app.state.pool = pool
@@ -62,7 +59,13 @@ def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
         app.state.breakers = PostgresCircuitBreakers(pool)
         app.state.slots = PostgresProxySlots(pool)
         app.state.protector = EnvelopeProtector(keyring)
-        app.state.storage = FileObjectStorage(settings.object_root)
+        app.state.storage = S3ObjectStorage(
+            endpoint_url=settings.object_storage_endpoint,
+            bucket=settings.object_storage_bucket,
+            access_key=settings.object_storage_access_key,
+            secret_key=settings.object_storage_secret_key,
+            region=settings.object_storage_region,
+        )
 
         try:
             yield
@@ -101,7 +104,7 @@ def run(argv: Sequence[str]) -> None:
     import uvicorn
 
     if argv:
-        raise SystemExit("portal worker-api takes no arguments")
+        raise SystemExit("worker-api takes no arguments")
 
     settings = PortalSettings.from_environment()
     settings.validate()
@@ -109,14 +112,8 @@ def run(argv: Sequence[str]) -> None:
     if settings.worker_api_workers < 1:
         raise SystemExit("PORTAL_WORKER_API_WORKERS must be at least 1")
 
-    # A single worker process fields all fleet claim/publish/heartbeat traffic
-    # regardless of host core count, so multiple processes share the load.
-    # uvicorn's multiprocess mode requires an import string rather than an app
-    # instance: each worker process imports this module and calls the factory
-    # itself instead of the parent process constructing one app and forking it.
-    #
-    # In a container, the host port binding supplies the tailnet boundary.
-    # Outside one, bind directly to the Tailscale interface.
+    # Multiprocess mode needs an import string so each process creates its own
+    # application and database pool.
     uvicorn.run(
         "portal.worker.api:create_app_from_env",
         factory=True,
@@ -124,3 +121,11 @@ def run(argv: Sequence[str]) -> None:
         port=settings.worker_api_port,
         workers=settings.worker_api_workers,
     )
+
+
+def main() -> None:
+    run(sys.argv[1:])
+
+
+if __name__ == "__main__":
+    main()

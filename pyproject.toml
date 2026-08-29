@@ -109,7 +109,7 @@ section-order = [
 exclude_gitignore = true
 
 [[tool.mypy.overrides]]
-module = ["asyncpg", "core.*", "psutil"]
+module = ["asyncpg", "core.*", "psutil", "aioboto3", "botocore.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

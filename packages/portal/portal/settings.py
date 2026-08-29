@@ -7,11 +7,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 
-# HTTPS, Secure cookies, and host checking are not gated on the environment:
-# they follow PORTAL_PUBLIC_ORIGIN, which is the one place the deployment
-# declares how it is reached. PORTAL_ENVIRONMENT gates only what makes a laptop
-# workable: a plain-http origin and no Turnstile. validate() refuses both in
-# production.
+# Production security follows the declared public origin, not the environment
+# label. Development relaxations are rejected by `validate()` in production.
 
 
 def _required(name: str) -> str:
@@ -52,10 +49,6 @@ ENVIRONMENTS = frozenset({"development", "production"})
 
 DEFAULT_WORKER_API_PORT = 8443
 
-# One uvicorn worker process fields all fleet claim/publish/heartbeat traffic
-# regardless of host core count. 4 processes on a 6-core host leaves headroom
-# for Postgres and other tenants on a shared box; raise per-host if the box is
-# dedicated or has more cores.
 DEFAULT_WORKER_API_WORKERS = 4
 
 
@@ -72,7 +65,11 @@ class PortalSettings:
     worker_api_port: int = DEFAULT_WORKER_API_PORT
     worker_api_workers: int = DEFAULT_WORKER_API_WORKERS
     worker_bootstrap_token: str = ""
-    object_root: Path = Path(".data/objects")
+    object_storage_endpoint: str = ""
+    object_storage_bucket: str = ""
+    object_storage_access_key: str = ""
+    object_storage_secret_key: str = ""
+    object_storage_region: str = "us-east-1"
     resend_api_key: str = ""
     mail_from: str = ""
 
@@ -94,7 +91,13 @@ class PortalSettings:
                 _optional("PORTAL_WORKER_API_WORKERS") or DEFAULT_WORKER_API_WORKERS
             ),
             worker_bootstrap_token=_optional("PORTAL_WORKER_BOOTSTRAP_TOKEN"),
-            object_root=Path(os.environ.get("PORTAL_OBJECT_ROOT", ".data/objects")),
+            object_storage_endpoint=_optional("PORTAL_OBJECT_STORAGE_ENDPOINT"),
+            object_storage_bucket=_optional("PORTAL_OBJECT_STORAGE_BUCKET"),
+            object_storage_access_key=_optional("PORTAL_OBJECT_STORAGE_ACCESS_KEY"),
+            object_storage_secret_key=_optional("PORTAL_OBJECT_STORAGE_SECRET_KEY"),
+            object_storage_region=(
+                _optional("PORTAL_OBJECT_STORAGE_REGION") or "us-east-1"
+            ),
             resend_api_key=_optional("PORTAL_RESEND_API_KEY"),
             mail_from=_optional("PORTAL_MAIL_FROM"),
         )
@@ -123,6 +126,22 @@ class PortalSettings:
                 (
                     "PORTAL_WORKER_BOOTSTRAP_TOKEN is required",
                     self.worker_bootstrap_token,
+                ),
+                (
+                    "PORTAL_OBJECT_STORAGE_ENDPOINT is required",
+                    self.object_storage_endpoint,
+                ),
+                (
+                    "PORTAL_OBJECT_STORAGE_BUCKET is required",
+                    self.object_storage_bucket,
+                ),
+                (
+                    "PORTAL_OBJECT_STORAGE_ACCESS_KEY is required",
+                    self.object_storage_access_key,
+                ),
+                (
+                    "PORTAL_OBJECT_STORAGE_SECRET_KEY is required",
+                    self.object_storage_secret_key,
                 ),
                 ("PORTAL_RESEND_API_KEY is required", self.resend_api_key),
                 ("PORTAL_MAIL_FROM is required", self.mail_from),

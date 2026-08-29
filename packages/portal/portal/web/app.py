@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -31,7 +32,7 @@ from portal.repository.search_log import PostgresSearchLogRepository
 from portal.repository.teams import PostgresTeamRepository
 from portal.repository.workers import PostgresWorkerRegistry
 from portal.settings import PortalSettings
-from portal.storage.files import FileObjectStorage
+from portal.storage.s3 import S3ObjectStorage
 from portal.turnstile import open_human_check
 from portal.web.assets import STATIC_DIR
 from portal.web.deps import DEPENDENCIES
@@ -115,7 +116,13 @@ def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
             mailer=mailer,
         )
         app.state.audit = audit
-        app.state.storage = FileObjectStorage(settings.object_root)
+        app.state.storage = S3ObjectStorage(
+            endpoint_url=settings.object_storage_endpoint,
+            bucket=settings.object_storage_bucket,
+            access_key=settings.object_storage_access_key,
+            secret_key=settings.object_storage_secret_key,
+            region=settings.object_storage_region,
+        )
 
         try:
             async with sweeping(store), dispatching(pool, mailer):
@@ -161,18 +168,23 @@ def run(argv: Sequence[str]) -> None:
     import uvicorn
 
     if argv:
-        raise SystemExit("portal web takes no arguments")
+        raise SystemExit("web takes no arguments")
 
     settings = PortalSettings.from_environment()
     settings.validate()
 
-    # No proxy_headers: the client address comes from CF-Connecting-IP, which
-    # Cloudflare sets after stripping any client-supplied copy and which reaches
-    # the app through the tunnel. Trusting X-Forwarded-For instead would mean
-    # trusting a header that arrives with every request, and the hop that would
-    # have to be allowlisted is the local reverse proxy, not the edge.
+    # Trust only Cloudflare's client-address header. `proxy_headers` would trust
+    # client-supplied forwarding headers at the local proxy.
     uvicorn.run(
         create_web_app(settings),
         host="0.0.0.0",
         port=int(os.environ.get("PORT", "8000")),
     )
+
+
+def main() -> None:
+    run(sys.argv[1:])
+
+
+if __name__ == "__main__":
+    main()

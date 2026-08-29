@@ -11,10 +11,12 @@ from typing import TYPE_CHECKING, NamedTuple
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
+import aioboto3
 import asyncpg
 import pyotp
 import pytest
 
+from botocore.exceptions import ClientError
 from litestar.testing import AsyncTestClient, TestClient
 from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
@@ -58,6 +60,16 @@ if TYPE_CHECKING:
 POSTGRES_DSN = (
     os.environ.get("PORTAL_TEST_DSN") or "postgresql://postgres@127.0.0.1:5432/postgres"
 )
+
+# `mise run test` starts a local minio at this address (see mise.toml's
+# objects:start task); a shared bucket across the whole session is fine since
+# every object key already carries a random uuid.
+OBJECT_STORAGE_ENDPOINT = (
+    os.environ.get("PORTAL_TEST_OBJECT_STORAGE_ENDPOINT") or "http://127.0.0.1:9100"
+)
+OBJECT_STORAGE_BUCKET = "portal-objects"
+OBJECT_STORAGE_ACCESS_KEY = "portal-dev"
+OBJECT_STORAGE_SECRET_KEY = "portal-dev-secret"
 
 MASTER_KEY_VERSION = "v1"
 MASTER_KEY = base64.urlsafe_b64encode(b"c" * 32).decode("ascii")
@@ -282,11 +294,28 @@ def provisioning(
     )
 
 
+@pytest.fixture(scope="session", autouse=True)
+async def _object_storage_bucket() -> None:
+    session = aioboto3.Session()
+
+    async with session.client(
+        "s3",
+        endpoint_url=OBJECT_STORAGE_ENDPOINT,
+        aws_access_key_id=OBJECT_STORAGE_ACCESS_KEY,
+        aws_secret_access_key=OBJECT_STORAGE_SECRET_KEY,
+        region_name="us-east-1",
+    ) as client:
+        try:
+            await client.create_bucket(Bucket=OBJECT_STORAGE_BUCKET)
+        except ClientError as error:
+            if error.response["Error"]["Code"] != "BucketAlreadyOwnedByYou":
+                raise
+
+
 @pytest.fixture
 def settings(
     portal_db: PortalDatabase,
     master_key_file: Path,
-    tmp_path_factory: pytest.TempPathFactory,
 ) -> PortalSettings:
     # No Turnstile keys, so open_human_check() returns the disabled check. That
     # is the same branch a developer's laptop takes, and validate() refuses it
@@ -295,7 +324,10 @@ def settings(
         database_dsn=portal_db.dsn,
         public_origin=ORIGIN,
         master_key_file=master_key_file,
-        object_root=tmp_path_factory.mktemp("objects"),
+        object_storage_endpoint=OBJECT_STORAGE_ENDPOINT,
+        object_storage_bucket=OBJECT_STORAGE_BUCKET,
+        object_storage_access_key=OBJECT_STORAGE_ACCESS_KEY,
+        object_storage_secret_key=OBJECT_STORAGE_SECRET_KEY,
     )
 
 

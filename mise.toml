@@ -2,6 +2,7 @@
 uv = "0.12.6"
 python = "3.14.7"
 postgres = "18.6"
+minio = "2025.01.20.14.49.07"
 node = "26.8.1"
 
 [tasks.install]
@@ -41,8 +42,7 @@ key_file="$PWD/.data/master.key"
 
 if [ ! -f "$key_file" ]; then
   mkdir -p "$PWD/.data"
-  uv run portal new-key --version v1 > "$key_file"
-  chmod 600 "$key_file"
+  uv run portal-admin key install --path "$key_file" --version v1
 fi
 """
 
@@ -59,36 +59,48 @@ fi
 """
 
 [tasks.dev]
-description = "Run postgres, bootstrap, and the app"
-depends = ["db:init", "portal:key"]
+description = "Run postgres, minio, bootstrap, and the app"
+depends = ["db:init", "objects:init", "portal:key"]
 run = """
 data_dir="$PWD/.data/postgres"
 
-# `db:start`, which `test` depends on, leaves a cluster running with durability
-# on. Take it down rather than talking to it: dev owns its postmaster, and a
-# second one only fails on the pid file while pg_isready reports the first.
+# Development owns its postmaster. Stop a cluster left by `db:start` first.
 mise x postgres -- pg_ctl -D "$data_dir" stop -m fast -w 2>/dev/null || true
 
-# The local cluster is disposable, so durability is disabled for faster writes.
+# The local cluster is disposable, so use relaxed durability for faster writes.
 mise x postgres -- postgres -D "$data_dir" -h 127.0.0.1 -p 5432 \\
   -c fsync=off -c synchronous_commit=off -c full_page_writes=off &
 pg_pid=$!
 
-trap 'mise x postgres -- pg_ctl -D "$data_dir" stop -m fast -w 2>/dev/null || kill "$pg_pid" 2>/dev/null' EXIT
+MINIO_ROOT_USER=portal-dev MINIO_ROOT_PASSWORD=portal-dev-secret \\
+  mise x minio -- minio server "$PWD/.data/minio" \\
+    --address 127.0.0.1:9100 --console-address 127.0.0.1:9101 \\
+    > "$PWD/.data/minio/server.log" 2>&1 &
+minio_pid=$!
+
+trap '
+  mise x postgres -- pg_ctl -D "$data_dir" stop -m fast -w 2>/dev/null || kill "$pg_pid" 2>/dev/null
+  kill "$minio_pid" 2>/dev/null
+' EXIT
 
 until mise x postgres -- pg_isready -h 127.0.0.1 -p 5432 -U postgres -q; do
   sleep 0.1
 done
 
-uv run --env-file .env portal bootstrap
-uv run --env-file .env portal web
+until curl -sf http://127.0.0.1:9100/minio/health/live >/dev/null 2>&1; do
+  sleep 0.1
+done
+
+uv run --env-file .env portal-admin bootstrap
+uv run --env-file .env python -m portal.web.app
 """
 
 [tasks.reset]
-description = "Delete the local postgres cluster"
+description = "Delete the local postgres cluster and minio store"
 run = """
 mise x postgres -- pg_ctl -D "$PWD/.data/postgres" stop -m fast -w 2>/dev/null || true
 rm -rf "$PWD/.data/postgres"
+rm -rf "$PWD/.data/minio"
 """
 
 [tasks."db:start"]
@@ -103,11 +115,35 @@ if ! mise x postgres -- pg_isready -h 127.0.0.1 -p 5432 -U postgres -q; then
 fi
 """
 
+[tasks."objects:init"]
+description = "Create the local minio data dir if missing"
+run = """
+mkdir -p "$PWD/.data/minio"
+"""
+
+[tasks."objects:start"]
+description = "Start the local minio server"
+depends = ["objects:init"]
+run = """
+if ! curl -sf http://127.0.0.1:9100/minio/health/live >/dev/null 2>&1; then
+  MINIO_ROOT_USER=portal-dev MINIO_ROOT_PASSWORD=portal-dev-secret \\
+    mise x minio -- minio server "$PWD/.data/minio" \\
+      --address 127.0.0.1:9100 --console-address 127.0.0.1:9101 \\
+      > "$PWD/.data/minio/server.log" 2>&1 &
+  disown
+
+  for _ in $(seq 1 50); do
+    curl -sf http://127.0.0.1:9100/minio/health/live >/dev/null 2>&1 && break
+    sleep 0.1
+  done
+fi
+"""
+
 [tasks."portal:schema"]
 description = "Snapshot the portal schema"
 depends = ["db:start"]
 run = """
-uv run --env-file .env portal migrate
+uv run --env-file .env portal-admin migrate
 
 mise x postgres -- pg_dump -h 127.0.0.1 -p 5432 -U postgres -d postgres \\
   --schema-only --no-owner --no-privileges \\
@@ -126,7 +162,7 @@ run = [
 ]
 
 [tasks.test]
-depends = ["db:start"]
+depends = ["db:start", "objects:start"]
 run = "uv run pytest"
 
 [tasks.build]
