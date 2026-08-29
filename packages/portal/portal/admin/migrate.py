@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import asyncio
 
 from typing import TYPE_CHECKING
@@ -29,9 +30,15 @@ async def migrate() -> None:
         await pool.close()
 
 
+def build_parser() -> argparse.ArgumentParser:
+    return argparse.ArgumentParser(
+        prog="portal-admin migrate",
+        description="Apply pending schema migrations.",
+    )
+
+
 def run(argv: Sequence[str]) -> None:
-    if argv:
-        raise SystemExit("portal migrate takes no arguments")
+    build_parser().parse_args(argv)
 
     try:
         asyncio.run(migrate())

@@ -6,7 +6,8 @@ import os
 
 from typing import TYPE_CHECKING
 
-from portal.provision import provision
+from portal.admin.migrate import migrate
+from portal.admin.provision import provision
 
 
 if TYPE_CHECKING:
@@ -27,6 +28,7 @@ def _env_or_default(name: str, default: str) -> str:
 
 
 async def bootstrap() -> None:
+    await migrate()
     await provision(
         argparse.Namespace(
             admin_email=_required_env("PORTAL_BOOTSTRAP_ADMIN_EMAIL"),
@@ -46,8 +48,11 @@ async def bootstrap() -> None:
 
 
 def run(argv: Sequence[str]) -> None:
-    if argv:
-        raise SystemExit("portal bootstrap takes no arguments")
+    parser = argparse.ArgumentParser(
+        prog="portal-admin bootstrap",
+        description="Provision the local development installation.",
+    )
+    parser.parse_args(argv)
 
     try:
         asyncio.run(bootstrap())

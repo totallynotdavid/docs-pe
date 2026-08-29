@@ -45,4 +45,4 @@ USER portal
 
 EXPOSE 8000
 
-CMD ["sh", "-ec", "portal migrate && portal provision --admin-email \"$PORTAL_BOOTSTRAP_ADMIN_EMAIL\" --admin-password-env PORTAL_BOOTSTRAP_ADMIN_PASSWORD --team-name \"$PORTAL_BOOTSTRAP_TEAM_NAME\" --team-slug \"$PORTAL_BOOTSTRAP_TEAM_SLUG\" && exec portal web"]
+CMD ["python", "-m", "portal.web.app"]

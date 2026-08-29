@@ -122,7 +122,7 @@ async def _run() -> None:
 
 def run(argv: Sequence[str]) -> None:
     if argv:
-        raise SystemExit("portal rewrap takes no arguments")
+        raise SystemExit("portal-admin key rewrap takes no arguments")
 
     try:
         asyncio.run(_run())

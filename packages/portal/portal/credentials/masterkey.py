@@ -79,7 +79,10 @@ class MasterKeyring:
             order.append(version)
 
         if not order:
-            msg = f"{source} holds no master keys. Write one with `portal new-key`."
+            msg = (
+                f"{source} holds no master keys. Write one with `portal-admin key "
+                "generate`."
+            )
             raise RuntimeError(msg)
 
         return cls(order[0], keys)

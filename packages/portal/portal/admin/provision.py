@@ -16,7 +16,6 @@ from portal.credentials.masterkey import MasterKeyring
 from portal.credentials.secrets import EnvelopeProtector
 from portal.domain.models import CredentialState, RequestTrace
 from portal.ephemeral import EphemeralStore
-from portal.migrations import apply_migrations
 from portal.notify.mailer import open_mailer
 from portal.repository.audit import PostgresAuditLog
 from portal.repository.auth import PostgresAuthRepository
@@ -32,7 +31,7 @@ if TYPE_CHECKING:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="portal provision",
+        prog="portal-admin provision",
         description="Idempotently provision the portal's initial installation.",
     )
     parser.add_argument("--admin-email", required=True)
@@ -89,8 +88,6 @@ async def provision(args: argparse.Namespace) -> None:
     mailer = open_mailer(settings)
 
     try:
-        await apply_migrations(pool)
-
         credential_repo = PostgresCredentialRepository(pool)
 
         service = ProvisioningService(

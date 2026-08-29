@@ -1,10 +1,6 @@
 #!/usr/bin/env python
 """Add, remove, or inspect a worker-fleet node.
 
-    uv run ops/worker_node.py list
-    uv run ops/worker_node.py add <name> <tailnet-ip> [--dry-run]
-    uv run ops/worker_node.py remove <name> [--dry-run] [--yes]
-
 The worker-fleet runbook describes the host access boundary and the changes
 made by each command.
 """
@@ -138,13 +134,6 @@ def ssh_run(
 
 
 def run_python_in_worker_api(code: str) -> str:
-    """Run `code` inside the running worker-api container on master.
-
-    Reuses that container's own PortalSettings/DATABASE_URL instead of the
-    caller needing separate Postgres credentials. Passed base64-encoded so
-    the code's own quoting never has to survive two levels of shell parsing
-    (this ssh invocation's, then the remote shell's).
-    """
     cid = worker_api_container_id()
     encoded = base64.b64encode(code.encode()).decode()
     remote_cmd = (
@@ -454,7 +443,10 @@ def build_application_steps(node: Node, state: AddState) -> list[Step]:
         dokploy(
             "POST",
             "application.update",
-            json_body={"applicationId": application_id, "command": "portal worker"},
+            json_body={
+                "applicationId": application_id,
+                "command": "python -m portal.worker.agent",
+            },
         )
         dokploy(
             "POST",
@@ -537,7 +529,7 @@ def revoke_worker(node: Node) -> None:
     cid = worker_api_container_id()
     result = ssh_run(
         MASTER_HOST,
-        f"docker exec {cid} portal enroll-worker --worker-id {node.worker_id} --revoke",
+        f"docker exec {cid} portal-admin worker revoke --worker-id {node.worker_id}",
         check=False,
     )
     already_gone = "not enrolled" in result.stderr or "already revoked" in result.stderr

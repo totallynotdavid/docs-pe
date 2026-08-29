@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Web portal and worker for managing fetch jobs."
 requires-python = ">=3.11"
 dependencies = [
+  "aioboto3>=15.0.0",
   "asyncpg>=0.31.0",
   "cryptography>=50.0.0",
   "core",
@@ -16,7 +17,6 @@ dependencies = [
   "jinjax>=0.65",
   "litestar>=2.24.0",
   "litestar-htmx>=0.5.0",
-  # The worker API protocol imports msgspec at runtime.
   "msgspec>=0.19.0",
   "psutil>=7.0.0",
   "pwdlib[argon2]>=0.3.0",
@@ -27,7 +27,7 @@ dependencies = [
 ]
 
 [project.scripts]
-portal = "portal.cli:main"
+portal-admin = "portal.admin.cli:main"
 
 [tool.uv.sources]
 core = { path = "../core", editable = false }
