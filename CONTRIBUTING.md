@@ -38,8 +38,6 @@ entry point, Architecture owns runtime contracts, site notes own wire behavior,
 operations guides own procedures, and reports own dated measurements. Link to
 the owner instead of copying its rules.
 
-The canonical comment policy is [notes/comments.md](notes/comments.md).
-
 ## Commit messages
 
 Use a specific, imperative subject with a lower-case scope and no period:
