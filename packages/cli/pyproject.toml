@@ -13,6 +13,7 @@ dependencies = ["core"]
 fetch = "cli.main:main"
 fetch-fleet = "cli.fleet:main"
 fetch-status = "cli.status:main"
+fetch-preflight = "cli.preflight:main"
 
 [tool.uv.sources]
 core = { path = "../core", editable = false }
