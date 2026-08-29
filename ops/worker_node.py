@@ -37,8 +37,7 @@ GIT_DOCKERFILE = "packages/portal/Dockerfile"
 
 TAILNET_SUFFIX = "taila2cbc1.ts.net"
 MASTER_HOST = f"master.{TAILNET_SUFFIX}"
-MASTER_TAILNET_IP = "100.86.240.39"
-WORKER_API_URL = f"http://{MASTER_TAILNET_IP}:8443"
+WORKER_API_URL = f"http://worker-api.{TAILNET_SUFFIX}:8443"
 
 SSH_USER = "dubu"
 SSH_OPTS = (
@@ -396,8 +395,7 @@ def build_application_steps(node: Node, state: AddState) -> list[Step]:
             json_body={
                 "name": node.app_name,
                 "description": (
-                    f"Worker fleet agent on {node.name}. Outbound-only, no "
-                    "domain/port. See docs/operations/worker-fleet.md."
+                    f"Worker fleet agent on {node.name}. Outbound-only, no domain/port."
                 ),
                 "environmentId": DOKPLOY_ENVIRONMENT_ID,
                 "serverId": state.server_id,
@@ -414,6 +412,8 @@ def build_application_steps(node: Node, state: AddState) -> list[Step]:
             application_id = existing["applicationId"]
         state.application_id = application_id
 
+    def configure_application() -> None:
+        application_id = state.application_id
         dokploy(
             "POST",
             "application.saveGithubProvider",
@@ -478,6 +478,7 @@ def build_application_steps(node: Node, state: AddState) -> list[Step]:
         Step(
             f"Dokploy application {node.app_name}", has_application, create_application
         ),
+        Step("worker application configuration", lambda: False, configure_application),
         Step("deploy", lambda: False, deploy_application),
     ]
 
@@ -551,7 +552,7 @@ def cmd_add(node: Node, *, dry_run: bool) -> None:
     if dry_run:
         return
 
-    print("verifying the worker is claiming work...")
+    print("verifying the worker is online...")
     verify_worker_online(node)
 
 
