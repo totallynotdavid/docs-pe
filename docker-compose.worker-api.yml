@@ -22,6 +22,9 @@ services:
       TS_STATE_DIR: /var/lib/tailscale
       TS_EXTRA_ARGS: --advertise-tags=tag:core
       TS_SERVE_CONFIG: /config/serve.json
+      # See docker-compose.postgres.yml: required in practice for containerboot
+      # to actually advertise the svc: entry from TS_SERVE_CONFIG on startup.
+      TS_EXPERIMENTAL_SERVICE_AUTO_ADVERTISEMENT: "true"
     volumes:
       - ts-worker-api-state:/var/lib/tailscale
       - ./ops/tailscale/worker-api:/config:ro

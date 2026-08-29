@@ -21,6 +21,11 @@ services:
       TS_STATE_DIR: /var/lib/tailscale
       TS_EXTRA_ARGS: --advertise-tags=tag:core
       TS_SERVE_CONFIG: /config/serve.json
+      # Undocumented-as-required in practice: TS_SERVE_CONFIG alone does not
+      # advertise a `services:` entry on startup without this. Confirmed by
+      # testing against production: the file was applied but svc:database
+      # never appeared as an advertised service until this was set.
+      TS_EXPERIMENTAL_SERVICE_AUTO_ADVERTISEMENT: "true"
     volumes:
       - ts-database-state:/var/lib/tailscale
       - ./ops/tailscale/database:/config:ro
