@@ -1,0 +1,10 @@
+{
+  "version": "0.0.1",
+  "services": {
+    "svc:worker-api": {
+      "endpoints": {
+        "tcp:8443": "tcp://localhost:8443"
+      }
+    }
+  }
+}

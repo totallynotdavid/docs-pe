@@ -1,0 +1,10 @@
+{
+  "version": "0.0.1",
+  "services": {
+    "svc:database": {
+      "endpoints": {
+        "tcp:5432": "tcp://localhost:5432"
+      }
+    }
+  }
+}

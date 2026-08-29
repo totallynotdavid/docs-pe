@@ -6,15 +6,30 @@ services:
     command: ["python", "-m", "portal.worker.api"]
     env_file: [.env]
     environment:
-      # The host binding below controls exposure.
-      PORTAL_WORKER_API_HOST: "0.0.0.0"
+      PORTAL_MASTER_KEY_FILE: /run/secrets/portal-master-key
     volumes:
       - ${PORTAL_MASTER_KEY_HOST_PATH}:/run/secrets/portal-master-key:ro
-    ports:
-      # Publish on the tailnet address.
-      - "${PORTAL_WORKER_API_BIND_IP}:8443:8443"
     networks: [dokploy-network]
     restart: unless-stopped
+
+  tailscale:
+    image: tailscale/tailscale:latest
+    network_mode: "service:worker-api"
+    cap_add: [net_admin, net_raw]
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY_WORKER_API}
+      TS_HOSTNAME: portal-worker-api
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_EXTRA_ARGS: --advertise-tags=tag:core
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ts-worker-api-state:/var/lib/tailscale
+      - ./ops/tailscale/worker-api:/config:ro
+    restart: unless-stopped
+    depends_on: [worker-api]
+
+volumes:
+  ts-worker-api-state:
 
 networks:
   dokploy-network:

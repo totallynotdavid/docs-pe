@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [dokploy-network]
+    restart: unless-stopped
+
+  tailscale:
+    image: tailscale/tailscale:latest
+    network_mode: "service:postgres"
+    cap_add: [net_admin, net_raw]
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY_DATABASE}
+      TS_HOSTNAME: portal-database
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_EXTRA_ARGS: --advertise-tags=tag:core
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ts-database-state:/var/lib/tailscale
+      - ./ops/tailscale/database:/config:ro
+    restart: unless-stopped
+    depends_on: [postgres]
+
+volumes:
+  postgres-data:
+    external: true
+    name: ${POSTGRES_VOLUME_NAME}
+  ts-database-state:
+
+networks:
+  dokploy-network:
+    external: true

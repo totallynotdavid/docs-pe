@@ -1,0 +1,10 @@
+{
+  "version": "0.0.1",
+  "services": {
+    "svc:objectstorage": {
+      "endpoints": {
+        "tcp:9000": "tcp://localhost:9000"
+      }
+    }
+  }
+}
