@@ -25,10 +25,12 @@ services:
     command:
       - |
         /usr/local/bin/containerboot &
-        while true; do
+        boot_pid=$!
+        while kill -0 "$boot_pid" 2>/dev/null; do
           tailscale --socket=/tmp/tailscaled.sock serve --service=svc:objectstorage --tcp=9000 tcp://localhost:9000 >/dev/null 2>&1
           sleep 10
         done
+        exit 1
     volumes:
       - ts-objectstorage-state:/var/lib/tailscale
     restart: unless-stopped

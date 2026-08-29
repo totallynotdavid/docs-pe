@@ -21,6 +21,11 @@ services:
   # 10s, so it's self-healing across containerboot's own reconnects and
   # survives this container's own restarts (the endpoint does not persist in
   # tailscaled's state across a restart, unlike the tailnet identity itself).
+  # If containerboot itself dies (seen live: it gave up and exited after a
+  # transient "network is down" during a container recreation), the loop
+  # exits instead of retrying against a socket that will never come back, so
+  # `restart: unless-stopped` gets a real dead container to restart rather
+  # than a shell script silently spinning forever.
   tailscale:
     image: tailscale/tailscale:latest
     network_mode: "service:postgres"
@@ -34,10 +39,12 @@ services:
     command:
       - |
         /usr/local/bin/containerboot &
-        while true; do
+        boot_pid=$!
+        while kill -0 "$boot_pid" 2>/dev/null; do
           tailscale --socket=/tmp/tailscaled.sock serve --service=svc:database --tcp=5432 tcp://localhost:5432 >/dev/null 2>&1
           sleep 10
         done
+        exit 1
     volumes:
       - ts-database-state:/var/lib/tailscale
     restart: unless-stopped

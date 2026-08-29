@@ -27,10 +27,12 @@ services:
     command:
       - |
         /usr/local/bin/containerboot &
-        while true; do
+        boot_pid=$!
+        while kill -0 "$boot_pid" 2>/dev/null; do
           tailscale --socket=/tmp/tailscaled.sock serve --service=svc:worker-api --tcp=8443 tcp://localhost:8443 >/dev/null 2>&1
           sleep 10
         done
+        exit 1
     volumes:
       - ts-worker-api-state:/var/lib/tailscale
     restart: unless-stopped
