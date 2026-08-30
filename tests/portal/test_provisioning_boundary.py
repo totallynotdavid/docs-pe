@@ -344,7 +344,6 @@ async def test_deactivating_a_teams_sole_leader_is_blocked_and_names_the_team(
     assert raised.value.reason is Reason.USER_LAST_LEADER
     assert raised.value.params["teams"] == "Equipo"
 
-    # A second leader permits deactivation without violating team leadership.
     second_leader = await seed_user(pool, email="segunda-lider@osiptel.test")
     await team_repository.add_member(
         team.team_id,
@@ -388,15 +387,7 @@ async def test_deactivating_the_last_active_site_admin_is_blocked(
 async def test_the_installation_must_retain_an_active_site_admin(
     pool: asyncpg.Pool,
 ) -> None:
-    """The real backstop for "never zero active admins".
-
-    Unreachable through deactivate_user/demote_site_admin in a single
-    request: the actor must itself be an active admin and can't target
-    itself, so a different, active admin target always leaves the actor
-    standing. This asserts the deferred constraint trigger that catches the
-    concurrent-request case those two guards can't reason about, the same
-    way portal_team_must_have_leader backstops _check_not_last_leader.
-    """
+    """The database constraint covers concurrent paths beyond service guards."""
     admin_id = await seed_site_admin(pool, "unico@osiptel.test")
 
     with pytest.raises(asyncpg.exceptions.CheckViolationError):
@@ -435,7 +426,6 @@ async def test_deleting_a_user_requires_zero_history(
     team = await seed_team(pool)
     unused = await seed_user(pool, email="sin-uso@osiptel.test")
 
-    # Keep another leader so the deletion reaches the history guard.
     second_leader = await seed_user(pool, email="segunda-lider@osiptel.test")
     await team_repository.add_member(
         team.team_id,
@@ -480,7 +470,7 @@ async def test_promoting_marks_pending_until_self_enrollment_completes(
     assert needs_setup is True
 
     pending = await provisioning.user_detail(admin_id, candidate_id)
-    # The promoting admin must not enroll the candidate's second factor.
+    # Promotion cannot grant administrator access before second-factor enrollment.
     assert pending.is_site_admin is False
     assert pending.pending_site_admin is True
 

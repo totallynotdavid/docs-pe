@@ -329,8 +329,6 @@ RETURNING id
 
 
 class PostgresJobRepository:
-    """PostgreSQL job lifecycle and worker queue."""
-
     def __init__(self, pool: Pool) -> None:
         self._pool = pool
 
@@ -814,8 +812,7 @@ class PostgresJobRepository:
         job_id: UUID,
         team_id: UUID,
     ) -> tuple[JobItem, ...]:
-        """Every non-excluded item for a job, unpaginated. Used for the full
-        results export, where a leader needs every row, not one page."""
+        """Return every non-excluded item for a full results export."""
         async with self._pool.acquire() as connection:
             rows = await connection.fetch(
                 """
@@ -1014,12 +1011,10 @@ class PostgresJobRepository:
         lane_index: int,
         attempts: Sequence[AttemptRecord],
     ) -> bool:
-        """Publish only while the worker still owns both fences.
+        """Record observations before attempting the fenced state transition.
 
-        Upserts portal_entries and records every fetch_one attempt first:
-        both are a correct, useful record of what actually happened against
-        the site regardless of whether this particular item's fence still
-        holds, so neither belongs behind the fencing check that follows.
+        A stale fence may reject publication, but must not discard the attempt
+        ledger or the entry upsert.
         """
 
         async with self._pool.acquire() as connection, connection.transaction():
@@ -1192,7 +1187,7 @@ class PostgresJobRepository:
             )
 
     async def _sweep_expired_locked(self, connection: Connection) -> None:
-        """Recover expired leases. A drain takes the queue gate itself."""
+        """Recover expired leases and promote jobs that become terminal."""
 
         rows = await connection.fetch(
             _SWEEP_EXPIRED,

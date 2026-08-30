@@ -198,7 +198,6 @@ async def _fetch_page(
 
 
 def _api_headers() -> dict[str, str]:
-    # The client already carries the User-Agent and cookies seeded by `_ready`.
     return {
         "Accept": "*/*",
         "X-Requested-With": "XMLHttpRequest",

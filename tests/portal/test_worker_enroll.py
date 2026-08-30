@@ -160,7 +160,6 @@ async def test_self_enroll_mints_a_working_direct_db_role(
     worker_pool = await asyncpg.create_pool(dsn, min_size=1, max_size=2)
 
     try:
-        # An empty result exercises the queue query without needing a job.
         claimed = await PostgresJobRepository(worker_pool).claim_many(
             "poseidon-1", ("osiptel",), 1
         )

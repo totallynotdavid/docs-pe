@@ -14,8 +14,7 @@ if TYPE_CHECKING:
     import httpx
 
 
-# Separate from jcrS00Alias. ready() warms this endpoint because
-# SUNAT_REPS depends on it before requesting representatives.
+# Representative lookups warm this endpoint before requesting their data.
 IDENTITY = Endpoint(
     name="identity",
     url="https://ww1.sunat.gob.pe/ol-ti-itfisdenreg/itfisdenreg.htm",
@@ -50,10 +49,10 @@ def parse_identity(payload_text: str) -> IdentityRecord | None:
         msg = "sunat identity response is not a json object"
         raise ProviderSchemaError(msg)
 
-    # {"error": "..."} means not found. If both keys exist, the schema changed.
+    # The endpoint uses an `error` object for an unregistered RUC.
     if "lista" not in payload:
         if "error" in payload:
-            return None  # confirmed missing RUC
+            return None
 
         msg = "sunat identity response has no lista or error"
         raise ProviderSchemaError(msg)

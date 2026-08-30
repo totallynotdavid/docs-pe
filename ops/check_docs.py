@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check local Markdown links, directory indexes, and heading anchors."""
+"""Check links, repository paths, and selected source-owned documentation contracts."""
 
 from __future__ import annotations
 
@@ -14,9 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 MARKDOWN_LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)\s]+)")
 # Repository paths in prose are easy to leave stale because Markdown link
 # checks do not inspect inline code spans.
-CODE_PATH = re.compile(
-    r"`((?:docs|packages|ops)/[^`\s]+|docker-compose\.[^`\s]+)`"
-)
+CODE_PATH = re.compile(r"`((?:docs|packages|ops)/[^`\s]+|docker-compose\.[^`\s]+)`")
+PROVIDER_FIELD = re.compile(r'Field\("([a-z0-9_]+)"')
 HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*#*\s*$")
 
 
@@ -105,6 +104,52 @@ def check_code_path(source: Path, target: str, line: int) -> str | None:
     return None
 
 
+def check_contract_docs() -> list[str]:
+    errors: list[str] = []
+
+    required_text = {
+        ROOT / "docs/operations/portal-deployment.md": (
+            "portal_schema_migrations",
+            "mise run portal:schema",
+            "PORTAL_WORKER_API_WORKERS",
+            "portal_lookup_attempts",
+        ),
+        ROOT / "docs/operations/troubleshooting.md": (
+            "portal_lookup_attempts",
+            "fetch_attempt",
+        ),
+        ROOT / "docs/portal.md": (
+            "Reutilizar y consultar solo lo nuevo",
+            "global search",
+            "second factor",
+        ),
+    }
+
+    for path, needles in required_text.items():
+        contents = " ".join(path.read_text(encoding="utf-8").split()).casefold()
+        for needle in needles:
+            if needle.casefold() not in contents:
+                errors.append(
+                    f"{path.relative_to(ROOT)}: missing contract text: {needle}"
+                )
+
+    proxy_docs = (ROOT / "docs/proxies.md").read_text(encoding="utf-8")
+    proxy_dir = ROOT / "packages/core/core/proxy"
+    for path in sorted(proxy_dir.glob("*.py")):
+        contents = path.read_text(encoding="utf-8")
+        if "ProviderSpec" not in contents:
+            continue
+        provider = path.stem.upper()
+        for field in PROVIDER_FIELD.findall(contents):
+            env_name = f"{provider}_{field.upper()}"
+            if env_name not in proxy_docs:
+                errors.append(
+                    f"docs/proxies.md: missing provider field reference: {env_name}"
+                )
+
+    return errors
+
+
 def main() -> int:
     errors: list[str] = []
 
@@ -115,11 +160,14 @@ def main() -> int:
             error = check_link(source, match.group(1), line)
             if error:
                 errors.append(error)
+
         for match in CODE_PATH.finditer(contents):
             line = contents.count("\n", 0, match.start()) + 1
             error = check_code_path(source, match.group(1), line)
             if error:
                 errors.append(error)
+
+    errors.extend(check_contract_docs())
 
     if errors:
         print("\n".join(errors), file=sys.stderr)

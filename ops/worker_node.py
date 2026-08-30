@@ -411,10 +411,8 @@ def build_compose_steps(node: Node, state: AddState) -> list[Step]:
                         f"PORTAL_WORKER_TAILSCALE_HOSTNAME={node.hostname}",
                     ]
                 ),
-                # docker-compose.worker.yml has `env_file: [.env]`; Dokploy
-                # only writes that file to the deploy directory when this is
-                # true (confirmed live: worker-api's own compose resource,
-                # which uses the same env_file pattern, has this set).
+                # The Compose file reads this environment through `.env`, so
+                # Dokploy must materialize the saved variables in that file.
                 "createEnvFile": True,
             },
         )
@@ -477,9 +475,8 @@ def build_add_steps(node: Node, state: AddState) -> list[Step]:
 
 
 def verify_worker_online(node: Node, *, timeout: float = 90) -> None:
-    # A re-added node keeps its old row, so a heartbeat merely being non-null
-    # proves nothing about the deploy just requested -- only one strictly
-    # newer than this call proves the current container is the one reporting.
+    # A re-added node keeps its old row, so only a heartbeat newer than this
+    # call proves that the current container is reporting.
     since = datetime.now(UTC).isoformat()
     code = (
         "import asyncio, asyncpg\n"

@@ -31,8 +31,6 @@ FORM_SETTLE_S = 3.0
 
 
 class PortabilidadPage:
-    """Drives the portabilidad lookup form."""
-
     def __init__(
         self,
         *,

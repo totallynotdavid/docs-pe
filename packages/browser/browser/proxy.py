@@ -105,7 +105,6 @@ class DataImpulseProvider:
 
 
 def load_proxy_provider() -> ProxyProvider:
-    """Build the first provider listed in PROXY_PROVIDER."""
     raw = getenv("PROXY_PROVIDER", "").strip()
 
     if not raw:

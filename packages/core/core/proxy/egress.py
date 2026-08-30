@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from core.proxy.base import ProxySession
 
 
-# Public echo services, dialed through the proxy to learn the exit IP.
 _IP_PROBE_URLS = (
     "http://ip-api.com/json",
     "https://api.ipify.org?format=json",

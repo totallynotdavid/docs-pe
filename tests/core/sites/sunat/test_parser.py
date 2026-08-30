@@ -117,7 +117,6 @@ def test_tipo_contribuyente_is_captured_alongside_the_document() -> None:
 
 
 def test_sucesion_indivisa_takes_its_name_from_the_ruc_row() -> None:
-    # The RUC row includes both the contributor type and the person's name.
     record = parse_tipo_documento(
         _page(
             ruc_row=("10000002301 - SUCESIÓN INDIVISA QUIROZ VASQUEZ VDA DE GONZALES"),
