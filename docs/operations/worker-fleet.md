@@ -55,9 +55,20 @@ The worker self-enrolls when its container starts. Enrollment provisions the
 API credential and the node's scoped PostgreSQL login, so no credential needs to
 be copied by hand when the bootstrap configuration is present.
 
+The provisioning script saves the worker environment as a `.env` file in the
+Compose deployment directory because `docker-compose.worker.yml` reads that
+file. Do not replace it with shell-only Compose variables: a deployment can
+start without the worker receiving its enrollment settings.
+
 The operation is idempotent after the SSH and sudo boundary. Rerun `add` after a
 failed step; it reconciles the Dokploy compose service before deploying it and
 waits for the new deployment to finish.
+
+After deployment, `add` waits for a heartbeat newer than the verification check
+started. An existing heartbeat does not prove that the new container is alive.
+A transient SSH timeout during polling is retried as a missed observation. If
+verification times out, inspect the Compose logs in Dokploy and rerun `add` only
+after confirming whether the container started.
 
 ## Remove and decommission
 

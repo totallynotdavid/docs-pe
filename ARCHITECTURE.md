@@ -97,6 +97,12 @@ scoped PostgreSQL role, executes a core lookup in its own process, and sends
 credential reveals and results to `worker-api`. Claim leases and lease fences
 prevent a late worker from publishing after cancellation or reassignment.
 
+Each publish carries the complete fetch-attempt history. PostgreSQL records one
+row per attempt in `portal_lookup_attempts`, including attempts from a stale
+publish fence, in the same transaction as the terminal item and entry outcome.
+The terminal tables describe the final result; the attempt table describes the
+cost and failure history that led to it.
+
 PostgreSQL owns queue leases, cancellation fences, reusable entries, team
 access, worker identities, fleet proxy-slot leases, and the fleet circuit
 breaker. Uploaded inputs and result payloads live in the configured object

@@ -1,47 +1,22 @@
 # Portal deployment
 
-The production portal has a public web application and a private worker API:
+This guide covers the release sequence for the production portal. Read
+[Portal topology](portal-topology.md) first when configuring Tailscale,
+Dokploy, Compose, volumes, or service DNS.
 
-```text
-browser -> Cloudflare -> cloudflared -> web
-web -> PostgreSQL, object store, master key
-worker-api -> PostgreSQL, object store, master key
-worker node -> worker-api (Tailscale)
-worker node -> PostgreSQL (scoped role)
-```
+Deploy in this order:
 
-The worker API has no public route. Workers reach it over the tailnet for
-enrollment, credential reveals, and result publication. Queue, heartbeat, and
-proxy-slot operations use the worker's scoped PostgreSQL role.
-
-PostgreSQL, object storage, and `worker-api` each run behind a Tailscale
-sidecar that advertises a `svc:` Service (`svc:database`, `svc:objectstorage`,
-`svc:worker-api`) instead of binding a host port directly. The ACL policy must
-grant those services to `tag:worker-fleet` only.
+1. Prepare the network and secrets.
+2. Apply the database schema.
+3. Install or rotate the master key.
+4. Deploy `web` and `worker-api` from the same revision.
+5. Enroll workers and verify a small job.
 
 ## Prerequisites
 
-Prepare these resources before starting:
-
-- A tailnet ACL policy that grants `tag:worker-fleet` access to
-  `svc:database:5432`, `svc:objectstorage:9000`, and `svc:worker-api:8443`.
-  Add `tag:worker-fleet` to every worker node.
-  `tag:core` belongs on the shared-service sidecars, not on their host.
-- Each of the three Services (`database`, `objectstorage`, `worker-api`)
-  defined in the admin console (Services page) with its port and
-  `do-not-validate` in the endpoint field. All three carry a raw, non-HTTP
-  protocol (Postgres wire protocol, S3, and the worker API's own HTTP without
-  a scheme Tailscale can probe), so the default endpoint validation never
-  succeeds and leaves the host stuck in "Needs configuration." An ACL grant
-  and a running sidecar are not enough on their own: a Service that has never
-  been defined this way has no admin-console resource for autoApprovers or
-  an advertising host to attach to at all.
-- One reusable Tailscale auth key with ephemeral nodes enabled per
-  shared-service sidecar (`TS_AUTHKEY_DATABASE`, `TS_AUTHKEY_OBJECTSTORAGE`,
-  `TS_AUTHKEY_WORKER_API`).
-- A master-key file mounted read-only into both portal processes.
-- A Cloudflare tunnel and public HTTPS origin for `web`.
-- Resend credentials for account setup and notification mail.
+Prepare the network and secrets described in [Portal topology](portal-topology.md),
+including the Tailscale Services, ACL grants, shared network, master-key mount,
+Cloudflare tunnel, and Resend credentials.
 
 Copy `.env.example` and set every production value. The web and worker-api
 processes require `PORTAL_PUBLIC_ORIGIN` to use HTTPS, both Turnstile keys,
@@ -50,8 +25,8 @@ and all four `PORTAL_OBJECT_STORAGE_*` variables.
 `PORTAL_TLS_TERMINATED_UPSTREAM=true` when an upstream terminates TLS before
 the application receives the request.
 
-When using `docker-compose.worker-api.yml`, also set the host-side path
-Compose interpolates and the sidecar's auth key:
+When using `docker-compose.worker-api.yml`, also set the host-side path Compose
+interpolates and the sidecar's auth key:
 
 ```env
 PORTAL_MASTER_KEY_FILE=/run/secrets/portal-master-key
@@ -60,11 +35,6 @@ PORTAL_DATABASE_DSN=postgresql://<user>:<password>@postgres:5432/<database>
 PORTAL_OBJECT_STORAGE_ENDPOINT=http://minio:9000
 TS_AUTHKEY_WORKER_API=tskey-auth-...
 ```
-
-The service names in this example require all Compose projects to use the
-external `dokploy-network`. The worker API Compose file sets its container
-value for `PORTAL_MASTER_KEY_FILE`; configure the web container with the path
-where its own read-only key mount appears.
 
 ## Initial installation
 
@@ -96,28 +66,31 @@ the team. To validate and activate its first proxy credential, add
 `PORTAL_PROVISION_GEONODE_<FIELD>` environment variables. The proxy validation
 opens a real provider session and releases it before provisioning completes.
 
-## Web Swarm service DNS
+## Schema changes
 
-`web` runs as a Dokploy application, which is a Docker Swarm service. Its task
-DNS does not include Tailscale's MagicDNS resolver, and Dokploy has no
-application setting for the service DNS servers. After every `web` deploy,
-apply the Tailscale resolver:
+`portal-admin migrate` applies each SQL file once and records its filename in
+`portal_schema_migrations`. It is not a schema diff tool. Editing a filename that
+is already recorded does not make that file run again.
+
+The migration directory contains the baseline schema and numbered follow-up
+changes. `portal_lookup_attempts` is part of the baseline
+`001_portal.sql`, so an installation that already recorded `001` will not get
+that table from `portal-admin migrate`. Do not deploy code that requires a new
+table until the database has it.
+
+For local development, regenerate the complete schema snapshot with:
 
 ```sh
-docker service update --dns-add 100.100.100.100 <web's Swarm service name>
+mise run portal:schema
 ```
 
-Dokploy recreates the Swarm service from its stored specification on every
-deploy, so the override is lost and `*.ts.net` lookups fail until it is applied
-again. Find the service name with `docker service ls`, matching Dokploy's
-`appName` for the `web` application. There is no automation for this: `web`
-needs a domain and Traefik routing that only the application deploy type
-provides, so it stays on Swarm and the override stays manual. Worker nodes use
-plain Compose and do not need this override.
+That task applies the local migrations and writes a generated schema snapshot
+under `packages/portal/`, without the migration ledger. For production, use the
+approved database schema-change process or add a new numbered migration when
+the change is incremental. Back up PostgreSQL and verify the target tables and
+grants before starting the new application image.
 
-The worker fleet uses the Dokploy Compose resource defined by
-`docker-compose.worker.yml`, not `docker service`. See [worker fleet
-operations](worker-fleet.md) for what `ops/worker_node.py add` sets up.
+## Deploy services
 
 Deploy `web` and `worker-api` from the same revision with the same database,
 object store, and master-key file. Configure their commands as follows:
@@ -136,22 +109,17 @@ Queue and slot traffic goes directly from each worker node to PostgreSQL.
 The worker Compose resource builds the portal image and runs
 `python -m portal.worker.agent`.
 
-## Tailscale service advertisement
+## Worker API capacity
 
-Each shared-service sidecar runs `tailscale serve --service=...` directly and
-reasserts the endpoint every 10 seconds. `TS_SERVE_CONFIG` does not reliably
-apply the `services:` endpoint mapping through containerboot, and a configured
-endpoint does not survive a sidecar restart. If containerboot exits, the wrapper
-also exits so `restart: unless-stopped` can recreate the sidecar.
+Set `PORTAL_WORKER_API_WORKERS` to the number of worker-api processes. It
+defaults to `4`. Each process creates its own application and PostgreSQL pool,
+with a maximum of five connections, so the worker-api ceiling is five times the
+configured process count before accounting for web, worker, admin, and operator
+connections.
 
-For an existing installation, set `POSTGRES_VOLUME_NAME` and
-`MINIO_VOLUME_NAME` to the current Docker volume names. Confirm them with
-`docker volume ls` before starting Compose. A new name creates an empty store.
-
-Budget PostgreSQL connections for every web, worker-api, worker, admin, and
-operator process. Each worker also keeps a dedicated connection for
-notifications. Recheck the budget when changing worker concurrency or the
-number of service processes.
+Increase the setting only when the host and PostgreSQL connection budget have
+room, then redeploy the worker-api service. It is independent of the number of
+lookup lanes on worker nodes.
 
 ## Worker enrollment
 
@@ -207,5 +175,6 @@ worker node. Confirm that:
 - cancellation prevents a late worker publish.
 
 Use [Portal operations](../../packages/portal/operations.md) for database
-checks. Deploy a new revision only after migrations are applied, and keep the
-previous image available for rollback.
+checks. Deploy a new revision only after its required schema is installed by
+the migration or release-schema procedure, and keep the previous image
+available for rollback.

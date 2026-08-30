@@ -78,6 +78,31 @@ where worker_id is not null
 order by provider, worker_id, slot_id;
 ```
 
+To inspect retry cost and latency, query the per-attempt ledger. It contains
+every attempt written by a worker, including an attempt from a publish whose
+lease fence was already stale. `portal_job_items` and `portal_entries` retain
+only the terminal outcome.
+
+```sql
+select a.job_item_id,
+       a.source,
+       a.provider,
+       a.worker_id,
+       a.lane_index,
+       a.fetch_attempt,
+       a.outcome,
+       a.error_code,
+       a.elapsed_ms,
+       a.created_at
+from portal_lookup_attempts a
+order by a.created_at desc
+limit 100;
+```
+
+Join `portal_lookup_attempts.job_item_id` to `portal_job_items.id` and then to
+`portal_jobs` when investigating one job. Do not interpret a failed attempt as
+the final item state without checking the terminal row.
+
 Run these queries through the [portal SQL runbook](../../packages/portal/operations.md)
 with the portal database connection.
 
