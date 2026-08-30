@@ -507,7 +507,12 @@ def verify_worker_online(node: Node, *, timeout: float = 90) -> None:
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        last_seen = run_python_in_worker_api(code).strip()
+        try:
+            last_seen = run_python_in_worker_api(code).strip()
+        except subprocess.TimeoutExpired:
+            # A transient SSH hiccup to master is a poll failure, not a
+            # reason to abort an add that otherwise already succeeded.
+            last_seen = ""
         if last_seen:
             print(f"  {node.worker_id} is online, last_seen_at={last_seen}")
             return
