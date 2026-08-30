@@ -492,6 +492,7 @@ def build_application_steps(node: Node, state: AddState) -> list[Step]:
             "application.deploy",
             json_body={"applicationId": state.application_id},
         )
+        wait_for_deploy(state.application_id)
 
     return [
         Step(
@@ -505,6 +506,35 @@ def build_application_steps(node: Node, state: AddState) -> list[Step]:
             lambda: add_tailscale_dns(node, state),
         ),
     ]
+
+
+def wait_for_deploy(application_id: str, *, timeout: float = 300) -> None:
+    """Block until `application.deploy`'s own build+update actually finishes.
+
+    `application.deploy` only fires the deploy and returns; the build and
+    Swarm service update happen asynchronously. Every later step (the
+    tailscale DNS fix, `verify_worker_online`) needs the deploy to have
+    genuinely replaced the running container, not just have been requested.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        app = dokploy(
+            "GET", "application.one", params={"applicationId": application_id}
+        )
+        deployments = app.get("deployments") or []
+        if deployments:
+            status = deployments[0]["status"]
+            if status == "done":
+                return
+            if status == "error":
+                msg = f"deploy failed for application {application_id}"
+                raise SystemExit(msg)
+        time.sleep(3)
+
+    msg = (
+        f"deploy for application {application_id} did not finish within {timeout:.0f}s"
+    )
+    raise SystemExit(msg)
 
 
 def has_tailscale_dns(node: Node, state: AddState) -> bool:
