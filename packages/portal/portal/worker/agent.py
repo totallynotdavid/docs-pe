@@ -71,8 +71,7 @@ LISTEN_CHANNEL = "portal_work_available"
 LISTEN_RECONNECT_BASE_SECONDS = 1.0
 LISTEN_RECONNECT_MAX_SECONDS = 30.0
 
-# Bounds a fresh container's enrollment retry while its network interface is
-# still converging (observed up to a few seconds on an overlay network).
+# Bounds retries while a fresh container's overlay network converges.
 ENROLL_RETRY_BASE_SECONDS = 2.0
 ENROLL_RETRY_MAX_SECONDS = 60.0
 
@@ -617,13 +616,8 @@ async def self_enroll(
     tailscale_hostname: str,
 ) -> tuple[str, str]:
     """Mint a worker credential and direct-DB role from the enrollment endpoint."""
-    # Enrollment is a control-plane request. Retry transient connection
-    # failures, including after a worker restart. A container's overlay
-    # network interface can still be converging when the process starts
-    # (confirmed live: Swarm marks a task Running as soon as the process
-    # starts, seconds before its route to the tailnet is usable), so this
-    # retries on a real backoff, not just httpx's own millisecond-scale
-    # connect retry.
+    # Swarm can report a task Running before its overlay route is usable, so
+    # retry transient enrollment failures with a real backoff.
     transport = httpx.AsyncHTTPTransport(retries=2)
     delay = ENROLL_RETRY_BASE_SECONDS
 

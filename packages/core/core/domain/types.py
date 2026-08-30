@@ -77,8 +77,6 @@ class SiteTuning:
 
 @dataclass(frozen=True)
 class Endpoint:
-    """A named HTTP destination used by a site."""
-
     name: str
     url: str
 
@@ -89,8 +87,6 @@ class Endpoint:
 
 @dataclass(frozen=True)
 class Projection:
-    """A derived CSV view over a site's stored rows."""
-
     name: str
     columns: tuple[str, ...]
     project: Callable[[tuple[Row, ...]], tuple[Row, ...]]
@@ -98,8 +94,6 @@ class Projection:
 
 @dataclass(frozen=True)
 class Site:
-    """A lookup target and its static configuration."""
-
     name: str
     columns: tuple[str, ...]
     accepts: Callable[[Doc], bool]
@@ -150,8 +144,6 @@ class Result:
 
 @dataclass
 class RunTotals:
-    """In-memory counters used for the summary of one process run."""
-
     processed: int = 0
     succeeded: int = 0
     not_found: int = 0

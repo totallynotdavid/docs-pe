@@ -311,10 +311,7 @@ function setupRecoveryCodes() {
   });
 }
 
-// navigator.credentials wants ArrayBuffers where the server's JSON carries
-// base64url text (challenge, credential ids, the public key user handle),
-// and wants the reverse on the way back. These four functions are the only
-// place that conversion happens.
+// WebAuthn uses binary values while the API represents them as base64url text.
 
 function base64urlToBuffer(value) {
   const padded = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -405,7 +402,6 @@ async function postJson(url, body) {
   return { ok: response.ok, data: await response.json() };
 }
 
-// Both password and MFA pages use this passkey endpoint.
 function setupPasskeyLogin() {
   const form = document.querySelector('form[action="/login/passkey/verify"]');
 

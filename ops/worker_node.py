@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-"""Add, remove, or inspect a worker-fleet node.
-
-The worker-fleet runbook describes the host access boundary and the changes
-made by each command.
-"""
+"""Provision, remove, or inspect a portal worker-fleet node."""
 
 from __future__ import annotations
 
@@ -33,26 +29,11 @@ GITHUB_PROVIDER_ID = "pYmDtTubK-eOUX-g1hiHJ"
 GIT_OWNER = "totallynotdavid"
 GIT_REPOSITORY = "docs-pe"
 GIT_BRANCH = "scale"
-GIT_DOCKERFILE = "packages/portal/Dockerfile"
+WORKER_COMPOSE_PATH = "docker-compose.worker.yml"
 
 TAILNET_SUFFIX = "taila2cbc1.ts.net"
 MASTER_HOST = f"master.{TAILNET_SUFFIX}"
 WORKER_API_URL = f"http://worker-api.{TAILNET_SUFFIX}:8443"
-
-# Tailscale's own well-known MagicDNS resolver address. A Dokploy
-# "application" deploys as a Docker Swarm service, and Swarm services on
-# these hosts consistently get /etc/resolv.conf built from the host's raw
-# upstream resolvers, not the tailscale-aware 127.0.0.53 stub a plain
-# `docker run` container gets on the same host -- confirmed live, this
-# leaves a worker unable to resolve *.ts.net names at all, or resolving
-# them to whatever a stale docker-daemon-level cache last saw (seen live:
-# `worker-api.taila2cbc1.ts.net` resolving to master's own device IP from
-# inside a fresh container long after the actual answer changed to the
-# svc:worker-api Service VIP). Dokploy has no field for a service's DNS
-# servers, and this is not one-time: every deploy regenerates the Swarm
-# service spec from Dokploy's own stored config, which has no memory of
-# this override, silently reverting it.
-TAILSCALE_DNS_SERVER = "100.100.100.100"
 
 SSH_USER = "dubu"
 SSH_OPTS = (
@@ -86,8 +67,7 @@ class Node:
 @dataclass
 class AddState:
     server_id: str = ""
-    application_id: str = ""
-    swarm_service_name: str = ""
+    compose_id: str = ""
 
 
 @dataclass
@@ -195,10 +175,10 @@ def find_server(name: str) -> dict[str, Any] | None:
     return next((s for s in servers if s["name"] == name), None)
 
 
-def find_application(app_name: str) -> dict[str, Any] | None:
+def find_compose(app_name: str) -> dict[str, Any] | None:
     result = dokploy(
         "GET",
-        "application.search",
+        "compose.search",
         params={
             "projectId": DOKPLOY_PROJECT_ID,
             "environmentId": DOKPLOY_ENVIRONMENT_ID,
@@ -206,7 +186,7 @@ def find_application(app_name: str) -> dict[str, Any] | None:
         },
     )
     items: list[dict[str, Any]] = result["items"]
-    return next((a for a in items if a["name"] == app_name), None)
+    return next((c for c in items if c["name"] == app_name), None)
 
 
 def worker_bootstrap_token() -> str:
@@ -267,43 +247,6 @@ def build_docker_steps(node: Node) -> list[Step]:
             f"sudo mkdir -p /etc/dokploy && sudo chown {SSH_USER}:{SSH_USER} /etc/dokploy",
         )
 
-    return [
-        Step("docker installed, dubu in the docker group", has_docker, install_docker),
-        Step("/etc/dokploy exists, owned by dubu", has_etc_dokploy, make_etc_dokploy),
-    ]
-
-
-def build_swarm_steps(node: Node) -> list[Step]:
-    def is_swarm_manager() -> bool:
-        result = ssh_run(
-            node.hostname,
-            "docker info --format '{{.Swarm.ControlAvailable}}'",
-            check=False,
-        )
-        return result.returncode == 0 and result.stdout.strip() == "true"
-
-    def init_swarm() -> None:
-        state_check = ssh_run(
-            node.hostname, "docker info --format '{{.Swarm.LocalNodeState}}'"
-        )
-        if state_check.stdout.strip() == "active":
-            ssh_run(node.hostname, "docker swarm leave --force")
-        ssh_run(node.hostname, f"docker swarm init --advertise-addr {node.tailnet_ip}")
-
-    def has_dokploy_network() -> bool:
-        return (
-            ssh_run(
-                node.hostname, "docker network inspect dokploy-network", check=False
-            ).returncode
-            == 0
-        )
-
-    def create_dokploy_network() -> None:
-        ssh_run(
-            node.hostname,
-            "docker network create --driver overlay --attachable dokploy-network",
-        )
-
     def has_dokploy_pubkey() -> bool:
         result = ssh_run(node.hostname, "cat ~/.ssh/authorized_keys", check=False)
         return dokploy_public_key() in result.stdout
@@ -313,8 +256,8 @@ def build_swarm_steps(node: Node) -> list[Step]:
         ssh_run(node.hostname, f"echo {quoted} >> ~/.ssh/authorized_keys")
 
     return [
-        Step("single-node swarm manager", is_swarm_manager, init_swarm),
-        Step("dokploy-network overlay", has_dokploy_network, create_dokploy_network),
+        Step("docker installed, dubu in the docker group", has_docker, install_docker),
+        Step("/etc/dokploy exists, owned by dubu", has_etc_dokploy, make_etc_dokploy),
         Step(
             "Dokploy's SSH key in dubu's authorized_keys",
             has_dokploy_pubkey,
@@ -396,19 +339,18 @@ def build_server_steps(node: Node, state: AddState) -> list[Step]:
     ]
 
 
-def build_application_steps(node: Node, state: AddState) -> list[Step]:
-    def has_application() -> bool:
-        existing = find_application(node.app_name)
+def build_compose_steps(node: Node, state: AddState) -> list[Step]:
+    def has_compose() -> bool:
+        existing = find_compose(node.app_name)
         if existing is None:
             return False
-        state.application_id = existing["applicationId"]
-        state.swarm_service_name = existing["appName"]
+        state.compose_id = existing["composeId"]
         return True
 
-    def create_application() -> None:
+    def create_compose() -> None:
         response = dokploy(
             "POST",
-            "application.create",
+            "compose.create",
             json_body={
                 "name": node.app_name,
                 "description": (
@@ -416,73 +358,50 @@ def build_application_steps(node: Node, state: AddState) -> list[Step]:
                 ),
                 "environmentId": DOKPLOY_ENVIRONMENT_ID,
                 "serverId": state.server_id,
+                # Plain Compose keeps worker task DNS consistent with the
+                # worker API and shared-service sidecars.
+                "composeType": "docker-compose",
             },
         )
-        application_id = (response or {}).get("applicationId")
-        existing = find_application(node.app_name)
-        if not application_id:
+        compose_id = (response or {}).get("composeId")
+        if not compose_id:
+            existing = find_compose(node.app_name)
             if existing is None:
-                msg = (
-                    f"application.create for {node.app_name} returned no applicationId"
-                )
+                msg = f"compose.create for {node.app_name} returned no composeId"
                 raise SystemExit(msg)
-            application_id = existing["applicationId"]
-        state.application_id = application_id
-        if existing is not None:
-            state.swarm_service_name = existing["appName"]
+            compose_id = existing["composeId"]
+        state.compose_id = compose_id
 
-    def configure_application() -> None:
-        application_id = state.application_id
+    def configure_compose() -> None:
+        compose_id = state.compose_id
         dokploy(
             "POST",
-            "application.saveGithubProvider",
+            "compose.update",
             json_body={
-                "applicationId": application_id,
-                "repository": GIT_REPOSITORY,
-                "owner": GIT_OWNER,
-                "buildPath": "/",
+                "composeId": compose_id,
+                "sourceType": "github",
                 "githubId": GITHUB_PROVIDER_ID,
+                "owner": GIT_OWNER,
+                "repository": GIT_REPOSITORY,
                 "branch": GIT_BRANCH,
+                "composePath": WORKER_COMPOSE_PATH,
+                "composeType": "docker-compose",
                 "triggerType": "push",
-            },
-        )
-        dokploy(
-            "POST",
-            "application.saveBuildType",
-            json_body={
-                "applicationId": application_id,
-                "buildType": "dockerfile",
-                "dockerfile": GIT_DOCKERFILE,
-                "dockerContextPath": "/",
-                "dockerBuildStage": None,
-                "herokuVersion": None,
-                "railpackVersion": None,
-            },
-        )
-        dokploy(
-            "POST",
-            "application.update",
-            json_body={
-                "applicationId": application_id,
-                "command": "python -m portal.worker.agent",
-                # Unscoped watchPaths redeploys on every push to the branch,
-                # not just ones that touch worker code. Confirmed live: this
-                # wiped a fleet node's tailscale DNS fix on an unrelated docs
-                # commit, since a redeploy is exactly what wipes it.
+                "autoDeploy": True,
+                # Limit redeploys to files copied into the worker image, plus
+                # the compose file itself.
                 "watchPaths": [
+                    "packages/core",
                     "packages/portal",
-                    "packages/fetch",
-                    "packages/browser",
-                    "pyproject.toml",
-                    "uv.lock",
+                    WORKER_COMPOSE_PATH,
                 ],
             },
         )
         dokploy(
             "POST",
-            "application.saveEnvironment",
+            "compose.saveEnvironment",
             json_body={
-                "applicationId": application_id,
+                "composeId": compose_id,
                 "env": "\n".join(
                     [
                         f"PORTAL_WORKER_API_URL={WORKER_API_URL}",
@@ -491,107 +410,64 @@ def build_application_steps(node: Node, state: AddState) -> list[Step]:
                         f"PORTAL_WORKER_TAILSCALE_HOSTNAME={node.hostname}",
                     ]
                 ),
-                "buildArgs": None,
-                "buildSecrets": None,
                 "createEnvFile": False,
             },
         )
 
-    def deploy_application() -> None:
-        before = latest_deployment_id(state.application_id)
-        dokploy(
-            "POST",
-            "application.deploy",
-            json_body={"applicationId": state.application_id},
-        )
-        wait_for_deploy(state.application_id, before=before)
+    def deploy_compose() -> None:
+        before = latest_compose_deployment_id(state.compose_id)
+        dokploy("POST", "compose.deploy", json_body={"composeId": state.compose_id})
+        wait_for_compose_deploy(state.compose_id, before=before)
 
     return [
-        Step(
-            f"Dokploy application {node.app_name}", has_application, create_application
-        ),
-        Step("worker application configuration", lambda: False, configure_application),
-        Step("deploy", lambda: False, deploy_application),
-        Step(
-            "swarm service has tailscale DNS (deploy wipes this, must run after)",
-            lambda: has_tailscale_dns(node, state),
-            lambda: add_tailscale_dns(node, state),
-        ),
+        Step(f"Dokploy compose {node.app_name}", has_compose, create_compose),
+        Step("worker compose configuration", lambda: False, configure_compose),
+        Step("deploy", lambda: False, deploy_compose),
     ]
 
 
-def latest_deployment_id(application_id: str) -> str | None:
-    app = dokploy("GET", "application.one", params={"applicationId": application_id})
-    deployments = app.get("deployments") or []
+def latest_compose_deployment_id(compose_id: str) -> str | None:
+    compose = dokploy("GET", "compose.one", params={"composeId": compose_id})
+    deployments = compose.get("deployments") or []
     return deployments[0]["deploymentId"] if deployments else None
 
 
-def wait_for_deploy(
-    application_id: str, *, before: str | None, timeout: float = 300
+def wait_for_compose_deploy(
+    compose_id: str, *, before: str | None, timeout: float = 300
 ) -> None:
-    """Block until `application.deploy`'s own build+update actually finishes.
+    """Wait for a deployment newer than `before` to finish successfully.
 
-    `application.deploy` only fires the deploy and returns; the row for it
-    can appear in `deployments` a moment after that HTTP call already came
-    back, so this first waits for a deployment newer than `before` (the id
-    seen right before firing) rather than trusting `deployments[0]`
-    immediately -- confirmed live: polling right away caught a stale
-    deployment from hours earlier and mistook its "error" for this one's.
-    Every later step (the tailscale DNS fix, `verify_worker_online`) needs
-    the deploy to have genuinely replaced the running container, not just
-    have been requested.
+    Dokploy reports deployments asynchronously, so an older row must not be
+    treated as the deployment just requested.
     """
     deadline = time.monotonic() + timeout
     latest_id = before
 
     while time.monotonic() < deadline:
-        app = dokploy(
-            "GET", "application.one", params={"applicationId": application_id}
-        )
-        deployments = app.get("deployments") or []
+        compose = dokploy("GET", "compose.one", params={"composeId": compose_id})
+        deployments = compose.get("deployments") or []
         if deployments and deployments[0]["deploymentId"] != before:
             latest_id = deployments[0]["deploymentId"]
             status = deployments[0]["status"]
             if status == "done":
                 return
             if status == "error":
-                msg = f"deploy failed for application {application_id}"
+                msg = f"deploy failed for compose {compose_id}"
                 raise SystemExit(msg)
         time.sleep(3)
 
     seen = "no new deployment appeared" if latest_id == before else "it never finished"
     msg = (
-        f"deploy for application {application_id} did not finish within "
-        f"{timeout:.0f}s ({seen})"
+        f"deploy for compose {compose_id} did not finish within {timeout:.0f}s ({seen})"
     )
     raise SystemExit(msg)
-
-
-def has_tailscale_dns(node: Node, state: AddState) -> bool:
-    result = ssh_run(
-        node.hostname,
-        f"docker service inspect {state.swarm_service_name} "
-        "--format '{{json .Spec.TaskTemplate.ContainerSpec.DNSConfig}}'",
-        check=False,
-    )
-    return TAILSCALE_DNS_SERVER in result.stdout
-
-
-def add_tailscale_dns(node: Node, state: AddState) -> None:
-    ssh_run(
-        node.hostname,
-        f"docker service update --detach=true "
-        f"--dns-add {TAILSCALE_DNS_SERVER} {state.swarm_service_name}",
-        timeout=60,
-    )
 
 
 def build_add_steps(node: Node, state: AddState) -> list[Step]:
     return [
         *build_docker_steps(node),
-        *build_swarm_steps(node),
         *build_server_steps(node, state),
-        *build_application_steps(node, state),
+        *build_compose_steps(node, state),
     ]
 
 
@@ -624,7 +500,7 @@ def verify_worker_online(node: Node, *, timeout: float = 90) -> None:
 
     msg = (
         f"{node.worker_id} did not report a heartbeat within {timeout:.0f}s. "
-        f"Check `application.readLogs` for {node.app_name} in Dokploy."
+        f"Check `compose.readLogs` for {node.app_name} in Dokploy."
     )
     raise SystemExit(msg)
 
@@ -662,15 +538,15 @@ def cmd_add(node: Node, *, dry_run: bool) -> None:
 def cmd_remove(node: Node, *, dry_run: bool, yes: bool) -> None:
     print(f"remove {node.name}")
 
-    app = find_application(node.app_name)
+    compose = find_compose(node.app_name)
     server = find_server(node.name)
 
     print(
         f"  {'would' if dry_run else 'will'}   revoke credential for {node.worker_id}"
     )
     print(
-        f"  {'would' if dry_run else 'will'}   stop + delete application "
-        f"{node.app_name}" + ("" if app else " (none found, skipping)")
+        f"  {'would' if dry_run else 'will'}   stop + delete compose "
+        f"{node.app_name}" + ("" if compose else " (none found, skipping)")
     )
     print(
         f"  {'would' if dry_run else 'will'}   delete server row {node.name}"
@@ -685,18 +561,14 @@ def cmd_remove(node: Node, *, dry_run: bool, yes: bool) -> None:
 
     revoke_worker(node)
 
-    if app:
+    if compose:
+        dokploy("POST", "compose.stop", json_body={"composeId": compose["composeId"]})
         dokploy(
             "POST",
-            "application.stop",
-            json_body={"applicationId": app["applicationId"]},
+            "compose.delete",
+            json_body={"composeId": compose["composeId"], "deleteVolumes": False},
         )
-        dokploy(
-            "POST",
-            "application.delete",
-            json_body={"applicationId": app["applicationId"]},
-        )
-        print(f"  done    deleted application {node.app_name}")
+        print(f"  done    deleted compose {node.app_name}")
 
     if server:
         dokploy("POST", "server.remove", json_body={"serverId": server["serverId"]})
@@ -706,18 +578,18 @@ def cmd_remove(node: Node, *, dry_run: bool, yes: bool) -> None:
 
 
 def cmd_list() -> None:
-    fleet_apps = [
-        a
-        for a in dokploy(
+    fleet_composes = [
+        c
+        for c in dokploy(
             "GET",
-            "application.search",
+            "compose.search",
             params={
                 "projectId": DOKPLOY_PROJECT_ID,
                 "environmentId": DOKPLOY_ENVIRONMENT_ID,
                 "limit": 100,
             },
         )["items"]
-        if a["name"].startswith("portal-worker-")
+        if c["name"].startswith("portal-worker-")
     ]
 
     code = (
@@ -744,12 +616,13 @@ def cmd_list() -> None:
     for line in run_python_in_worker_api(code).strip().splitlines():
         worker_id, _hostname, last_seen, revoked = line.split("|")
         node_name = worker_id.rsplit("-", 1)[0]
-        app = next(
-            (a for a in fleet_apps if a["name"] == f"portal-worker-{node_name}"), None
+        compose = next(
+            (c for c in fleet_composes if c["name"] == f"portal-worker-{node_name}"),
+            None,
         )
-        status = app["applicationStatus"] if app else "-"
+        status = compose["composeStatus"] if compose else "-"
         print(
-            f"{worker_id:<14}{'yes' if app else 'no':<6}{status:<10}"
+            f"{worker_id:<14}{'yes' if compose else 'no':<6}{status:<10}"
             f"{last_seen or '-':<36}{revoked or '-'}"
         )
 

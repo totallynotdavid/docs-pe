@@ -4,8 +4,6 @@ from typing import Any, Protocol
 
 
 class Session(Protocol):
-    """Browser operations available to site implementations."""
-
     def goto(self, url: str) -> None: ...
 
     def sleep(self, seconds: float) -> None: ...
@@ -40,8 +38,6 @@ class Session(Protocol):
 
 
 class SeleniumBaseSession:
-    """Adapts a SeleniumBase driver to the Session protocol."""
-
     def __init__(self, driver: Any) -> None:
         self._driver = driver
 

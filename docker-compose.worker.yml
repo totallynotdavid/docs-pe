@@ -1,0 +1,8 @@
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: packages/portal/Dockerfile
+    command: ["python", "-m", "portal.worker.agent"]
+    env_file: [.env]
+    restart: unless-stopped

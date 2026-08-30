@@ -44,8 +44,6 @@ class ProxyProvider(Protocol):
 
 @dataclass(frozen=True)
 class Field:
-    """One configuration field shared by loading, validation, and the portal."""
-
     name: str
     secret: bool = False
     required: bool = True
@@ -56,8 +54,6 @@ class Field:
 
 @dataclass(frozen=True)
 class ProviderSpec:
-    """A proxy provider's schema, tuning, validator, and constructor."""
-
     name: str
     fields: tuple[Field, ...]
     tuning: ProviderTuning
@@ -66,7 +62,6 @@ class ProviderSpec:
 
 
 def values_from_environment(spec: ProviderSpec) -> dict[str, str]:
-    """A provider's field values, read from {SPEC_NAME}_{FIELD_NAME} and normalized."""
     raw = {
         field.name: getenv(f"{spec.name}_{field.name}".upper(), field.default)
         for field in spec.fields

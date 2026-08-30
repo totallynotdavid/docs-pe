@@ -11,21 +11,7 @@ services:
     networks: [dokploy-network]
     restart: unless-stopped
 
-  # containerboot's TS_SERVE_CONFIG does not reliably apply a `services:`
-  # endpoint mapping: confirmed against production that it leaves
-  # `tailscale serve get-config --all` showing endpoints: null indefinitely,
-  # even with TS_EXPERIMENTAL_SERVICE_AUTO_ADVERTISEMENT=true (that flag only
-  # sets AdvertiseServices, not the port forward itself). The CLI command is
-  # the only mechanism confirmed to work, so containerboot runs as a
-  # background process and this reasserts the endpoint on top of it, every
-  # 10s, so it's self-healing across containerboot's own reconnects and
-  # survives this container's own restarts (the endpoint does not persist in
-  # tailscaled's state across a restart, unlike the tailnet identity itself).
-  # If containerboot itself dies (seen live: it gave up and exited after a
-  # transient "network is down" during a container recreation), the loop
-  # exits instead of retrying against a socket that will never come back, so
-  # `restart: unless-stopped` gets a real dead container to restart rather
-  # than a shell script silently spinning forever.
+  # Reassert the service endpoint because it is not persistent across restarts.
   tailscale:
     image: tailscale/tailscale:latest
     network_mode: "service:postgres"
@@ -37,11 +23,7 @@ services:
       TS_EXTRA_ARGS: --advertise-tags=tag:core
     entrypoint: ["/bin/sh", "-c"]
     command:
-      # $$boot_pid (not $boot_pid): Compose's own variable interpolation
-      # matches bare $VAR too, not just ${VAR}, and silently strips it to an
-      # empty string if undefined -- confirmed live by running plain
-      # `docker compose up` directly against this file (Dokploy's own deploy
-      # path does not hit this). $$ escapes to a literal $ for the shell.
+      # $$ passes a literal $ through Compose to the shell.
       - |
         /usr/local/bin/containerboot &
         boot_pid=$!

@@ -496,10 +496,7 @@ async def publish_claimed(
     lane_index: int = 0,
     attempts: tuple[AttemptRecord, ...] = (),
 ) -> bool:
-    """Publish a claimed item with a real entry payload, the shape every
-    worker-api caller must supply since publish() started upserting
-    portal_entries. rows defaults to the claimed document itself so a test
-    asserting search/entry content has something to match on."""
+    """Publish a claimed item with an entry payload for search assertions."""
     team_id = await job_repository.item_team(claimed.item_id)
     assert team_id is not None
 

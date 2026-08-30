@@ -74,10 +74,7 @@ async def test_worker_agent_claims_executes_and_publishes_the_happy_path(
     job_repository: PostgresJobRepository,
     worker_client: AsyncTestClient,
 ) -> None:
-    """The dispatcher/lane rewrite's actual contract, end to end: an idle
-    lane claims a pending item directly from Postgres, reveals its provider
-    credential through worker-api, executes it, and publishes the result --
-    with nothing about that plumbing stubbed out."""
+    """A worker claims, executes, and publishes a queued item."""
     team = await seed_team(
         pool,
         config=protector.protect(encode_config({"password": "no-importa"})),

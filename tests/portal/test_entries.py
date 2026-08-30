@@ -33,10 +33,7 @@ async def test_two_teams_confirming_the_same_document_share_one_entry_row(
     service: PortalService,
     job_repository: PostgresJobRepository,
 ) -> None:
-    """Storage is deduplicated across every team: publish() upserts
-    portal_entries on (document, source), so a second team's confirmation of
-    a document another team already has updates the same row instead of
-    creating a duplicate (see PostgresJobRepository.publish)."""
+    """Publishing the same document and source for two teams updates one entry."""
     team_a = await seed_team(pool)
     team_b = await seed_team(pool)
 
@@ -170,11 +167,7 @@ async def test_reuse_eligibility_never_crosses_the_team_boundary(
     service: PortalService,
     job_repository: PostgresJobRepository,
 ) -> None:
-    """The shared portal_entries row exists the moment either team confirms
-    it, but reusable_for_team scopes strictly through the caller's own
-    portal_job_items -- a document team_b never itself confirmed must never
-    be handed back as "already known", even though team_a's answer is
-    sitting right there in the same deduplicated row."""
+    """Reuse eligibility is scoped to the team that confirmed the entry."""
     team_a = await seed_team(pool)
     team_b = await seed_team(pool)
 

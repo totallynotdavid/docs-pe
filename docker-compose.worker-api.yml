@@ -12,8 +12,6 @@ services:
     networks: [dokploy-network]
     restart: unless-stopped
 
-  # See docker-compose.postgres.yml for why this runs `tailscale serve`
-  # directly instead of relying on TS_SERVE_CONFIG.
   tailscale:
     image: tailscale/tailscale:latest
     network_mode: "service:worker-api"

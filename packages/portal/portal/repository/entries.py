@@ -37,13 +37,10 @@ _REUSABLE_STATUSES = ("ok", "not_found")
 
 
 class PostgresEntryRepository:
-    """Reads over the deduplicated, cross-team portal_entries store.
+    """Read the deduplicated, cross-team entry store.
 
-    Writes happen inside PostgresJobRepository.publish(), in the same
-    transaction as the job_items fencing check -- an entry only ever becomes
-    visible together with the job_item that confirmed it. This module owns
-    every read path instead: team-scoped search, global search, single-entry
-    lookup, and the submission-review reuse check.
+    ``PostgresJobRepository.publish`` owns writes and commits them with the
+    job-item fencing check.
     """
 
     def __init__(self, pool: Pool) -> None:
@@ -93,9 +90,7 @@ class PostgresEntryRepository:
         limit: int,
         offset: int,
     ) -> tuple[tuple[Entry, ...], bool]:
-        """Every entry matching needle, regardless of which team confirmed
-        it. Callers must gate access themselves -- see
-        AuthorizedService._require_global_search."""
+        """Search across teams after the service authorizes the operation."""
         rows = await self._pool.fetch(
             """
             SELECT *

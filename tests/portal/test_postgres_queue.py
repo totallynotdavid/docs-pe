@@ -274,9 +274,7 @@ async def test_claim_many_returns_every_requested_item_from_one_affinity_group(
     service: PortalService,
     job_repository: PostgresJobRepository,
 ) -> None:
-    """claim_many's affinity query is a flat join, not a per-job LATERAL
-    capped at the batch size: it must still return every item a batch asks
-    for when one job holds all of them, not just the first."""
+    """A batch returns every requested item when one affinity group owns them."""
     team = await seed_team(pool)
 
     job = await service.submit(
