@@ -487,12 +487,13 @@ def build_application_steps(node: Node, state: AddState) -> list[Step]:
         )
 
     def deploy_application() -> None:
+        before = latest_deployment_id(state.application_id)
         dokploy(
             "POST",
             "application.deploy",
             json_body={"applicationId": state.application_id},
         )
-        wait_for_deploy(state.application_id)
+        wait_for_deploy(state.application_id, before=before)
 
     return [
         Step(
@@ -508,21 +509,37 @@ def build_application_steps(node: Node, state: AddState) -> list[Step]:
     ]
 
 
-def wait_for_deploy(application_id: str, *, timeout: float = 300) -> None:
+def latest_deployment_id(application_id: str) -> str | None:
+    app = dokploy("GET", "application.one", params={"applicationId": application_id})
+    deployments = app.get("deployments") or []
+    return deployments[0]["deploymentId"] if deployments else None
+
+
+def wait_for_deploy(
+    application_id: str, *, before: str | None, timeout: float = 300
+) -> None:
     """Block until `application.deploy`'s own build+update actually finishes.
 
-    `application.deploy` only fires the deploy and returns; the build and
-    Swarm service update happen asynchronously. Every later step (the
-    tailscale DNS fix, `verify_worker_online`) needs the deploy to have
-    genuinely replaced the running container, not just have been requested.
+    `application.deploy` only fires the deploy and returns; the row for it
+    can appear in `deployments` a moment after that HTTP call already came
+    back, so this first waits for a deployment newer than `before` (the id
+    seen right before firing) rather than trusting `deployments[0]`
+    immediately -- confirmed live: polling right away caught a stale
+    deployment from hours earlier and mistook its "error" for this one's.
+    Every later step (the tailscale DNS fix, `verify_worker_online`) needs
+    the deploy to have genuinely replaced the running container, not just
+    have been requested.
     """
     deadline = time.monotonic() + timeout
+    latest_id = before
+
     while time.monotonic() < deadline:
         app = dokploy(
             "GET", "application.one", params={"applicationId": application_id}
         )
         deployments = app.get("deployments") or []
-        if deployments:
+        if deployments and deployments[0]["deploymentId"] != before:
+            latest_id = deployments[0]["deploymentId"]
             status = deployments[0]["status"]
             if status == "done":
                 return
@@ -531,8 +548,10 @@ def wait_for_deploy(application_id: str, *, timeout: float = 300) -> None:
                 raise SystemExit(msg)
         time.sleep(3)
 
+    seen = "no new deployment appeared" if latest_id == before else "it never finished"
     msg = (
-        f"deploy for application {application_id} did not finish within {timeout:.0f}s"
+        f"deploy for application {application_id} did not finish within "
+        f"{timeout:.0f}s ({seen})"
     )
     raise SystemExit(msg)
 
