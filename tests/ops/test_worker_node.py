@@ -59,3 +59,5 @@ def test_add_reconfigures_existing_compose(
         worker_node.WORKER_COMPOSE_PATH,
     ]
     assert json_bodies[0]["composeType"] == "docker-compose"
+    assert json_bodies[1] is not None
+    assert json_bodies[1]["createEnvFile"] is True

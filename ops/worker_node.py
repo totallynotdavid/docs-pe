@@ -410,7 +410,11 @@ def build_compose_steps(node: Node, state: AddState) -> list[Step]:
                         f"PORTAL_WORKER_TAILSCALE_HOSTNAME={node.hostname}",
                     ]
                 ),
-                "createEnvFile": False,
+                # docker-compose.worker.yml has `env_file: [.env]`; Dokploy
+                # only writes that file to the deploy directory when this is
+                # true (confirmed live: worker-api's own compose resource,
+                # which uses the same env_file pattern, has this set).
+                "createEnvFile": True,
             },
         )
 
