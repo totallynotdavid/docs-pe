@@ -12,6 +12,7 @@ import sys
 import time
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -476,8 +477,13 @@ def build_add_steps(node: Node, state: AddState) -> list[Step]:
 
 
 def verify_worker_online(node: Node, *, timeout: float = 90) -> None:
+    # A re-added node keeps its old row, so a heartbeat merely being non-null
+    # proves nothing about the deploy just requested -- only one strictly
+    # newer than this call proves the current container is the one reporting.
+    since = datetime.now(UTC).isoformat()
     code = (
         "import asyncio, asyncpg\n"
+        "from datetime import datetime\n"
         "from portal.settings import PortalSettings\n"
         "async def main():\n"
         "    settings = PortalSettings.from_environment()\n"
@@ -485,8 +491,13 @@ def verify_worker_online(node: Node, *, timeout: float = 90) -> None:
         "    try:\n"
         "        row = await pool.fetchrow(\n"
         "            'select last_seen_at from portal_workers '\n"
-        "            'where worker_id = $1 and revoked_at is null',\n"
+        "            'where worker_id = $1 and revoked_at is null '\n"
+        "            'and last_seen_at > $2',\n"
         f"            {node.worker_id!r},\n"
+        # asyncpg encodes a timestamptz parameter from the Python object's
+        # own type, not the SQL text, so this must be a real datetime rather
+        # than a string plus a cast.
+        f"            datetime.fromisoformat({since!r}),\n"
         "        )\n"
         "        print(row['last_seen_at'].isoformat() if row and row['last_seen_at'] else '')\n"
         "    finally:\n"
