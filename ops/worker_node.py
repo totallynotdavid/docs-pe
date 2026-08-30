@@ -39,6 +39,21 @@ TAILNET_SUFFIX = "taila2cbc1.ts.net"
 MASTER_HOST = f"master.{TAILNET_SUFFIX}"
 WORKER_API_URL = f"http://worker-api.{TAILNET_SUFFIX}:8443"
 
+# Tailscale's own well-known MagicDNS resolver address. A Dokploy
+# "application" deploys as a Docker Swarm service, and Swarm services on
+# these hosts consistently get /etc/resolv.conf built from the host's raw
+# upstream resolvers, not the tailscale-aware 127.0.0.53 stub a plain
+# `docker run` container gets on the same host -- confirmed live, this
+# leaves a worker unable to resolve *.ts.net names at all, or resolving
+# them to whatever a stale docker-daemon-level cache last saw (seen live:
+# `worker-api.taila2cbc1.ts.net` resolving to master's own device IP from
+# inside a fresh container long after the actual answer changed to the
+# svc:worker-api Service VIP). Dokploy has no field for a service's DNS
+# servers, and this is not one-time: every deploy regenerates the Swarm
+# service spec from Dokploy's own stored config, which has no memory of
+# this override, silently reverting it.
+TAILSCALE_DNS_SERVER = "100.100.100.100"
+
 SSH_USER = "dubu"
 SSH_OPTS = (
     "-o",
@@ -72,6 +87,7 @@ class Node:
 class AddState:
     server_id: str = ""
     application_id: str = ""
+    swarm_service_name: str = ""
 
 
 @dataclass
@@ -386,6 +402,7 @@ def build_application_steps(node: Node, state: AddState) -> list[Step]:
         if existing is None:
             return False
         state.application_id = existing["applicationId"]
+        state.swarm_service_name = existing["appName"]
         return True
 
     def create_application() -> None:
@@ -402,8 +419,8 @@ def build_application_steps(node: Node, state: AddState) -> list[Step]:
             },
         )
         application_id = (response or {}).get("applicationId")
+        existing = find_application(node.app_name)
         if not application_id:
-            existing = find_application(node.app_name)
             if existing is None:
                 msg = (
                     f"application.create for {node.app_name} returned no applicationId"
@@ -411,6 +428,8 @@ def build_application_steps(node: Node, state: AddState) -> list[Step]:
                 raise SystemExit(msg)
             application_id = existing["applicationId"]
         state.application_id = application_id
+        if existing is not None:
+            state.swarm_service_name = existing["appName"]
 
     def configure_application() -> None:
         application_id = state.application_id
@@ -480,7 +499,31 @@ def build_application_steps(node: Node, state: AddState) -> list[Step]:
         ),
         Step("worker application configuration", lambda: False, configure_application),
         Step("deploy", lambda: False, deploy_application),
+        Step(
+            "swarm service has tailscale DNS (deploy wipes this, must run after)",
+            lambda: has_tailscale_dns(node, state),
+            lambda: add_tailscale_dns(node, state),
+        ),
     ]
+
+
+def has_tailscale_dns(node: Node, state: AddState) -> bool:
+    result = ssh_run(
+        node.hostname,
+        f"docker service inspect {state.swarm_service_name} "
+        "--format '{{json .Spec.TaskTemplate.ContainerSpec.DNSConfig}}'",
+        check=False,
+    )
+    return TAILSCALE_DNS_SERVER in result.stdout
+
+
+def add_tailscale_dns(node: Node, state: AddState) -> None:
+    ssh_run(
+        node.hostname,
+        f"docker service update --detach=true "
+        f"--dns-add {TAILSCALE_DNS_SERVER} {state.swarm_service_name}",
+        timeout=60,
+    )
 
 
 def build_add_steps(node: Node, state: AddState) -> list[Step]:

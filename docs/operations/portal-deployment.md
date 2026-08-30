@@ -96,14 +96,16 @@ the team. To validate and activate its first proxy credential, add
 `PORTAL_PROVISION_GEONODE_<FIELD>` environment variables. The proxy validation
 opens a real provider session and releases it before provisioning completes.
 
-`web` runs as a Dokploy "application" (a Swarm service), unlike `worker-api`
-and the shared services (plain Compose). Confirmed live: a Swarm-managed
-service's containers get their `/etc/resolv.conf` generated from
-`/run/systemd/resolve/resolv.conf` (the raw upstream ISP/VPS resolvers, no
-`*.ts.net` knowledge), while a plain Compose container on the same host
-consistently gets the working, tailscale-aware chain through the
-`127.0.0.53` stub. Dokploy exposes no field to set a container's DNS servers,
-so after every deploy of `web`, run once:
+`web` and every worker-fleet node run as a Dokploy "application" (a Swarm
+service), unlike `worker-api` and the shared services (plain Compose).
+Confirmed live on both `web` and the fleet: a Swarm-managed service's
+containers get their `/etc/resolv.conf` generated from
+`/run/systemd/resolve/resolv.conf` (the host's raw upstream resolvers, no
+`*.ts.net` knowledge, and on a residential connection this can even be the
+home router), while a plain Compose container on the same host consistently
+gets the working, tailscale-aware chain through the `127.0.0.53` stub. Dokploy
+exposes no field to set a container's DNS servers, so after every deploy of
+`web`, run once:
 
 ```sh
 docker service update --dns-add 100.100.100.100 <web's Swarm service name>
@@ -114,6 +116,15 @@ own stored spec on each deploy, which has no memory of this override, so `web`
 silently loses `*.ts.net` resolution (and crash-loops on `PORTAL_DATABASE_DSN`)
 again after every redeploy until this is reapplied. Find the service name with
 `docker service ls`, matching Dokploy's `appName` for the `web` application.
+
+`ops/worker_node.py add` applies the same fix automatically on every fleet
+node it touches (its last step, run after `application.deploy` since deploy is
+what wipes it) since a worker hitting this looks identical to a real
+connectivity fault: `self_enroll` retries for close to a minute against a
+`ConnectError` before giving up, or (seen live) resolves
+`worker-api.taila2cbc1.ts.net` to some stale answer from a still-broken
+resolver and gets an immediate TCP reset instead. `web` has no equivalent
+tooling, so its fix stays manual.
 
 Deploy `web` and `worker-api` from the same revision with the same database,
 object store, and master-key file. Configure their commands as follows:
