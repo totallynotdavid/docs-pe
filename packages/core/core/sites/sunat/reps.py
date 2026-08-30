@@ -17,7 +17,7 @@ class RepRecord:
     fecha_desde: str
 
 
-# The legal-representatives table body; header row lives in a separate <thead>.
+# SUNAT keeps representative records in <tbody>; <thead> is not data.
 _TBODY_RE = re.compile(r"<tbody>(?P<body>.*?)</tbody>", re.IGNORECASE | re.DOTALL)
 _ROW_RE = re.compile(r"<tr>(?P<row>.*?)</tr>", re.IGNORECASE | re.DOTALL)
 _CELL_RE = re.compile(r"<td[^>]*>(?P<cell>.*?)</td>", re.IGNORECASE | re.DOTALL)

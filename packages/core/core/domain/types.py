@@ -37,8 +37,6 @@ class Doc(UserString):
             self._kind = DocKind.RUC
         elif _DNI_RE.match(normalized):
             self._kind = DocKind.DNI
-
-            # Seven-digit DNIs omit the canonical leading zero.
             normalized = normalized.zfill(8)
         else:
             msg = (

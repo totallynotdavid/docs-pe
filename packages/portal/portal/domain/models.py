@@ -184,7 +184,7 @@ class Team:
     name: str
     role: TeamRole | None = None
 
-    # Paid capability, not a role.
+    # This entitlement is checked independently of TeamRole.
     has_global_search: bool = False
 
 

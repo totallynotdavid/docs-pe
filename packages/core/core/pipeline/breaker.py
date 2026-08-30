@@ -18,10 +18,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Consecutive failures required to open the circuit.
 DEFAULT_THRESHOLD = 10
 
-# Cooldown doubles after each trip, up to the maximum.
 DEFAULT_BASE_COOLDOWN_S = 5.0
 DEFAULT_MAX_COOLDOWN_S = 300.0
 

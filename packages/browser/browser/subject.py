@@ -27,7 +27,6 @@ class Subject(UserString):
             self._kind = SubjectKind.PHONE
         elif _DNI_RE.match(normalized):
             self._kind = SubjectKind.DNI
-            # Canonicalize legacy 7-digit DNIs to 8 digits.
             normalized = normalized.zfill(8)
         else:
             msg = (

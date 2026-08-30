@@ -47,8 +47,6 @@ async def step_up_get(
 ) -> Response:
     return render(
         "StepUp",
-        # Use the centered signed-out shell while preserving the session's
-        # CSRF token for the form.
         user=None,
         csrf_token=page_session.csrf_token,
         next_path=_safe_next(next_path),

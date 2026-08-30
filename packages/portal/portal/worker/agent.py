@@ -54,10 +54,12 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CONCURRENCY = 4
 
-# Close a sticky session after repeated empty dispatch cycles.
+# Release idle sticky sessions so finite shared slots remain available to other
+# workers.
 IDLE_SESSION_CLOSE_AFTER = 5
 
-# Keep the heartbeat shorter than the worker staleness window.
+# Keep heartbeats ahead of stale-worker cleanup so live workers retain their
+# leases.
 HEARTBEAT_INTERVAL_SECONDS = 15
 
 # Polling catches a missed notification and a breaker reopening without a row
@@ -79,7 +81,6 @@ ENROLL_RETRY_MAX_SECONDS = 60.0
 CREDENTIAL_CACHE_SIZE = 32
 CREDENTIAL_CACHE_TTL_SECONDS = 300
 
-# How long a slot-claim retry waits when every real slot is leased elsewhere.
 SLOT_WAIT_SECONDS = 2
 
 
