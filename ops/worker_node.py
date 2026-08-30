@@ -465,6 +465,17 @@ def build_application_steps(node: Node, state: AddState) -> list[Step]:
             json_body={
                 "applicationId": application_id,
                 "command": "python -m portal.worker.agent",
+                # Unscoped watchPaths redeploys on every push to the branch,
+                # not just ones that touch worker code. Confirmed live: this
+                # wiped a fleet node's tailscale DNS fix on an unrelated docs
+                # commit, since a redeploy is exactly what wipes it.
+                "watchPaths": [
+                    "packages/portal",
+                    "packages/fetch",
+                    "packages/browser",
+                    "pyproject.toml",
+                    "uv.lock",
+                ],
             },
         )
         dokploy(
