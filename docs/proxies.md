@@ -35,14 +35,10 @@ GEONODE_STRICT_OFF=
 GEONODE_LIFETIME_MINUTES=10
 ```
 
-`GEONODE_GATEWAY` accepts `fr`, `fr_whitelist`, `us`, or `sg`.
-`GEONODE_PROXY_TYPE` accepts `residential`, `datacenter`, or `mix`.
-`GEONODE_COUNTRY` accepts a two-letter code in either case and is normalized to
-uppercase. For `fetch` and the portal, `GEONODE_STATE`, `GEONODE_CITY`,
-`GEONODE_ASN`, and `GEONODE_STRICT_OFF` are optional advanced filters. Browser
-ignores those fields.
-`GEONODE_LIFETIME_MINUTES` must be between 3 and 1,440; it controls the
-provider session lifetime.
+The example values above are valid, but they are not an exhaustive schema.
+`ProviderSpec` in the linked source owns choices, defaults, normalization,
+advanced fields, and numeric limits. The same schema validates environment
+configuration, stored portal credentials, and the portal form.
 
 DataImpulse fields:
 
@@ -53,10 +49,9 @@ DATAIMPULSE_COUNTRY=pe
 DATAIMPULSE_SESSION_MINUTES=3
 ```
 
-`DATAIMPULSE_COUNTRY` accepts a two-letter code in either case and is normalized
-to lowercase. For `fetch` and the portal, `DATAIMPULSE_SESSION_MINUTES` must be
-between 1 and 1,440. Browser accepts any positive value. These bounds are
-enforced by the respective loaders.
+The example values above are valid. The linked `ProviderSpec` owns country
+normalization and session limits for each runner; those limits are enforced by
+the respective loaders.
 
 Each provider module owns its field schema. `core.proxy.base` supplies the
 shared field and provider-spec types used by environment loading, stored portal

@@ -16,6 +16,7 @@ MARKDOWN_LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)\s]+)")
 # checks do not inspect inline code spans.
 CODE_PATH = re.compile(r"`((?:docs|packages|ops)/[^`\s]+|docker-compose\.[^`\s]+)`")
 PROVIDER_FIELD = re.compile(r'Field\("([a-z0-9_]+)"')
+PROVIDER_ENV_FIELD = re.compile(r"\b([A-Z][A-Z0-9]+)_([A-Z][A-Z0-9_]*)\b")
 HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*#*\s*$")
 
 
@@ -123,6 +124,11 @@ def check_contract_docs() -> list[str]:
             "global search",
             "second factor",
         ),
+        ROOT / "docs/input-format.md": (
+            "first column",
+            "2953322",
+            "02953322",
+        ),
     }
 
     for path, needles in required_text.items():
@@ -137,15 +143,30 @@ def check_contract_docs() -> list[str]:
     proxy_dir = ROOT / "packages/core/core/proxy"
     for path in sorted(proxy_dir.glob("*.py")):
         contents = path.read_text(encoding="utf-8")
-        if "ProviderSpec" not in contents:
+        if "ProviderSpec(" not in contents:
             continue
         provider = path.stem.upper()
+        source_link = f"../packages/core/core/proxy/{path.name}"
+        if source_link not in proxy_docs:
+            errors.append(f"docs/proxies.md: missing source link: {source_link}")
+
+        source_fields = set(PROVIDER_FIELD.findall(contents))
         for field in PROVIDER_FIELD.findall(contents):
             env_name = f"{provider}_{field.upper()}"
             if env_name not in proxy_docs:
                 errors.append(
                     f"docs/proxies.md: missing provider field reference: {env_name}"
                 )
+
+        documented_fields = {
+            suffix.rstrip("_").lower()
+            for prefix, suffix in PROVIDER_ENV_FIELD.findall(proxy_docs)
+            if prefix == provider
+        }
+        for field in sorted(documented_fields - source_fields):
+            errors.append(
+                f"docs/proxies.md: stale provider field reference: {provider}_{field.upper()}"
+            )
 
     return errors
 
