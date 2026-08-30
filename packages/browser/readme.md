@@ -14,8 +14,8 @@ Use [fetch](../cli/readme.md) when a plain HTTP client is sufficient. Use
 [capture](../capture/readme.md) when a request works in an established Chrome
 profile but not in automation.
 
-The [site notes](../../docs/readme.md) list supported sites, accepted inputs,
-browser gates, and response contracts.
+The [site notes](../../docs/readme.md) list supported sites, browser gates, and
+response contracts.
 
 ## Sessions and retries
 

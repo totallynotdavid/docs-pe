@@ -16,9 +16,10 @@ uv run --env-file .env fetch \
   --sites osiptel
 ```
 
-The input is a CSV whose first column contains identifiers. Empty and malformed
-rows are ignored and duplicate identifiers are removed by default. See the
-[site notes](../../docs/readme.md) for accepted inputs and output columns.
+The input is a CSV whose first column contains identifiers. See
+[Input format](../../docs/input-format.md) for normalization and the
+[site contract index](../../docs/readme.md) for accepted inputs and output
+columns.
 
 ## Providers
 

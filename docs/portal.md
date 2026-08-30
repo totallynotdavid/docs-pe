@@ -26,14 +26,17 @@ Provider credentials are encrypted and are not shown again after saving.
 ## Submit a lookup
 
 1. Choose **Nueva consulta** for the team.
-2. Upload a CSV with one identifier in its first column.
+2. Upload a CSV with one identifier in its first column. See the
+   [input format](input-format.md) for accepted forms.
 3. Select the sources and a validated provider connection.
 4. Review accepted, excluded, reusable, and new items.
 5. Choose **Reutilizar y consultar solo lo nuevo** or **Consultar todo de nuevo**.
 
 Duplicates and invalid rows are excluded before a worker receives them. Reuse
 avoids a new lookup for an existing document and source. A lookup with no
-matching records is still a valid result.
+matching records is still a valid result. A result is reusable only while it
+is within the source's freshness window and has a successful or explicitly
+not-found outcome. Expired results return to the new-items list.
 
 ## Follow and download
 
@@ -47,10 +50,9 @@ The terminal states are `completed`, `failed`, and `cancelled`. Use the
 ## Search and manage a team
 
 Team search reads collected results; it does not start a provider lookup.
-Global search spans the installation and is available only to site
-administrators or users with the team's entitlement. Team leaders manage
-members, invitations, proxy connections, and team jobs. Notifications show
-terminal job activity visible to the signed-in user.
+Global search spans the installation. Team leaders manage members, invitations,
+proxy connections, and team jobs. Notifications show terminal job activity
+visible to the signed-in user.
 
 For deployment and database operations, see the
 [operator documentation](readme.md#operate-jobs-and-services). For system

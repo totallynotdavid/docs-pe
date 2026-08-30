@@ -11,6 +11,7 @@ shortest command-line introduction.
 | Run a browser lookup | [`browser`](../packages/browser/readme.md) |
 | Discover a request | [`capture`](../packages/capture/readme.md) |
 | Use the shared portal | [`Portal user guide`](portal.md) |
+| Check input format | [`Input format`](input-format.md) |
 
 ## Operate jobs and services
 

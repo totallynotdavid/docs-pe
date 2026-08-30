@@ -22,7 +22,8 @@ mise run install
 ```
 
 Create a CSV whose first column contains identifiers, copy the environment
-template, and add proxy credentials to `.env`:
+template, and add proxy credentials to `.env`. See the
+[input format](docs/input-format.md) for accepted forms and normalization:
 
 ```sh
 printf '%s\n' '12345678' > subjects.csv
@@ -44,9 +45,8 @@ Inspect a completed or interrupted run from its SQLite state database:
 uv run fetch-status --output results/out.csv
 ```
 
-For the state model and live progress rules, see [Architecture](ARCHITECTURE.md)
-and [Troubleshooting](docs/operations/troubleshooting.md).
-The complete output file list is in the [`fetch` guide](packages/cli/readme.md#output).
+See [Documentation](docs/readme.md) for the state model, troubleshooting, output
+files, and other task guides.
 
 ## Choose a runner
 
