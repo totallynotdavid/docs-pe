@@ -71,6 +71,11 @@ LISTEN_CHANNEL = "portal_work_available"
 LISTEN_RECONNECT_BASE_SECONDS = 1.0
 LISTEN_RECONNECT_MAX_SECONDS = 30.0
 
+# Bounds a fresh container's enrollment retry while its network interface is
+# still converging (observed up to a few seconds on an overlay network).
+ENROLL_RETRY_BASE_SECONDS = 2.0
+ENROLL_RETRY_MAX_SECONDS = 60.0
+
 # Expire cached credentials so rotation takes effect without a worker restart.
 CREDENTIAL_CACHE_SIZE = 32
 CREDENTIAL_CACHE_TTL_SECONDS = 300
@@ -613,28 +618,43 @@ async def self_enroll(
 ) -> tuple[str, str]:
     """Mint a worker credential and direct-DB role from the enrollment endpoint."""
     # Enrollment is a control-plane request. Retry transient connection
-    # failures, including after a worker restart.
+    # failures, including after a worker restart. A container's overlay
+    # network interface can still be converging when the process starts
+    # (confirmed live: Swarm marks a task Running as soon as the process
+    # starts, seconds before its route to the tailnet is usable), so this
+    # retries on a real backoff, not just httpx's own millisecond-scale
+    # connect retry.
     transport = httpx.AsyncHTTPTransport(retries=2)
+    delay = ENROLL_RETRY_BASE_SECONDS
 
     async with httpx.AsyncClient(
         base_url=worker_api_url, timeout=30, transport=transport
     ) as client:
-        response = await client.post(
-            "/enroll",
-            content=msgspec.json.encode(
-                EnrollRequest(
-                    worker_id=worker_id, tailscale_hostname=tailscale_hostname
+        while True:
+            try:
+                response = await client.post(
+                    "/enroll",
+                    content=msgspec.json.encode(
+                        EnrollRequest(
+                            worker_id=worker_id, tailscale_hostname=tailscale_hostname
+                        )
+                    ),
+                    headers={
+                        "Authorization": f"Bearer {bootstrap_token}",
+                        "Content-Type": "application/json",
+                    },
                 )
-            ),
-            headers={
-                "Authorization": f"Bearer {bootstrap_token}",
-                "Content-Type": "application/json",
-            },
-        )
-        response.raise_for_status()
+                response.raise_for_status()
+            except httpx.TransportError:
+                if delay > ENROLL_RETRY_MAX_SECONDS:
+                    raise
+                logger.warning("worker_enroll_retrying", exc_info=True)
+                await asyncio.sleep(delay)
+                delay *= 2
+                continue
 
-        enrolled = msgspec.json.decode(response.content, type=EnrollResponse)
-        return enrolled.credential, enrolled.database_dsn
+            enrolled = msgspec.json.decode(response.content, type=EnrollResponse)
+            return enrolled.credential, enrolled.database_dsn
 
 
 def build_parser() -> argparse.ArgumentParser:
