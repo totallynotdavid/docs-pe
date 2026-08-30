@@ -1,9 +1,11 @@
-# portal
+# Portal package
 
-The portal provides a web interface for submitting lookup jobs, sharing access
-through teams, and reusing previous results. Workers claim queue items through
-a scoped PostgreSQL role and use `worker-api` for enrollment, credential reveals,
-and result publication.
+The portal package contains the web application, worker API, worker agent, and
+PostgreSQL repositories. The user workflow is documented in the [portal user
+guide](../../docs/portal.md). This page is for local development and maintainers.
+
+Workers claim queue items through a scoped PostgreSQL role. They use `worker-api`
+for enrollment, credential reveals, and result publication.
 
 ```sh
 mise run dev
@@ -52,6 +54,9 @@ uv run --env-file .env portal-admin provision \
 
 Proxy credentials for provisioning use `PORTAL_PROVISION_<PROVIDER>_<FIELD>`
 names generated from the provider schema.
+
+Worker-api process count and its PostgreSQL connection budget are covered in
+the [portal deployment guide](../../docs/operations/portal-deployment.md#worker-api-capacity).
 
 Master-key setup and rotation are in the [deployment guide](../../docs/operations/portal-deployment.md#key-rotation).
 

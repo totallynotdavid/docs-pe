@@ -1,16 +1,16 @@
 # Documentation
 
-Start with the task you need to complete. The root [README](../readme.md) is
-the shortest user path; this page is the maintainer and operator index.
+Choose the path that matches your job. The root [README](../readme.md) is the
+shortest command-line introduction.
 
-## Use the tools
+## Use the product
 
 | Task | Guide |
 | --- | --- |
 | Run an HTTP lookup | [`fetch`](../packages/cli/readme.md) |
 | Run a browser lookup | [`browser`](../packages/browser/readme.md) |
 | Discover a request | [`capture`](../packages/capture/readme.md) |
-| Submit jobs through the portal | [`portal`](../packages/portal/readme.md) |
+| Use the shared portal | [`Portal user guide`](portal.md) |
 
 ## Operate jobs and services
 
@@ -19,6 +19,8 @@ the shortest user path; this page is the maintainer and operator index.
 | Configure proxy providers | [`Proxy configuration`](proxies.md) |
 | Diagnose a standalone or portal run | [`Troubleshooting`](operations/troubleshooting.md) |
 | Deploy the portal | [`Portal deployment`](operations/portal-deployment.md) |
+| Understand portal network boundaries | [`Portal topology`](operations/portal-topology.md) |
+| Apply or change the portal schema | [`Schema changes`](operations/portal-deployment.md#schema-changes) |
 | Add or remove a worker node | [`Worker fleet`](operations/worker-fleet.md) |
 | Run a multi-host fetch | [`Sharded fetch`](operations/sharded-fetch.md) |
 | Perform trusted portal SQL intervention | [`Portal SQL runbook`](../packages/portal/operations.md) |

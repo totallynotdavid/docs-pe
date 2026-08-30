@@ -1,7 +1,9 @@
 # Proxy configuration
 
-`fetch` and `browser` use proxy providers. `capture` uses the operator's own
-Chrome profile. This document defines provider configuration and coordination.
+`fetch` and the portal use the core provider schema. `browser` uses the same
+provider names and credentials, but its loader supports only the browser
+settings described in [the browser package](../packages/browser/browser/proxy.py).
+`capture` uses the operator's own Chrome profile.
 
 ## Configure providers
 
@@ -12,7 +14,11 @@ PROXY_PROVIDER=geonode:30,dataimpulse:18
 ```
 
 The syntax is a comma-separated list of `name[:lanes]`. An omitted lane count
-uses the provider default. A provider may appear only once.
+uses the provider default. A provider may appear only once. The provider
+registry and each provider's `ProviderSpec` are authoritative for names,
+defaults, choices, and validation:
+[`core/proxy/geonode.py`](../packages/core/core/proxy/geonode.py) and
+[`core/proxy/dataimpulse.py`](../packages/core/core/proxy/dataimpulse.py).
 
 GeoNode fields:
 
@@ -22,14 +28,21 @@ GEONODE_PASSWORD=<password>
 GEONODE_GATEWAY=fr
 GEONODE_PROXY_TYPE=residential
 GEONODE_COUNTRY=PE
+GEONODE_STATE=
+GEONODE_CITY=
+GEONODE_ASN=
+GEONODE_STRICT_OFF=
 GEONODE_LIFETIME_MINUTES=10
 ```
 
 `GEONODE_GATEWAY` accepts `fr`, `fr_whitelist`, `us`, or `sg`.
 `GEONODE_PROXY_TYPE` accepts `residential`, `datacenter`, or `mix`.
 `GEONODE_COUNTRY` accepts a two-letter code in either case and is normalized to
-uppercase. `GEONODE_LIFETIME_MINUTES` must be between 3 and 1,440; it controls
-the provider session lifetime.
+uppercase. For `fetch` and the portal, `GEONODE_STATE`, `GEONODE_CITY`,
+`GEONODE_ASN`, and `GEONODE_STRICT_OFF` are optional advanced filters. Browser
+ignores those fields.
+`GEONODE_LIFETIME_MINUTES` must be between 3 and 1,440; it controls the
+provider session lifetime.
 
 DataImpulse fields:
 
@@ -41,9 +54,9 @@ DATAIMPULSE_SESSION_MINUTES=3
 ```
 
 `DATAIMPULSE_COUNTRY` accepts a two-letter code in either case and is normalized
-to lowercase. `DATAIMPULSE_SESSION_MINUTES` must be between 1 and 1,440.
-DataImpulse has no release endpoint; its session expires through the provider
-TTL.
+to lowercase. For `fetch` and the portal, `DATAIMPULSE_SESSION_MINUTES` must be
+between 1 and 1,440. Browser accepts any positive value. These bounds are
+enforced by the respective loaders.
 
 Each provider module owns its field schema. `core.proxy.base` supplies the
 shared field and provider-spec types used by environment loading, stored portal

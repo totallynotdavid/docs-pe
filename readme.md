@@ -7,6 +7,11 @@ Inputs, state databases, and CSV exports can contain personal data. Keep them
 private, do not commit them, and use the services only where the collection and
 use are authorized.
 
+Choose the smallest runner that matches the site's protocol. `fetch` handles
+ordinary HTTP at unattended scale, `browser` handles Chrome and browser gates,
+`capture` discovers requests in your own profile, and the portal coordinates
+shared jobs, teams, results, and worker nodes.
+
 ## Get started
 
 Install the pinned toolchain and dependencies:
@@ -38,6 +43,10 @@ Inspect a completed or interrupted run from its SQLite state database:
 ```sh
 uv run fetch-status --output results/out.csv
 ```
+
+For the state model and live progress rules, see [Architecture](ARCHITECTURE.md)
+and [Troubleshooting](docs/operations/troubleshooting.md).
+The complete output file list is in the [`fetch` guide](packages/cli/readme.md#output).
 
 ## Choose a runner
 

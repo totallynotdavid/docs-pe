@@ -5,6 +5,19 @@ entries lack the metadata needed for reproducible comparisons. Use the
 [outcome contract](../../ARCHITECTURE.md#outcome-state) and
 [troubleshooting runbook](../operations/troubleshooting.md) for live jobs.
 
+## Provenance
+
+The tables are reconciled from historical job exports and are retained for
+context, not replay. The original input files, state databases, provider
+credentials, and complete run configuration are not stored in the repository.
+The report therefore cannot establish a new run's correctness or reproduce its
+throughput.
+
+When recording a new measurement, preserve the run's commit, input count and
+hash, selected sites, provider and lane configuration, session and retry
+budgets, start and end times, and the state database alongside the report. Keep
+those artifacts private when they contain identifiers or credentials.
+
 ## OSIPTEL snapshot
 
 Phone lines per document. The recorded inputs are DNIs unless the job name says
