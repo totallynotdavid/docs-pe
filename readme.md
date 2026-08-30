@@ -1,7 +1,11 @@
 # docs-pe
 
-Command-line and browser tools for looking up public Peruvian identity,
+Command-line, browser, and portal tools for looking up public Peruvian identity,
 telephone, taxpayer, and number-portability data.
+
+Inputs, state databases, and CSV exports can contain personal data. Keep them
+private, do not commit them, and use the services only where the collection and
+use are authorized.
 
 ## Get started
 
@@ -12,15 +16,15 @@ mise install
 mise run install
 ```
 
-Create a CSV whose first column contains identifiers. Replace the example before
-running a lookup:
+Create a CSV whose first column contains identifiers, copy the environment
+template, and add proxy credentials to `.env`:
 
 ```sh
 printf '%s\n' '12345678' > subjects.csv
 cp .env.example .env
 ```
 
-Add proxy credentials to `.env`, then run a small lookup:
+Run a small OSIPTEL lookup:
 
 ```sh
 uv run --env-file .env fetch \
@@ -29,7 +33,7 @@ uv run --env-file .env fetch \
   --sites osiptel
 ```
 
-Inspect a completed or interrupted run with:
+Inspect a completed or interrupted run from its SQLite state database:
 
 ```sh
 uv run fetch-status --output results/out.csv
@@ -40,9 +44,9 @@ uv run fetch-status --output results/out.csv
 | Tool | Use it when |
 | --- | --- |
 | [`fetch`](packages/cli/readme.md) | The site accepts ordinary HTTP requests and the job needs unattended scale. |
-| [`browser`](packages/browser/readme.md) | The site needs Chrome, JavaScript, or a browser reputation signal. |
+| [`browser`](packages/browser/readme.md) | The site needs Chrome, JavaScript, or browser reputation. |
 | [`capture`](packages/capture/readme.md) | You need to discover a request with your own Chrome profile. |
 | [`portal`](packages/portal/readme.md) | People need job submission, teams, reusable results, and a worker fleet. |
 
-See [Documentation](docs/readme.md) for site notes and operations. Contributors
+See [Documentation](docs/readme.md) for the full task index. Contributors
 should read [Contributing](CONTRIBUTING.md).

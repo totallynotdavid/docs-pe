@@ -1,7 +1,7 @@
 # Contributing
 
 The root project provides the development environment. Use the commands exposed
-by `mise.toml` so local work uses the repository toolchain:
+by `mise.toml` so local work uses the repository toolchain.
 
 The root `uv.lock` covers development. `packages/cli/uv.lock` and
 `packages/portal/uv.lock` cover their deployment environments. `mise run update`
@@ -22,10 +22,12 @@ uv run pytest tests/cli
 uv run pytest tests/core/sites/osiptel/test_lookup.py::test_name
 uv run mypy packages/portal
 uv run ruff check packages/portal
+uv run ops/check_docs.py
 ```
 
 The full test command includes portal tests and a disposable PostgreSQL test
-cluster. Do not use a system Python, pytest, Ruff, or mypy.
+cluster. CI also checks all three lockfiles, Markdown links, HTML formatting,
+Ruff, and mypy. Do not use a system Python, pytest, Ruff, or mypy.
 
 ## Before changing code
 

@@ -24,8 +24,8 @@ grant those services to `tag:worker-fleet` only.
 Prepare these resources before starting:
 
 - A tailnet ACL policy that grants `tag:worker-fleet` access to
-  `svc:database:5432`, `svc:objectstorage:9000`, and `svc:worker-api:8443`
-  (see `ops/org.jsonc`). Add `tag:worker-fleet` to every worker node.
+  `svc:database:5432`, `svc:objectstorage:9000`, and `svc:worker-api:8443`.
+  Add `tag:worker-fleet` to every worker node.
   `tag:core` belongs on the shared-service sidecars, not on their host.
 - Each of the three Services (`database`, `objectstorage`, `worker-api`)
   defined in the admin console (Services page) with its port and
@@ -96,35 +96,28 @@ the team. To validate and activate its first proxy credential, add
 `PORTAL_PROVISION_GEONODE_<FIELD>` environment variables. The proxy validation
 opens a real provider session and releases it before provisioning completes.
 
-`web` and every worker-fleet node run as a Dokploy "application" (a Swarm
-service), unlike `worker-api` and the shared services (plain Compose).
-Confirmed live on both `web` and the fleet: a Swarm-managed service's
-containers get their `/etc/resolv.conf` generated from
-`/run/systemd/resolve/resolv.conf` (the host's raw upstream resolvers, no
-`*.ts.net` knowledge, and on a residential connection this can even be the
-home router), while a plain Compose container on the same host consistently
-gets the working, tailscale-aware chain through the `127.0.0.53` stub. Dokploy
-exposes no field to set a container's DNS servers, so after every deploy of
-`web`, run once:
+## Web Swarm service DNS
+
+`web` runs as a Dokploy application, which is a Docker Swarm service. Its task
+DNS does not include Tailscale's MagicDNS resolver, and Dokploy has no
+application setting for the service DNS servers. After every `web` deploy,
+apply the Tailscale resolver:
 
 ```sh
 docker service update --dns-add 100.100.100.100 <web's Swarm service name>
 ```
 
-This isn't optional or one-time: Dokploy recreates the Swarm service from its
-own stored spec on each deploy, which has no memory of this override, so `web`
-silently loses `*.ts.net` resolution (and crash-loops on `PORTAL_DATABASE_DSN`)
-again after every redeploy until this is reapplied. Find the service name with
-`docker service ls`, matching Dokploy's `appName` for the `web` application.
+Dokploy recreates the Swarm service from its stored specification on every
+deploy, so the override is lost and `*.ts.net` lookups fail until it is applied
+again. Find the service name with `docker service ls`, matching Dokploy's
+`appName` for the `web` application. There is no automation for this: `web`
+needs a domain and Traefik routing that only the application deploy type
+provides, so it stays on Swarm and the override stays manual. Worker nodes use
+plain Compose and do not need this override.
 
-`ops/worker_node.py add` applies the same fix automatically on every fleet
-node it touches (its last step, run after `application.deploy` since deploy is
-what wipes it) since a worker hitting this looks identical to a real
-connectivity fault: `self_enroll` retries for close to a minute against a
-`ConnectError` before giving up, or (seen live) resolves
-`worker-api.taila2cbc1.ts.net` to some stale answer from a still-broken
-resolver and gets an immediate TCP reset instead. `web` has no equivalent
-tooling, so its fix stays manual.
+The worker fleet uses the Dokploy Compose resource defined by
+`docker-compose.worker.yml`, not `docker service`. See [worker fleet
+operations](worker-fleet.md) for what `ops/worker_node.py add` sets up.
 
 Deploy `web` and `worker-api` from the same revision with the same database,
 object store, and master-key file. Configure their commands as follows:
@@ -132,7 +125,6 @@ object store, and master-key file. Configure their commands as follows:
 ```text
 web        python -m portal.web.app
 worker-api python -m portal.worker.api
-worker     python -m portal.worker.agent
 ```
 
 Expose only `web` through the tunnel. `worker-api` publishes no host port at
@@ -141,13 +133,16 @@ grant.
 
 `worker-api` serves enrollment, credential reveals, and result publication.
 Queue and slot traffic goes directly from each worker node to PostgreSQL.
+The worker Compose resource builds the portal image and runs
+`python -m portal.worker.agent`.
 
-Each Tailscale sidecar runs `tailscale serve --service=...` directly as its
-container command, reasserting it every 10s: `TS_SERVE_CONFIG` does not
-reliably apply a `services:` endpoint mapping through containerboot (confirmed
-against production — it leaves `tailscale serve get-config --all` showing
-`endpoints: null` indefinitely), and the endpoint does not persist across a
-container restart even once set, unlike the underlying tailnet identity.
+## Tailscale service advertisement
+
+Each shared-service sidecar runs `tailscale serve --service=...` directly and
+reasserts the endpoint every 10 seconds. `TS_SERVE_CONFIG` does not reliably
+apply the `services:` endpoint mapping through containerboot, and a configured
+endpoint does not survive a sidecar restart. If containerboot exits, the wrapper
+also exits so `restart: unless-stopped` can recreate the sidecar.
 
 For an existing installation, set `POSTGRES_VOLUME_NAME` and
 `MINIO_VOLUME_NAME` to the current Docker volume names. Confirm them with

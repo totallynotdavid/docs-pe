@@ -1,17 +1,22 @@
 # Architecture
 
 The repository turns identifiers and telephone numbers into site-specific
-results. It has one lookup engine and three applications:
+results. It has one shared lookup engine and four execution surfaces:
 
 ```text
-capture -> browser -> core
-cli     -> core
-portal  -> core
+capture       request discovery in a human-operated Chrome profile
+browser       site lookups through Chrome and CDP
+fetch         unattended site lookups through HTTP and proxy providers
+portal        web submission and a worker fleet
+
+fetch  ─┐
+portal ─┴─> core
 ```
 
-The arrows describe the normal path for discovering and scaling a site. They
-also describe the allowed dependency direction. `capture`, `browser`, and `core`
-do not import one another. `cli` and `portal` use `core`.
+`capture`, `browser`, and `core` are independent packages. The arrow in the
+diagram is an import boundary, not a workflow requirement. Capture can inform a
+browser or HTTP implementation, but those packages do not import capture code.
+The standalone executable is named `fetch` and lives in `packages/cli`.
 
 ## Execution modes
 
@@ -23,7 +28,9 @@ site behavior.
 and site behavior that cannot be reduced to an HTTP request.
 
 `core` runs site requests through proxy providers. It owns provider sessions,
-site parsers, fault classification, and retry policy.
+site parsers, fault classification, and retry policy. The [site registry](packages/core/core/sites/registry.py)
+and [provider registry](packages/core/core/proxy/registry.py) are its extension
+points.
 
 `cli` is the standalone `fetch` tool. It owns command parsing, environment
 loading, local SQLite state, CSV exports, and sharded-job tools.
@@ -31,7 +38,7 @@ loading, local SQLite state, CSV exports, and sharded-job tools.
 The packages intentionally copy site knowledge between modes instead of sharing
 implementation code. A site can therefore remain in `capture` while its protocol
 is investigated, or remain in `browser` when plain HTTP is not a valid
-implementation.
+implementation. See [Adding a site](docs/adding-a-site.md) for that workflow.
 
 The portal has three service processes and one administrative interface. `web`
 serves the browser application, `worker-api` owns credential decryption and

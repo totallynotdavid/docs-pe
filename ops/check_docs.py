@@ -12,6 +12,11 @@ from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 MARKDOWN_LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)\s]+)")
+# Repository paths in prose are easy to leave stale because Markdown link
+# checks do not inspect inline code spans.
+CODE_PATH = re.compile(
+    r"`((?:docs|packages|ops)/[^`\s]+|docker-compose\.[^`\s]+)`"
+)
 HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*#*\s*$")
 
 
@@ -84,6 +89,22 @@ def check_link(source: Path, target: str, line: int) -> str | None:
     return None
 
 
+def check_code_path(source: Path, target: str, line: int) -> str | None:
+    if any(marker in target for marker in ("<", ">", "*", "{")):
+        return None
+
+    destination = (ROOT / target.rstrip("/")).resolve()
+    try:
+        destination.relative_to(ROOT)
+    except ValueError:
+        return f"{source.relative_to(ROOT)}:{line}: path escapes repository: {target}"
+
+    if not destination.exists():
+        return f"{source.relative_to(ROOT)}:{line}: missing code path: {target}"
+
+    return None
+
+
 def main() -> int:
     errors: list[str] = []
 
@@ -92,6 +113,11 @@ def main() -> int:
         for match in MARKDOWN_LINK.finditer(contents):
             line = contents.count("\n", 0, match.start()) + 1
             error = check_link(source, match.group(1), line)
+            if error:
+                errors.append(error)
+        for match in CODE_PATH.finditer(contents):
+            line = contents.count("\n", 0, match.start()) + 1
+            error = check_code_path(source, match.group(1), line)
             if error:
                 errors.append(error)
 

@@ -4,9 +4,9 @@ Add a site in the execution mode that can satisfy its protocol. The packages
 are independent, so discovery does not obligate the project to ship browser or
 HTTP automation.
 
-```text
-capture -> browser -> core
-```
+Capture, browser, and HTTP implementations are separate packages. Capture can
+provide protocol knowledge for a browser or HTTP implementation, but the
+packages do not import one another.
 
 ## 1. Discover the request
 
