@@ -31,7 +31,7 @@ interpolates and the sidecar's auth key:
 ```env
 PORTAL_MASTER_KEY_FILE=/run/secrets/portal-master-key
 PORTAL_MASTER_KEY_HOST_PATH=/etc/portal/master.key
-PORTAL_DATABASE_DSN=postgresql://<user>:<password>@postgres:5432/<database>
+PORTAL_DATABASE_DSN=postgresql://<user>:<password>@database.taila2cbc1.ts.net:5432/<database>
 PORTAL_OBJECT_STORAGE_ENDPOINT=http://minio:9000
 TS_AUTHKEY_WORKER_API=tskey-auth-...
 ```
