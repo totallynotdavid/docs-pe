@@ -132,9 +132,11 @@ class PostgresWorkerRegistry:
             if not exists:
                 await connection.execute(f'CREATE ROLE "{role}" NOLOGIN')
 
+            # 8 pool connections (worker/agent.py) + 1 LISTEN connection + margin
+            # for the old connection to close during a re-enroll/reconnect.
             await connection.execute(
                 f'ALTER ROLE "{role}" LOGIN '
-                f"PASSWORD '{escaped_password}' CONNECTION LIMIT 5"
+                f"PASSWORD '{escaped_password}' CONNECTION LIMIT 12"
             )
             await connection.execute(f'GRANT portal_worker_base TO "{role}"')
 

@@ -52,7 +52,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CONCURRENCY = 4
+DEFAULT_CONCURRENCY = 25
 
 # Release idle sticky sessions so finite shared slots remain available to other
 # workers.
@@ -145,10 +145,14 @@ class WorkerAgent:
 
     async def run(self) -> None:
         """Run the worker with resources created from its configuration."""
+        # Lanes hold this pool only for brief claim/slot/heartbeat calls, never
+        # for the length of a fetch, so its size doesn't scale with
+        # concurrency. Keep it in step with the role's CONNECTION LIMIT in
+        # repository/workers.py.
         pool = await asyncpg.create_pool(
             self.options.database_dsn,
             min_size=2,
-            max_size=max(4, self.options.concurrency + 2),
+            max_size=8,
         )
 
         headers = {
