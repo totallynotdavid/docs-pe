@@ -1,5 +1,24 @@
-[tool.uv.workspace]
-members = ["packages/*"]
+[project]
+name = "osiptel-dev"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "browser",
+  "capture",
+  "cli",
+  "core",
+  "portal",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+browser = { path = "packages/browser", editable = true }
+capture = { path = "packages/capture", editable = true }
+cli = { path = "packages/cli", editable = true }
+core = { path = "packages/core" }
+portal = { path = "packages/portal", editable = true }
 
 [tool.ruff]
 fix = true
@@ -80,10 +99,17 @@ section-order = [
   "typing-only-third-party-import",
   "typing-only-standard-library-import",
   "raise-vanilla-args",
+  # Route handlers are always called by Litestar's dependency injection, by
+  # keyword, never positionally, so a bool query param with a default isn't
+  # the ambiguous call site this rule is meant to catch.
+  "boolean-default-value-positional-argument",
 ]
 
+[tool.mypy]
+exclude_gitignore = true
+
 [[tool.mypy.overrides]]
-module = ["asyncpg", "fetch.*"]
+module = ["asyncpg", "core.*", "psutil", "aioboto3", "botocore.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

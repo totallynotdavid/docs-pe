@@ -1,81 +1,60 @@
 # Adding a site
 
-A site graduates through up to three packages, trading investigation effort for
-throughput:
+Add a site in the execution mode that can satisfy its protocol. The packages
+are independent, so discovery does not obligate the project to ship browser or
+HTTP automation.
 
-```
-capture  →  browser  →  fetch
-(learn)     (automate)   (scale)
-```
+Capture, browser, and HTTP implementations are separate packages. Capture can
+provide protocol knowledge for a browser or HTTP implementation, but the
+packages do not import one another.
 
-You don't have to reach `fetch`. Entel, for instance, is stuck at `browser`
-permanently: see [sites/entel.md](sites/entel.md#replaying-through-plain-http)
-for why. A site only moves forward once you've confirmed the next stage actually
-works; there's no obligation to chase throughput a site doesn't need.
+## 1. Discover the request
 
-## Step 1: Discover the request, with capture
-
-Add a site definition to `packages/capture/capture/sites/<name>/page.py`:
-
-```python
-@dataclass(frozen=True)
-class Entel(Site):
-    name = "entel"
-    origin = "https://miperfil.entel.pe"
-```
-
-Run it:
+If the request is not understood, define the site under
+`packages/capture/capture/sites/<name>/` and register it in that package's
+registry. Run capture with your own Chrome profile:
 
 ```sh
-uv run capture --input docs.csv --output debts.csv --site entel
+uv run capture \
+  --input rucs.csv \
+  --output results/<name>-capture.csv \
+  --site <name>
 ```
 
-This generates `debts.entel-capture.js`. Open the site in your own Chrome, paste
-the script into DevTools, complete one lookup manually so the script captures
-the request template, then click `RUN CLIENTS`. See
-[packages/capture/readme.md](../packages/capture/readme.md) for the mechanics.
+Complete one lookup manually and record the request, response, cookies, tokens,
+and browser actions that are part of the protocol. A request copied from
+DevTools is not necessarily sufficient outside the browser.
 
-Capture uses your real, logged-in-for-months Chrome profile: no proxy config, no
-automation to detect. That's the point: it tells you the request shape works at
-all, before you spend effort automating it. If a site's gate (reCAPTCHA,
-Cloudflare) scores automated browsers lower regardless of request correctness
-(as Entel's does, see [sites/entel.md](sites/entel.md#why-automation-fails)),
-capture may also end up being the _permanent_ home for that site, not just the
-first stop.
+## 2. Choose an execution mode
 
-## Step 2: Decide where it goes next
+| Requirement                                             | Package   |
+| ------------------------------------------------------- | --------- |
+| A human browser profile is part of the working protocol | `capture` |
+| Chrome, JavaScript, or a browser gate is required       | `browser` |
+| The request works with an ordinary HTTP client          | `core`    |
 
-| Site needs...                                                   | Implement in                             |
-| --------------------------------------------------------------- | ---------------------------------------- |
-| JavaScript, reCAPTCHA, Cloudflare, or a real Chrome fingerprint | [browser](../packages/browser/readme.md) |
-| Nothing beyond plain HTTP                                       | [fetch](../packages/fetch/readme.md)     |
+Read the package `readme.md` before implementing the site. Keep adapters and
+parsers local. Do not import site code between `capture`, `browser`, and `core`.
 
-Most sites need `browser` first even if they'll eventually reach `fetch`: you
-don't know a site is pure-HTTP until you've watched its network traffic in
-capture.
+## 3. Implement and register
 
-## Step 3: Implement it
+Register the site in the registry for the package that owns it. Put HTTP
+request and parsing code under `packages/core/core/sites/<name>/`, browser page
+behavior under `packages/browser/browser/sites/<name>/`, and capture code under
+`packages/capture/capture/sites/<name>/`. Keep retry decisions in
+`core.domain.policy`.
 
-Each package requires the same two things, independently:
+Add focused tests for accepted input, response parsing, empty results, and the
+failure modes that must not be mistaken for success. Run the package checks
+through `mise` or `uv` as described in [Contributing](../CONTRIBUTING.md).
 
-1. `sites/<name>/page.py`: drive the site (or, in fetch, build the request) and
-   capture responses
-2. `sites/<name>/parse.py`: convert the response into a result row
-3. One entry in that package's `sites/registry.py`
+## 4. Document the contract
 
-No shared code between packages: see [architecture.md](architecture.md) ("do not
-add cross-package imports") for why. Concretely: `browser/sites/entel/parse.py`
-and a hypothetical `fetch/sites/entel/parse.py` would each maintain their own
-parser, even though they're parsing the same site. This is deliberate: it lets a
-site be reliable in `capture` while still broken in `browser`, or reliable in
-`browser` while `fetch` doesn't exist for it yet, without one package's fix
-touching another's.
+Create or update `docs/sites/<name>.md` with the current endpoint, input and
+output fields, gates, and failure semantics. Put dated measurements in
+`docs/reports/`. Link to the site note from the package `readme.md` instead of
+copying its protocol.
 
-## Step 4: Write down what you learned about the site
-
-Site behavior (gate type, wire protocol, error codes, failure rates) goes in
-`docs/sites/<name>.md`, not in the package readme that happens to implement it
-first. The fact that Entel's reCAPTCHA score depends on browser reputation is
-true regardless of whether you're reading it from `browser` or `capture`: put it
-once, in [sites/entel.md](sites/entel.md), and link to it from both. See
-[sites/](sites/) for what's already known about each implemented site.
+Before opening a change, verify the command, registry entry, tests, and links
+from the repository root. A site is complete when a maintainer can reproduce a
+small run and can tell a valid empty result from a failed lookup.

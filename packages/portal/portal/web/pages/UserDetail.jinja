@@ -1,0 +1,146 @@
+{#def user, csrf_token, person, teams, is_sole_active_admin, error #}
+<Layout :title="person.email ~ ' · Administración'"
+        :user="user"
+        :csrf_token="csrf_token"
+        active="admin-users">
+  <TopBar title="Persona" icon="user" />
+  <MainContent>
+    <Panel>
+      <PanelHeader :title="person.email">
+        <MetaText>
+          {% if not person.is_active %}
+            Cuenta desactivada
+          {% elif person.is_site_admin %}
+            Administradora del sitio
+          {% elif person.pending_site_admin %}
+            Configuración de seguridad pendiente
+          {% else %}
+            Cuenta activa
+          {% endif %}
+        </MetaText>
+      </PanelHeader>
+      <PanelBody>
+        {% if error %}<Message>{{ error }}</Message>{% endif %}
+        {% if person.id == user.id %}
+          <Message tone="info">
+            Esta es tu propia cuenta: las acciones de esta página no aplican sobre ti mismo.
+          </Message>
+        {% else %}
+          {% if is_sole_active_admin %}
+            <Message tone="warning">
+              Es la única persona administradora activa. Asigna otra administradora antes de desactivarla, eliminarla o quitarle la administración del sitio.
+            </Message>
+          {% endif %}
+          {% if person.pending_site_admin %}
+            <Message tone="info">
+              La promoción quedará pendiente hasta que esta persona configure su propio factor de seguridad en /security al iniciar sesión. No verás ni podrás generar ese factor por ella.
+            </Message>
+          {% endif %}
+          <Actions position="above">
+            {% if not is_sole_active_admin %}
+              {% if person.is_active %}
+                <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
+                  <input type="hidden" name="action" value="deactivate">
+                  <ActionButton variant="link-danger" type="submit">
+                    Desactivar
+                  </ActionButton>
+                </InlineAction>
+              {% endif %}
+            {% endif %}
+            {% if not person.is_active %}
+              <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
+                <input type="hidden" name="action" value="reactivate">
+                <ActionButton variant="link" type="submit">
+                  Reactivar
+                </ActionButton>
+              </InlineAction>
+              <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
+                <input type="hidden" name="action" value="delete">
+                <ActionButton variant="link-danger" type="submit">
+                  Eliminar
+                </ActionButton>
+              </InlineAction>
+            {% endif %}
+            {% if not is_sole_active_admin %}
+              {% if person.is_site_admin %}
+                <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
+                  <input type="hidden" name="action" value="demote">
+                  <ActionButton variant="link-danger" type="submit">
+                    Quitar administración del sitio
+                  </ActionButton>
+                </InlineAction>
+              {% elif person.pending_site_admin %}
+                <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
+                  <input type="hidden" name="action" value="demote">
+                  <ActionButton variant="link-danger" type="submit">
+                    Cancelar promoción pendiente
+                  </ActionButton>
+                </InlineAction>
+              {% else %}
+                <InlineAction :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
+                  <input type="hidden" name="action" value="promote">
+                  <ActionButton variant="link" type="submit">
+                    Hacer administradora del sitio
+                  </ActionButton>
+                </InlineAction>
+              {% endif %}
+            {% endif %}
+          </Actions>
+        {% endif %}
+      </PanelBody>
+    </Panel>
+    <Panel>
+      <PanelHeader title="Equipos"
+                   description="Equipos a los que pertenece esta persona." />
+      {% if teams %}
+        <DataTable>
+          <TableHeader>
+            <TableRow>
+              <TableHead>
+                Equipo
+              </TableHead>
+              <TableHead align="right">
+                Acceso
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {% for team in teams %}
+              <TableRow>
+                <TableCell ellipsis>
+                  <a href="/teams/{{ team.id }}/settings/members">{{ team.name }}</a>
+                </TableCell>
+                <TableCell align="right">
+                  <MetaText>
+                    {{ team.role|role_name }}
+                  </MetaText>
+                </TableCell>
+              </TableRow>
+            {% endfor %}
+          </TableBody>
+        </DataTable>
+      {% else %}
+        <EmptyState icon="users"
+                    title="Sin equipos"
+                    description="Esta persona no pertenece a ningún equipo todavía." />
+      {% endif %}
+    </Panel>
+    {% if person.id != user.id %}
+      <Panel>
+        <PanelHeader title="Restablecer contraseña"
+                     description="La persona deberá usar esta contraseña temporal en su próximo acceso." />
+        <PanelBody>
+          <FormLayout :action="'/admin/users/' ~ person.id" :csrf_token="csrf_token">
+            <input type="hidden" name="action" value="reset_password">
+            <Field label="Contraseña temporal">
+              <input type="password" name="password" minlength="12" required>
+            </Field>
+            <ActionButton type="submit">
+              Restablecer contraseña
+            </ActionButton>
+          </FormLayout>
+        </PanelBody>
+      </Panel>
+    {% endif %}
+  </MainContent>
+</Layout>

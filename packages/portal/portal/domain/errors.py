@@ -7,15 +7,24 @@ class Reason(StrEnum):
     NOT_A_MEMBER = "not_a_member"
     LEADER_REQUIRED = "leader_required"
     SITE_ADMIN_REQUIRED = "site_admin_required"
+    STEP_UP_REQUIRED = "step_up_required"
     CSRF_INVALID = "csrf_invalid"
 
     TEAM_NOT_FOUND = "team_not_found"
     JOB_NOT_FOUND = "job_not_found"
     USER_NOT_FOUND = "user_not_found"
+    ENTRY_NOT_FOUND = "entry_not_found"
+    INPUT_NOT_FOUND = "input_not_found"
+    GLOBAL_SEARCH_REQUIRED = "global_search_required"
 
     SOURCE_REQUIRED = "source_required"
     SOURCE_DUPLICATED = "source_duplicated"
     SOURCE_NOT_ENABLED = "source_not_enabled"
+
+    SECRET_UNREADABLE = "secret_unreadable"
+    WORKER_NOT_AUTHORIZED = "worker_not_authorized"
+    WORKER_ID_INVALID = "worker_id_invalid"
+    WORKER_BOOTSTRAP_INVALID = "worker_bootstrap_invalid"
 
     CREDENTIAL_REQUIRED = "credential_required"
     CREDENTIAL_WRONG_TEAM = "credential_wrong_team"
@@ -32,9 +41,22 @@ class Reason(StrEnum):
     SLUG_INVALID = "slug_invalid"
     EMAIL_INVALID = "email_invalid"
     LABEL_LENGTH = "label_length"
+    LABEL_TAKEN = "label_taken"
     PASSWORD_TOO_SHORT = "password_too_short"
     ROLE_INVALID = "role_invalid"
     LAST_LEADER = "last_leader"
+    INVITE_INVALID = "invite_invalid"
+
+    USER_LAST_LEADER = "user_last_leader"
+    LAST_SITE_ADMIN = "last_site_admin"
+    USER_CANNOT_DEACTIVATE_SELF = "user_cannot_deactivate_self"
+    USER_HAS_HISTORY = "user_has_history"
+
+    LAST_SECOND_FACTOR = "last_second_factor"
+    SETUP_EXPIRED = "setup_expired"
+    TOTP_CODE_INVALID = "totp_code_invalid"
+    WEBAUTHN_VERIFICATION_FAILED = "webauthn_verification_failed"
+    PASSKEY_NOT_FOUND = "passkey_not_found"
 
     WORKER_SOURCE_REQUIRED = "worker_source_required"
 
@@ -55,6 +77,15 @@ class PortalError(Exception):
 
 class PermissionDenied(PortalError):
     pass
+
+
+class StepUpRequired(PermissionDenied):
+    """The actor is authorized but their second-factor proof is stale.
+
+    A subclass of PermissionDenied rather than a sibling: it is audited by the
+    same after_exception hook, and callers that only handle PermissionDenied
+    still fail closed instead of falling through.
+    """
 
 
 class NotFound(PortalError):

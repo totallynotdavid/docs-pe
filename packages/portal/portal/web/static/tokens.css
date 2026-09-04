@@ -1,3 +1,5 @@
+@layer reset, base;
+
 @font-face {
   font-family: "Inter Variable";
   font-style: normal;
@@ -15,32 +17,51 @@
     "IBM Plex Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
     monospace;
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --motion-instant: 75ms;
   --motion-fast: 150ms;
+  --motion-normal: 300ms;
+  --font-10: 0.769rem;
   --font-11: 0.846rem;
   --font-12: 0.923rem;
   --font-13: 1rem;
+  --font-14: 1.077rem;
   --font-16: 1.231rem;
+  --font-18: 1.385rem;
   --font-20: 1.538rem;
+  --font-24: 1.846rem;
+  --font-size-tiny: var(--font-10);
+  --font-size-xs: var(--font-11);
   --font-size-label: var(--font-11);
   --font-size-caption: var(--font-12);
   --font-size-body: var(--font-13);
   --font-size-heading-sm: var(--font-16);
   --font-size-heading-md: var(--font-20);
+  --font-size-heading-lg: var(--font-24);
   --font-weight-regular: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
   --line-height-md: 1.1;
+  --line-height-lg: 1.5;
   --spacing-1: 4px;
   --spacing-2: 8px;
   --spacing-3: 12px;
   --spacing-4: 16px;
   --spacing-5: 20px;
   --spacing-6: 24px;
+  --spacing-7: 28px;
   --spacing-8: 32px;
-  --layout-max-content: 1440px;
-  --topbar-height: 39px;
+  --spacing-10: 40px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+  --navigation-drawer-width: 220px;
+  --nav-drawer-collapsed-width: 40px;
+  --z-modal: 100;
+  --layout-narrow: 640px;
+  --layout-content: 960px;
   --background-transparent-lighter: color(display-p3 0 0 0 / 0.02);
   --background-transparent-light: color(display-p3 0 0 0 / 0.039);
+  --background-transparent-medium: color(display-p3 0 0 0 / 0.078);
+  --scrim: rgba(9, 11, 17, 0.45);
   --color-white: color(display-p3 1 1 1);
   --color-blue: color(display-p3 0.276 0.384 0.837);
   --color-blue-5: color(display-p3 0.831 0.87 1);
@@ -56,7 +77,9 @@
   --background-app: color(display-p3 0.976 0.976 0.976);
   --foreground: color(display-p3 0.2 0.2 0.2);
   --surface: color(display-p3 1 1 1);
+  --overlay: rgba(255, 255, 255, 0.98);
   --secondary: color(display-p3 0.988 0.988 0.988);
+  --secondary-foreground: color(display-p3 0.4 0.4 0.4);
   --tertiary: color(display-p3 0.945 0.945 0.945);
   --quaternary: color(display-p3 0.922 0.922 0.922);
   --foreground-secondary: color(display-p3 0.4 0.4 0.4);
@@ -70,16 +93,25 @@
   --destructive: color(display-p3 0.75 0.2 0.2);
   --destructive-foreground: color(display-p3 1 1 1);
   --success: color(display-p3 0.2 0.56 0.32);
+  --success-foreground: color(display-p3 1 1 1);
   --warning: color(display-p3 0.7 0.5 0.12);
+  --warning-foreground: color(display-p3 1 1 1);
+  --info: color(display-p3 0.24 0.46 0.74);
+  --info-foreground: color(display-p3 1 1 1);
   --border: color(display-p3 0.945 0.945 0.945);
   --border-light: color(display-p3 0.965 0.965 0.965);
+  --border-medium: var(--quaternary);
   --border-strong: color(display-p3 0.839 0.839 0.839);
   --ring: color(display-p3 0.2 0.2 0.2);
+  --avatar-bg: color(display-p3 0.913 0.854 0.971);
+  --avatar-fg: color(display-p3 0.224 0.137 0.297);
   --radius-lg: 12px;
   --radius-md: 8px;
   --radius-sm: 4px;
   --shadow-elevation-1:
     0 2px 4px 0 color(display-p3 0 0 0 / 0.039), 0 0 4px 0 color(display-p3 0 0 0 / 0.078);
+  --shadow-elevation-2:
+    2px 4px 16px 0 color(display-p3 0 0 0 / 0.161), 0 2px 4px 0 color(display-p3 0 0 0 / 0.078);
   --shadow-elevation-3:
     0 0 8px 0 color(display-p3 0 0 0 / 0.161), 0 8px 64px -16px color(display-p3 0 0 0 / 0.478),
     0 24px 56px -16px color(display-p3 0 0 0 / 0.078);
@@ -95,7 +127,9 @@
     --background-app: color(display-p3 0.098 0.098 0.098);
     --foreground: color(display-p3 0.922 0.922 0.922);
     --surface: color(display-p3 0.09 0.09 0.09);
+    --overlay: rgba(18, 18, 18, 0.98);
     --secondary: color(display-p3 0.106 0.106 0.106);
+    --secondary-foreground: color(display-p3 0.702 0.702 0.702);
     --tertiary: color(display-p3 0.114 0.114 0.114);
     --quaternary: color(display-p3 0.133 0.133 0.133);
     --foreground-secondary: color(display-p3 0.702 0.702 0.702);
@@ -109,13 +143,22 @@
     --destructive: color(display-p3 0.52 0.15 0.15);
     --destructive-foreground: color(display-p3 0.96 0.84 0.84);
     --success: color(display-p3 0.13 0.38 0.22);
+    --success-foreground: color(display-p3 0.82 0.95 0.86);
     --warning: color(display-p3 0.44 0.36 0.08);
+    --warning-foreground: color(display-p3 0.96 0.91 0.73);
+    --info: color(display-p3 0.14 0.28 0.5);
+    --info-foreground: color(display-p3 0.76 0.86 0.96);
     --border: color(display-p3 0.114 0.114 0.114);
     --border-light: color(display-p3 0.098 0.098 0.098);
+    --border-medium: var(--quaternary);
     --border-strong: color(display-p3 0.282 0.282 0.282);
     --ring: color(display-p3 0.922 0.922 0.922);
+    --avatar-bg: color(display-p3 0.298 0.298 0.298);
+    --avatar-fg: color(display-p3 0.922 0.922 0.922);
     --background-transparent-lighter: color(display-p3 1 1 1 / 0.031);
     --background-transparent-light: color(display-p3 1 1 1 / 0.059);
+    --background-transparent-medium: color(display-p3 1 1 1 / 0.102);
+    --scrim: rgba(4, 6, 10, 0.72);
     --color-blue-5: color(display-p3 0.163 0.22 0.439);
     --color-blue-6: color(display-p3 0.203 0.262 0.5);
     --color-blue-11: color(display-p3 0.63 0.69 1);
@@ -140,4 +183,139 @@
   *::after {
     corner-shape: squircle;
   }
+}
+
+/* Component CSS is unlayered, so it outranks the reset and base layers. */
+@layer reset {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-size: inherit;
+    font-weight: inherit;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: inherit;
+  }
+
+  img,
+  svg,
+  video {
+    display: block;
+    max-width: 100%;
+  }
+
+  ul,
+  ol {
+    list-style: none;
+  }
+
+  table {
+    border-collapse: collapse;
+  }
+
+  /* This layered rule must override unlayered component display rules. */
+  [hidden] {
+    display: none !important;
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+    outline-color: var(--ring);
+  }
+
+  html {
+    font-size: 13px;
+  }
+
+  body {
+    background: var(--background-app);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: var(--font-size-body);
+    line-height: var(--line-height-lg);
+    min-height: 100dvh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1 {
+    font-size: var(--font-size-heading-md);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: -0.015em;
+    line-height: var(--line-height-md);
+  }
+
+  h2 {
+    font-size: var(--font-size-heading-sm);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: -0.015em;
+    line-height: var(--line-height-md);
+  }
+
+  a {
+    text-underline-offset: 3px;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    box-shadow: var(--focus-ring-shadow);
+    outline: none;
+  }
+}
+
+/* Visible to a screen reader, never to the eye. Unlayered so it always wins
+   over whatever the element it hides would otherwise be given. */
+.sr-only {
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
 }

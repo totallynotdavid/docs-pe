@@ -1,8 +1,7 @@
-{#def title, description #}
+{#def description #}
 <div {{ attrs.render(class="query-flow") }}>
-  <header class="query-flow__header">
-    <h1>{{ title }}</h1>
-    <p>{{ description }}</p>
-  </header>
+  {% if description %}
+    <p class="query-flow__description">{{ description }}</p>
+  {% endif %}
   {{ content }}
 </div>

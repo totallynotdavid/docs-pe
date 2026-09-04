@@ -164,7 +164,7 @@ class ObservationStore:
         temp_path = path.with_name(f".{path.name}.tmp")
 
         with temp_path.open("w", newline="", encoding="utf-8") as file_obj:
-            writer = csv.writer(file_obj)
+            writer = csv.writer(file_obj, lineterminator="\n")
             writer.writerow(header)
 
             for row in self._connection.execute(LATEST_SUCCESS, {"site": site}):

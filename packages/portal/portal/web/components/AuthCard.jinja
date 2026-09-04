@@ -1,7 +1,7 @@
 {#def title, description, title_id #}
 <section {{ attrs.render(class="auth-card", aria_labelledby=title_id) }}>
-  <div class="auth-card__brand" aria-hidden="true">W</div>
+  <Brand size="lg" />
   <h1 id="{{ title_id }}">{{ title }}</h1>
   <p class="auth-card__description">{{ description }}</p>
-  {{ content }}
+  <div class="auth-card__body">{{ content }}</div>
 </section>

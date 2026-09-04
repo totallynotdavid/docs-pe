@@ -2,13 +2,11 @@
 {% if notifications %}
   <List>
     {% for notification in notifications %}
-      <ListItem>
-        <span>{{ notification.event_type|notification }}</span>
-      </ListItem>
+      <NotificationRow :notification="notification" />
     {% endfor %}
   </List>
 {% else %}
-  <EmptyState>
-    No hay notificaciones.
-  </EmptyState>
+  <EmptyState icon="activity"
+              title="No hay notificaciones"
+              description="Aquí verás cuándo termina cada tarea de tus equipos." />
 {% endif %}

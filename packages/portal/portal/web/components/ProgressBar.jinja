@@ -1,0 +1,21 @@
+{#def value, total, label #}
+{% set percent = (value / total * 100)|round|int if total else 0 %}
+<div {{ attrs.render(class="progress") }}>
+  <div class="progress__track"
+       role="progressbar"
+       aria-label="{{ label }}"
+       aria-valuenow="{{ value }}"
+       aria-valuemin="0"
+       aria-valuemax="{{ total }}">
+    <svg class="progress__fill"
+         viewBox="0 0 100 1"
+         preserveAspectRatio="none"
+         aria-hidden="true">
+      <rect width="{{ percent }}" height="1" />
+    </svg>
+  </div>
+  <p class="progress__caption">
+    <span>{{ label }}</span>
+    <span class="progress__value">{{ value }} / {{ total }}</span>
+  </p>
+</div>

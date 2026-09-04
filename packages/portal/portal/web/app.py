@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import os
+import sys
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
-from urllib.parse import urlparse
 
 from litestar import Litestar
 from litestar.config.allowed_hosts import AllowedHostsConfig
@@ -13,112 +13,178 @@ from litestar.datastructures import State
 from litestar.static_files import create_static_files_router
 from litestar_htmx import HTMXRequest
 
+from portal.application.login import LoginService
 from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
-from portal.credentials.secrets import AesGcmSecretProtector
+from portal.application.sessions import BrowserSessions, OneTimeTokens
+from portal.application.throttle import LoginThrottle, MutationThrottle
+from portal.credentials.masterkey import MasterKeyring
+from portal.credentials.secrets import EnvelopeProtector
+from portal.ephemeral import EphemeralStore, sweeping
+from portal.notify.dispatch import dispatching
+from portal.notify.mailer import open_mailer
+from portal.repository.audit import PostgresAuditLog
 from portal.repository.auth import PostgresAuthRepository
 from portal.repository.credentials import PostgresCredentialRepository
+from portal.repository.entries import PostgresEntryRepository
 from portal.repository.jobs import PostgresJobRepository
+from portal.repository.search_log import PostgresSearchLogRepository
 from portal.repository.teams import PostgresTeamRepository
+from portal.repository.workers import PostgresWorkerRegistry
 from portal.settings import PortalSettings
-from portal.storage.files import FileObjectStorage
+from portal.storage.s3 import S3ObjectStorage
+from portal.turnstile import open_human_check
 from portal.web.assets import STATIC_DIR
 from portal.web.deps import DEPENDENCIES
-from portal.web.errors import EXCEPTION_HANDLERS
-from portal.web.headers import HTTPSRedirect, SecurityHeaders
-from portal.web.routes import admin, auth, home, jobs, search, teams, worker
+from portal.web.errors import AFTER_EXCEPTION, EXCEPTION_HANDLERS
+from portal.web.headers import HTTPSRedirect, RememberLastTeam, SecurityHeaders
+from portal.web.routes import (
+    admin,
+    auth,
+    home,
+    invite,
+    jobs,
+    search,
+    security,
+    stepup,
+    teams,
+)
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from litestar.types import Middleware
 
 
-def create_app(
-    settings: PortalSettings | None = None,
-    protector: AesGcmSecretProtector | None = None,
-) -> Litestar:
-    if settings is None:
-        settings = PortalSettings.from_environment()
+def create_web_app(settings: PortalSettings | None = None) -> Litestar:
+    resolved = settings or PortalSettings.from_environment()
+    resolved.validate()
 
-    if protector is None:
-        protector = AesGcmSecretProtector.from_environment()
+    # Loaded here rather than on first use: a key file that is missing or
+    # malformed should stop the process at startup, not the first login.
+    return _build(resolved, MasterKeyring.from_file(resolved.master_key_file))
 
-    settings.validate()
 
+def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
     @asynccontextmanager
     async def lifespan(app: Litestar) -> AsyncIterator[None]:
         import asyncpg
 
         pool = await asyncpg.create_pool(settings.database_dsn)
 
+        store = EphemeralStore(pool)
         auth_repo = PostgresAuthRepository(pool)
-        team_repo = PostgresTeamRepository(pool)
-        credential_repo = PostgresCredentialRepository(pool)
-        job_repo = PostgresJobRepository(pool)
+        audit = PostgresAuditLog(pool)
+        protector = EnvelopeProtector(keyring)
+        sessions = BrowserSessions(store, auth_repo)
+        human_check = open_human_check(settings)
+        mailer = open_mailer(settings)
 
         app.state.pool = pool
-        app.state.worker_queue = job_repo
-        app.state.service = PortalService(
+        app.state.sessions = sessions
+        app.state.mailer = mailer
+        app.state.mutation_throttle = MutationThrottle(store)
+        app.state.login = LoginService(
             auth_repo,
-            team_repo,
-            credential_repo,
-            job_repo,
+            sessions,
+            OneTimeTokens(store),
+            LoginThrottle(store),
+            human_check,
+            protector,
+            audit,
+            rp_id=settings.hostname,
+            public_origin=settings.public_origin,
+        )
+        app.state.service = PortalService(
+            PostgresTeamRepository(pool),
+            PostgresCredentialRepository(pool),
+            PostgresJobRepository(pool),
+            PostgresEntryRepository(pool),
+            PostgresSearchLogRepository(pool),
+            PostgresWorkerRegistry(pool),
         )
         app.state.provisioning = ProvisioningService(
             auth_repo,
-            team_repo,
-            credential_repo,
+            PostgresTeamRepository(pool),
+            PostgresCredentialRepository(pool),
             protector,
+            audit,
+            settings.hostname,
+            public_origin=settings.public_origin,
+            setup_tokens=OneTimeTokens(store),
+            mailer=mailer,
         )
-        app.state.secret_protector = protector
-        app.state.storage = FileObjectStorage(settings.object_root)
+        app.state.audit = audit
+        app.state.storage = S3ObjectStorage(
+            endpoint_url=settings.object_storage_endpoint,
+            bucket=settings.object_storage_bucket,
+            access_key=settings.object_storage_access_key,
+            secret_key=settings.object_storage_secret_key,
+            region=settings.object_storage_region,
+        )
 
         try:
-            yield
+            async with sweeping(store), dispatching(pool, mailer):
+                yield
         finally:
+            await human_check.aclose()
+            await mailer.aclose()
             await pool.close()
 
-    middleware: list[Middleware] = [SecurityHeaders]
+    middleware: list[Middleware] = [SecurityHeaders, RememberLastTeam]
 
-    if settings.is_production:
-        hostname = urlparse(settings.public_origin).hostname
-        assert hostname, "validated by PortalSettings.validate()"
-
-        allowed_hosts = AllowedHostsConfig(allowed_hosts=[hostname])
-
-        if not settings.tls_terminated_upstream:
-            middleware.insert(0, HTTPSRedirect)
-    else:
-        allowed_hosts = None
+    # Not gated on PORTAL_ENVIRONMENT: a deployment that declares an https
+    # origin gets the redirect, and one that terminates TLS upstream would
+    # otherwise loop forever redirecting traffic it already received over https.
+    if settings.serves_https and not settings.tls_terminated_upstream:
+        middleware.insert(0, HTTPSRedirect)
 
     return Litestar(
         route_handlers=[
             create_static_files_router(path="/static", directories=[STATIC_DIR]),
             *auth.handlers,
             *home.handlers,
+            *stepup.handlers,
+            *invite.handlers,
             jobs.router,
             search.router,
             teams.router,
             admin.router,
-            worker.router,
+            security.router,
         ],
         dependencies=DEPENDENCIES,
         exception_handlers=EXCEPTION_HANDLERS,
+        after_exception=AFTER_EXCEPTION,
         request_class=HTMXRequest,
         middleware=middleware,
-        allowed_hosts=allowed_hosts,
+        allowed_hosts=AllowedHostsConfig(allowed_hosts=list(settings.allowed_hosts)),
         lifespan=[lifespan],
         state=State({"settings": settings}),
     )
 
 
-def main() -> None:
+def run(argv: Sequence[str]) -> None:
     import uvicorn
 
+    if argv:
+        raise SystemExit("web takes no arguments")
+
+    settings = PortalSettings.from_environment()
+    settings.validate()
+
+    # Trust only Cloudflare's client-address header. `proxy_headers` would trust
+    # client-supplied forwarding headers at the local proxy.
     uvicorn.run(
-        create_app(),
+        create_web_app(settings),
         host="0.0.0.0",
         port=int(os.environ.get("PORT", "8000")),
-        proxy_headers=True,
-        forwarded_allow_ips="*",
     )
+
+
+def main() -> None:
+    run(sys.argv[1:])
+
+
+if __name__ == "__main__":
+    main()

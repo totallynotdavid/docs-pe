@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from fetch.domain.types import Doc
-from fetch.sites.registry import SITES, STABLE_SITES
+from datetime import timedelta
+
+from core.domain.types import Doc
+from core.sites.registry import SITES, STABLE_SITES
 
 from portal.domain.errors import Reason, SourceValidationError
 from portal.domain.models import (
@@ -9,7 +11,16 @@ from portal.domain.models import (
     InputLine,
     PlannedItem,
     SubmissionPlan,
+    SubmissionReview,
 )
+
+
+# Reuse only successful or explicitly not-found answers.
+SOURCE_FRESHNESS: dict[str, timedelta] = {
+    "osiptel": timedelta(days=7),
+    "sunat": timedelta(days=90),
+    "sunat_reps": timedelta(days=30),
+}
 
 
 def plan_submission(
@@ -67,6 +78,22 @@ def plan_submission(
         )
 
     return SubmissionPlan(tuple(items), tuple(exclusions))
+
+
+def build_review(
+    plan: SubmissionPlan,
+    reusable_pairs: frozenset[tuple[str, str]],
+) -> SubmissionReview:
+    """Mark which planned items this team can reuse."""
+    reusable = tuple(
+        item for item in plan.items if (item.document, item.source) in reusable_pairs
+    )
+
+    return SubmissionReview(
+        items=plan.items,
+        exclusions=plan.exclusions,
+        reusable=reusable,
+    )
 
 
 def _validate_sources(sources: tuple[str, ...]) -> None:

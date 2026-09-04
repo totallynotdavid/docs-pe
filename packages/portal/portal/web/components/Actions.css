@@ -2,13 +2,13 @@
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--spacing-2);
 }
 
 .actions--above {
-  margin-bottom: 18px;
+  margin-bottom: var(--spacing-4);
 }
 
 .actions--below {
-  margin-top: 16px;
+  margin-top: var(--spacing-4);
 }

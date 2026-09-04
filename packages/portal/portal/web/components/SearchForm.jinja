@@ -1,10 +1,14 @@
 {#def action, query="" #}
 <form {{ attrs.render(class="search-form", method="get", action=action) }}>
-  <label for="search-query">Número de documento</label>
+  <label class="sr-only" for="search-query">Número de documento</label>
   <input id="search-query"
+         class="control search-form__input"
          name="q"
          value="{{ query }}"
          autocomplete="off"
-         placeholder="Ej. 10412345678">
-  <button type="submit">Buscar</button>
+         placeholder="Buscar por número de documento, ej. 10412345678">
+  <ActionButton type="submit">
+    <Icon name="search" />
+    Buscar
+  </ActionButton>
 </form>

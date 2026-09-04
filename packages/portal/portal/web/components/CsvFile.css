@@ -1,28 +1,32 @@
-/* Wins over the grid `.form label`, which this element also matches. */
 .csv-file {
-  align-items: center !important;
+  align-items: center;
   background: var(--secondary);
-  border: 1.5px dashed var(--border-strong);
+  border: 1px dashed var(--border-strong);
   border-radius: var(--radius-md);
-  color: var(--foreground-secondary) !important;
+  color: var(--foreground-secondary);
   cursor: pointer;
-  display: flex !important;
+  display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--spacing-1);
   justify-content: center;
-  min-height: 156px;
-  padding: 20px;
+  min-height: 132px;
+  padding: var(--spacing-5);
   position: relative;
   text-align: center;
   transition:
-    background var(--motion-fast),
-    border-color var(--motion-fast);
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
 }
 
 .csv-file:hover,
 .csv-file--dragging {
-  background: var(--color-blue-5);
-  border-color: var(--color-blue-11);
+  background: var(--background-transparent-lighter);
+  border-color: var(--foreground-secondary);
+}
+
+.csv-file:focus-within {
+  border-color: var(--ring);
+  border-style: solid;
 }
 
 .csv-file__input {
@@ -35,8 +39,16 @@
 }
 
 .csv-file__icon {
+  align-items: center;
+  background: var(--background);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
   color: var(--foreground-secondary);
-  display: flex;
+  display: inline-flex;
+  height: var(--spacing-10);
+  justify-content: center;
+  margin-bottom: var(--spacing-1);
+  width: var(--spacing-10);
 }
 
 .csv-file__title {
@@ -52,7 +64,14 @@
 }
 
 .csv-file__detection {
-  color: var(--foreground-secondary);
+  align-items: flex-start;
+  background: var(--color-blue-5);
+  border-radius: var(--radius-sm);
+  color: var(--color-blue-11);
+  display: flex;
   font-size: var(--font-size-caption);
-  margin-top: 9px;
+  gap: var(--spacing-2);
+  line-height: var(--line-height-lg);
+  margin-top: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-3);
 }

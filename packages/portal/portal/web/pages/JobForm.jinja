@@ -1,11 +1,12 @@
-{#def user, csrf_token, team, credentials, source_options, error #}
-<Layout :title="'Nueva consulta · ' ~ team.name ~ ' · Worker'"
+{#def user, csrf_token, team, credentials, source_options, error, max_upload_mb, max_upload_bytes #}
+<Layout :title="'Nueva consulta · ' ~ team.name"
         :user="user"
-        :csrf_token="csrf_token">
-  <TopBar title="Nueva consulta" />
+        :csrf_token="csrf_token"
+        active="team-jobs"
+        :active_team="team">
+  <TopBar title="Nueva consulta" icon="plus" />
   <MainContent>
-    <QueryFlow title="Nueva consulta"
-               description="Sube una lista y elige la información que necesitas.">
+    <QueryFlow description="Sube una lista y elige la información que necesitas.">
       {% if error %}<Message>{{ error }}</Message>{% endif %}
       {% if credentials %}
         <FormLayout :action="'/teams/' ~ team.id ~ '/jobs'"
@@ -16,7 +17,7 @@
                      title="Sube tu archivo"
                      description="CSV con un documento en la primera columna de cada fila."
                      title_id="upload-step-title">
-            <CsvFile />
+            <CsvFile :max_mb="max_upload_mb" :max_bytes="max_upload_bytes" />
           </QueryStep>
           <QueryStep number="2"
                      title="¿Qué quieres obtener?"
@@ -32,33 +33,32 @@
                 <input type="hidden"
                        name="credential_version_id"
                        value="{{ credentials[0].id }}">
-                {# Breaking this run would collapse to a space before the period. #}
                 {# djlint:off #}
                 <p class="query-action__connection">Usarás la conexión <strong>{{ credentials[0].label }}</strong>.</p>
                 {# djlint:on #}
               {% else %}
                 <label class="query-action__select">
                   Conexión
-                  <select name="credential_version_id" required>
+                  <select class="control" name="credential_version_id" required>
                     {% for credential in credentials %}<option value="{{ credential.id }}">{{ credential.label }}</option>{% endfor %}
                   </select>
                 </label>
               {% endif %}
             </div>
-            <button type="submit">Iniciar consulta</button>
+            <ActionButton type="submit">
+              Iniciar consulta
+            </ActionButton>
           </QueryAction>
         </FormLayout>
       {% else %}
         <Panel>
-          <PanelBody>
-            <h2>Configura una conexión para comenzar</h2>
-            <p class="subtitle">Este equipo necesita una conexión proxy activa para ejecutar consultas.</p>
-            <Actions position="below">
-              <ActionButton :href="'/teams/' ~ team.id ~ '/settings/proxy'">
-                Configurar conexión
-              </ActionButton>
-            </Actions>
-          </PanelBody>
+          <EmptyState icon="link"
+                      title="Configura una conexión para comenzar"
+                      description="Este equipo necesita una conexión proxy activa para ejecutar consultas.">
+            <ActionButton :href="'/teams/' ~ team.id ~ '/settings/proxy'">
+              Configurar conexión
+            </ActionButton>
+          </EmptyState>
         </Panel>
       {% endif %}
     </QueryFlow>

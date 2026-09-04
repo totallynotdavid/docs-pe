@@ -1,116 +1,108 @@
 # Proxy configuration
 
-`fetch` and `browser` use proxy providers to distribute lookups across
-geographic exits. `capture` doesn't use proxies; it uses your own Chrome. This
-doc covers provider mechanics and tuning: stable reference, not measurements.
-For why a given site needs a given provider, see [sites/](sites/); for
-throughput and cost numbers from real jobs, see [results.md](results.md).
+`fetch` and the portal use the core provider schema. `browser` uses the same
+provider names and credentials, but its loader supports only the browser
+settings described in [the browser package](../packages/browser/browser/proxy.py).
+`capture` uses the operator's own Chrome profile.
 
-## Providers
+## Configure providers
 
-GeoNode is a residential proxy, reliable across sites, with per-lane port
-allocation.
-
-```env
-GEONODE_USERNAME=<username>
-GEONODE_PASSWORD=<password>
-GEONODE_GATEWAY=fr              # fr | fr_whitelist | us | sg
-GEONODE_PROXY_TYPE=residential  # residential | datacenter | mix
-GEONODE_COUNTRY=PE              # uppercase, required for OSIPTEL
-GEONODE_LIFETIME_MINUTES=10     # 3..1440
-```
-
-Gateway selection depends on your location and the target site. `fr_whitelist`
-is a curated subset. Lifetime is session expiration; shorter lifetime rotates
-exits more aggressively. GeoNode uses one port per lane slot, starting at 10000,
-allocated globally across all sites; a random `sessionId` in the username string
-rotates the exit, and sessions are explicitly released via API (example proxy
-ID: `proxy-1-port-10023`). It allocates 901 sticky-port slots total, so with
-more than 900 concurrent lanes across all sites, ports collide and sessions
-interfere: reduce concurrency or split runs across boxes.
-
-DataImpulse is a rotating datacenter proxy, cheaper per request, but has a
-20-32% failure rate on OSIPTEL (see [sites/osiptel.md](sites/osiptel.md)).
-
-```env
-DATAIMPULSE_USERNAME=<username>
-DATAIMPULSE_PASSWORD=<password>
-DATAIMPULSE_COUNTRY=pe          # lowercase ISO-3166, required for OSIPTEL
-DATAIMPULSE_SESSION_MINUTES=3   # >= 1
-```
-
-DataImpulse uses one rotating port (`gw.dataimpulse.com:823`); stickiness is
-stored in the `sessid` field of the username, and sessions expire by TTL
-(configurable), no explicit release needed (example proxy ID:
-`dataimpulse-slot-5`). `proxy_id` tells you which provider produced a row
-without joining anything:
-
-```sql
-select
-  case when proxy_id like 'dataimpulse%' then 'dataimpulse' else 'geonode' end,
-  status,
-  count(*)
-from outcomes
-group by 1, 2;
-```
-
-Provider fields follow `<PROVIDER>_<FIELD>` and are defined by each provider's
-`Field` schema in `fetch/proxy/base.py`. The same schema validates environment
-variables, stored credentials, and the portal form. Adding a provider requires
-one module and one entry in `fetch/proxy/registry.py`.
-
-Lanes themselves are configured globally, across both providers, in
-`PROXY_PROVIDER`:
+Select one or more providers with `PROXY_PROVIDER`:
 
 ```env
 PROXY_PROVIDER=geonode:30,dataimpulse:18
 ```
 
-This creates 30 GeoNode lanes and 18 DataImpulse lanes (48 total). Lanes are
-created per provider, so provider failover happens at the lane level: if all
-GeoNode lanes fail, DataImpulse lanes keep working. Omitting `:lanes` uses the
-provider default; unknown names or duplicates fail at startup. `browser` uses a
-single session, so it takes only the first provider listed and ignores lane
-counts.
+The syntax is a comma-separated list of `name[:lanes]`. An omitted lane count
+uses the provider default. A provider may appear only once. The provider
+registry and each provider's `ProviderSpec` are authoritative for names,
+defaults, choices, and validation:
+[`core/proxy/geonode.py`](../packages/core/core/proxy/geonode.py) and
+[`core/proxy/dataimpulse.py`](../packages/core/core/proxy/dataimpulse.py).
 
-Before starting a run, verify your proxy configuration is working:
+GeoNode fields:
 
-```python
-from fetch.proxy.registry import preflight
-
-result = preflight("geonode")
-print(f"Exit IP: {result}")
+```env
+GEONODE_USERNAME=<username>
+GEONODE_PASSWORD=<password>
+GEONODE_GATEWAY=fr
+GEONODE_PROXY_TYPE=residential
+GEONODE_COUNTRY=PE
+GEONODE_STATE=
+GEONODE_CITY=
+GEONODE_ASN=
+GEONODE_STRICT_OFF=
+GEONODE_LIFETIME_MINUTES=10
 ```
 
-This opens a real provider session and returns the exit IP. Use it to confirm
-the country setting is correct before running a large job.
+The example values above are valid, but they are not an exhaustive schema.
+`ProviderSpec` in the linked source owns choices, defaults, normalization,
+advanced fields, and numeric limits. The same schema validates environment
+configuration, stored portal credentials, and the portal form.
 
-## Peru exits are mandatory for OSIPTEL
+DataImpulse fields:
 
-Set both explicitly in every `.env`:
+```env
+DATAIMPULSE_USERNAME=<username>
+DATAIMPULSE_PASSWORD=<password>
+DATAIMPULSE_COUNTRY=pe
+DATAIMPULSE_SESSION_MINUTES=3
+```
+
+The example values above are valid. The linked `ProviderSpec` owns country
+normalization and session limits for each runner; those limits are enforced by
+the respective loaders.
+
+Each provider module owns its field schema. `core.proxy.base` supplies the
+shared field and provider-spec types used by environment loading, stored portal
+credentials, and the portal form. When adding a provider, add its schema and
+registry entry before adding provider-specific documentation.
+
+## Country and site selection
+
+OSIPTEL requires a Peru exit. Set the country explicitly for every provider that
+may receive OSIPTEL work:
 
 ```env
 GEONODE_COUNTRY=PE
 DATAIMPULSE_COUNTRY=pe
 ```
 
-OSIPTEL's WAF blocks most non-Peru exits, and an empty `GEONODE_COUNTRY` is
-especially dangerous since GeoNode silently falls back to its global pool. See
-[sites/osiptel.md](sites/osiptel.md#waf-and-peru-exit-requirement) for the
-measured failure rates and what a block actually looks like on the wire.
+The [OSIPTEL note](sites/osiptel.md) describes the site's blocked-exit signal.
 
-## Provider selection by site
+## Sticky slots
 
-| Site       | Provider     | Why                                      |
-| ---------- | ------------ | ---------------------------------------- |
-| OSIPTEL    | GeoNode only | DataImpulse fails 20-32% (geo-gated WAF) |
-| SUNAT      | Both         | Not geo-gated; use both to split load    |
-| SUNAT reps | Both         | Same behavior as SUNAT                   |
+GeoNode maps sticky sessions to a finite port range. A standalone fetch process
+assigns unique slots only inside that process. `fetch-fleet` rejects a
+multi-shard GeoNode job until it has a shared slot allocator. Run one standalone
+GeoNode job at a time.
 
-Provider suitability is a property of the site, not the account: the same
-DataImpulse account that fails against OSIPTEL handles half a SUNAT run without
-issue. Details and measured failure rates: [sites/osiptel.md](sites/osiptel.md),
-[sites/sunat.md](sites/sunat.md). For lane and circuit-breaker mechanics in the
-pipeline, see [architecture.md](architecture.md); for diagnosing 407s, circuit
-breaker false alarms, or port exhaustion, see
-[troubleshooting.md](troubleshooting.md).
+Portal workers use the `portal_proxy_slots` table to coordinate GeoNode slots
+across the fleet. A lane claims a slot while it works a provider credential,
+renews the lease through the worker heartbeat, and releases it when it changes
+provider, becomes idle, or shuts down. An unrenewed lease expires, so a crashed
+worker does not reserve a slot forever.
+
+This coordination applies to portal workers, not to standalone fetch processes.
+Inspect current leases in [Portal operations](../packages/portal/operations.md).
+
+## Preflight
+
+The provider registry exposes a preflight helper that opens a real session and
+returns the observed exit IP. Run it with the same environment used by the job:
+
+```sh
+uv run --env-file .env fetch-preflight --provider geonode
+```
+
+Use the provider name that will run the job. The command prints the provider
+name and observed exit IP, without printing credentials. A successful preflight
+verifies provider connectivity for one session, not acceptance by the target
+site. Run a small target-site job before a large one.
+
+## Diagnose provider failures
+
+Use the [troubleshooting runbook](operations/troubleshooting.md) to distinguish
+provider transport failures, site blocks, and document-level results. The
+standalone outcome database stores breaker state by `(site, provider)`. The
+portal stores fleet breaker state by `(source, provider)` in PostgreSQL.

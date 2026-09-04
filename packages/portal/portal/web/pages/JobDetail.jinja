@@ -1,26 +1,52 @@
-{#def user, csrf_token, team, job #}
-<Layout :title="job.filename ~ ' · Worker'"
+{#def user, csrf_token, team, job, counts, items, total_items, page #}
+<Layout :title="job.filename"
         :user="user"
-        :csrf_token="csrf_token">
-  <TopBar :title="job.filename">
+        :csrf_token="csrf_token"
+        active="team-jobs"
+        :active_team="team">
+  <TopBar :title="job.filename"
+          icon="file"
+          :breadcrumb="[{'label': 'Equipos', 'href': '/'}, {'label': team.name, 'href': '/teams/' ~ team.id}]">
+    {% if team.role.value == 'team_leader' or user.is_site_admin %}
+      <ActionButton variant="secondary"
+                    size="sm"
+                    :href="'/teams/' ~ team.id ~ '/jobs/' ~ job.id ~ '/download'">
+        <Icon name="download" :size="14" />
+        Descargar resultados
+      </ActionButton>
+    {% endif %}
     {% if team.role.value == 'team_leader' and not is_terminal(job) %}
       <Submission :action="'/teams/' ~ team.id ~ '/jobs/' ~ job.id ~ '/cancel'"
                   :csrf_token="csrf_token">
-        <ActionButton variant="danger" type="submit">
+        <ActionButton variant="destructive" size="sm" type="submit">
+          <Icon name="x" :size="14" />
           Cancelar consulta
         </ActionButton>
       </Submission>
     {% endif %}
   </TopBar>
   <MainContent>
-    <h1 class="sr-only">Tarea {{ job.filename }}</h1>
     <Panel>
       <PanelBody>
         <div id="job-progress"
              aria-live="polite"
              aria-atomic="true"
              {% if not is_terminal(job) %} data-sse-url="/teams/{{ team.id }}/jobs/{{ job.id }}/progress" {% endif %}>
-          <JobProgressFragment :job="job" />
+          <JobProgress :job="job" :counts="counts" />
+        </div>
+      </PanelBody>
+    </Panel>
+    <Panel aria-labelledby="job-items-title">
+      <PanelHeader title="Resultados"
+                   description="Cada documento publicado enlaza a lo que encontramos."
+                   title_id="job-items-title" />
+      <PanelBody>
+        <div id="job-items">
+          <JobItemsFragment :team="team"
+                            :job_id="job.id"
+                            :items="items"
+                            :total_items="total_items"
+                            :page="page" />
         </div>
       </PanelBody>
     </Panel>

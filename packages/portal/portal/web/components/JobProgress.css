@@ -1,0 +1,28 @@
+.job-progress {
+  display: grid;
+  gap: var(--spacing-5);
+}
+
+.job-progress__summary {
+  background: var(--background-transparent-lighter);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: var(--spacing-4);
+  padding: var(--spacing-4);
+}
+
+.job-progress__heading {
+  display: grid;
+  gap: var(--spacing-2);
+  justify-items: start;
+}
+
+.job-progress__heading p {
+  color: var(--foreground-secondary);
+}
+
+.job-progress__exclusions h2 {
+  font-size: var(--font-size-body);
+  margin-bottom: var(--spacing-1);
+}

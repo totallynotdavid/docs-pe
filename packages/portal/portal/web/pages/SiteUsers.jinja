@@ -1,40 +1,81 @@
 {#def user, csrf_token, users, error #}
-<Layout title="Personas · Administración · Worker"
+<Layout title="Personas · Administración"
         :user="user"
-        :csrf_token="csrf_token">
-  <TopBar title="Administración · Personas">
-    <ActionButton variant="secondary" href="/admin/teams">
-      Equipos
+        :csrf_token="csrf_token"
+        active="admin-users">
+  <TopBar title="Personas"
+          icon="user"
+          :breadcrumb="[{'label': 'Administración', 'href': '/admin'}]">
+    <ActionButton type="submit" form="add-user-form" size="sm">
+      Añadir persona
     </ActionButton>
   </TopBar>
   <MainContent>
-    <h1 class="sr-only">Administración de personas</h1>
     <Panel>
       <PanelHeader title="Añadir persona"
                    description="La contraseña se cambia en el primer acceso si corresponde." />
       <PanelBody>
         {% if error %}<Message>{{ error }}</Message>{% endif %}
-        <FormLayout action="/admin/users" :csrf_token="csrf_token">
+        <FormLayout id="add-user-form" action="/admin/users" :csrf_token="csrf_token">
           <Field label="Correo electrónico">
             <input type="email" name="email" required>
           </Field>
           <Field label="Contraseña temporal">
             <input type="password" name="password" minlength="12" required>
           </Field>
-          <button type="submit">Añadir persona</button>
         </FormLayout>
       </PanelBody>
     </Panel>
     <Panel>
       <PanelHeader title="Personas con acceso" />
-      <List>
-        {% for person in users %}
-          <ListItem>
-            <span>{{ person.email }}</span>
-            {% if person.is_site_admin %}<MetaText>Administradora de la plataforma</MetaText>{% endif %}
-          </ListItem>
-        {% endfor %}
-      </List>
+      <DataTable>
+        <TableHeader>
+          <TableRow>
+            <TableHead>
+              Persona
+            </TableHead>
+            <TableHead>
+              Alcance
+            </TableHead>
+            <TableHead align="right">
+              Estado
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {% for person in users %}
+            <TableRow>
+              <TableCell ellipsis>
+                <a href="/admin/users/{{ person.id }}">{{ person.email }}</a>
+              </TableCell>
+              <TableCell>
+                <MetaText>
+                  {% if person.is_site_admin %}
+                    Administra la plataforma
+                  {% else %}
+                    Acceso por equipo
+                  {% endif %}
+                </MetaText>
+              </TableCell>
+              <TableCell align="right">
+                {% if not person.is_active %}
+                  <Status value="retired">
+                    Desactivada
+                  </Status>
+                {% elif person.pending_site_admin %}
+                  <Status value="draft">
+                    Seguridad pendiente
+                  </Status>
+                {% else %}
+                  <Status value="active">
+                    Activa
+                  </Status>
+                {% endif %}
+              </TableCell>
+            </TableRow>
+          {% endfor %}
+        </TableBody>
+      </DataTable>
     </Panel>
   </MainContent>
 </Layout>

@@ -7,9 +7,16 @@ from jinjax import Catalog
 from litestar.enums import MediaType
 from litestar.response import Response
 
-from portal.domain.models import CredentialState, Job, JobState, TeamRole
+from portal.branding import PRODUCT_MARK, PRODUCT_NAME
+from portal.domain.models import CredentialState, ItemState, Job, JobState, TeamRole
 from portal.messages import choice_label, field_label, provider_label
-from portal.web.assets import COMPONENTS_DIR, PAGES_DIR, build_component_stylesheet
+from portal.security import totp_qr_svg
+from portal.web.assets import (
+    COMPONENTS_DIR,
+    PAGES_DIR,
+    build_component_stylesheet,
+    build_tokens_stylesheet,
+)
 
 
 if TYPE_CHECKING:
@@ -47,13 +54,19 @@ def component_catalog() -> Catalog:
     environment.filters["notification"] = _notification_label
     environment.filters["credential_state"] = _credential_state_label
     environment.filters["exclusion_reason"] = _exclusion_reason_label
+    environment.filters["item_state"] = item_state_label
+    environment.filters["entry_status"] = entry_status_label
 
     environment.globals["is_terminal"] = _is_terminal
     environment.globals["job_summary"] = _job_summary
     environment.globals["field_label"] = field_label
     environment.globals["choice_label"] = choice_label
     environment.globals["provider_label"] = provider_label
+    environment.globals["totp_qr_svg"] = totp_qr_svg
     environment.globals["component_stylesheet_url"] = build_component_stylesheet()
+    environment.globals["tokens_stylesheet_url"] = build_tokens_stylesheet()
+    environment.globals["PRODUCT_NAME"] = PRODUCT_NAME
+    environment.globals["PRODUCT_MARK"] = PRODUCT_MARK
 
     catalog = Catalog(jinja_env=environment)
     catalog.add_folder(COMPONENTS_DIR)
@@ -79,6 +92,25 @@ def _state_label(state: JobState) -> str:
         JobState.FAILED: "Con error",
         JobState.CANCELLED: "Cancelado",
     }[state]
+
+
+def item_state_label(state: ItemState) -> str:
+    return {
+        ItemState.PENDING: "Pendiente",
+        ItemState.RUNNING: "En ejecución",
+        ItemState.PUBLISHED: "Publicado",
+        ItemState.EXCLUDED: "Excluido",
+        ItemState.FAILED: "Con error",
+        ItemState.CANCELLED: "Cancelado",
+    }[state]
+
+
+def entry_status_label(status: str) -> str:
+    return {
+        "ok": "Encontrado",
+        "not_found": "No encontrado",
+        "failed": "Con error",
+    }.get(status, status)
 
 
 def _role_label(role: TeamRole | None) -> str:

@@ -1,75 +1,3 @@
-* {
-  box-sizing: border-box;
-}
-
-html {
-  font-size: 13px;
-}
-
-body {
-  margin: 0;
-  min-height: 100dvh;
-  background: var(--background-app);
-  color: var(--foreground);
-  font-family: var(--font-sans);
-  font-size: var(--font-size-body);
-  line-height: 1.45;
-  -webkit-font-smoothing: antialiased;
-}
-
-a {
-  color: inherit;
-  text-underline-offset: 3px;
-}
-
-button,
-input,
-textarea,
-select {
-  font: inherit;
-}
-
-button {
-  cursor: pointer;
-}
-
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring-shadow);
-}
-
-h2 {
-  font-size: var(--font-size-heading-sm);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: -0.015em;
-  margin: 0;
-}
-
-p {
-  margin: 0;
-}
-
-.subtitle {
-  color: var(--foreground-secondary);
-  margin: 6px 0 0;
-  max-width: 640px;
-}
-
-/* Visible to a screen reader, never to the eye. */
-.sr-only {
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  height: 1px;
-  overflow: hidden;
-  position: absolute;
-  white-space: nowrap;
-  width: 1px;
-}
-
 .skip-link {
   clip: rect(0 0 0 0);
   height: 1px;
@@ -79,36 +7,113 @@ p {
 }
 
 .skip-link:focus {
+  background: var(--background);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
   clip: auto;
   height: auto;
-  left: 16px;
-  padding: 8px 12px;
+  left: var(--spacing-4);
+  padding: var(--spacing-2) var(--spacing-3);
   position: fixed;
-  top: 16px;
+  top: var(--spacing-4);
   width: auto;
-  z-index: 10;
-  background: var(--background);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  z-index: var(--z-modal);
 }
 
 .app-shell {
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  min-height: 100dvh;
+  background: var(--background-app);
+  display: flex;
+  height: 100dvh;
+  overflow: hidden;
+  width: 100%;
+}
+
+.app-shell--minimal {
+  flex-direction: column;
 }
 
 .workspace {
+  display: flex;
+  flex: 1 1 0;
+  margin-left: -3px;
   min-width: 0;
+  padding-left: 4px;
+  width: 0;
 }
 
-/* The signed-out pages drop the shell and centre a single card instead. */
+.app-shell--minimal .workspace {
+  margin-left: 0;
+  padding-left: 0;
+  width: auto;
+}
+
+.page-card {
+  background: var(--background);
+  border-radius: var(--radius-lg) 0 0 0;
+  box-shadow:
+    -4px 0 4px 0 rgba(0, 0, 0, 0.006),
+    0 0 0 1px var(--border-medium);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+@media (prefers-color-scheme: dark) {
+  .page-card {
+    box-shadow:
+      -4px 0 4px 0 rgba(0, 0, 0, 0.03),
+      0 0 0 1px var(--border-medium);
+  }
+}
+
+.app-shell--minimal .page-card {
+  border-radius: 0;
+}
+
+.onboarding-topbar {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: var(--spacing-4);
+  height: var(--spacing-12);
+  justify-content: space-between;
+  padding: 0 var(--spacing-5);
+}
+
+.onboarding-topbar__brand {
+  align-items: center;
+  display: flex;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  gap: var(--spacing-2);
+  text-decoration: none;
+}
+
+.onboarding-topbar__step {
+  color: var(--foreground-tertiary);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-medium);
+}
+
+body.onboarding {
+  background: var(--background-app);
+}
+
+body.onboarding .content {
+  max-width: var(--layout-narrow);
+  padding: var(--spacing-12) var(--spacing-5) var(--spacing-16);
+}
+
 body.signed-out {
   align-items: center;
-  background: var(--secondary);
+  background: var(--background-app);
   display: flex;
   justify-content: center;
-  padding: 16px;
+  min-height: 100dvh;
+  padding: var(--spacing-4);
 }
 
 body.signed-out .content {
@@ -118,6 +123,23 @@ body.signed-out .content {
 
 @media (max-width: 720px) {
   .app-shell {
-    display: block;
+    flex-direction: column;
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .workspace {
+    margin-left: 0;
+    padding-left: 0;
+    width: auto;
+  }
+
+  .page-card {
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+
+  .app-shell:not(.app-shell--minimal) .page-card {
+    padding-bottom: 60px;
   }
 }

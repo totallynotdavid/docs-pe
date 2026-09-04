@@ -1,0 +1,19 @@
+{#def label="", id="" #}
+{% if label and id %}
+  <details {{ attrs.render(class="nav-section") }}
+           data-nav-section="{{ id }}"
+           open>
+    <summary class="nav-section__title">
+      <span>{{ label }}</span>
+      <span class="nav-section__chevron">
+        <Icon name="chevron-down" size="14" />
+      </span>
+    </summary>
+    <div class="nav-section__items">{{ content }}</div>
+  </details>
+{% else %}
+  <div {{ attrs.render(class="nav-section") }}>
+    {% if label %}<p class="nav-section__title">{{ label }}</p>{% endif %}
+    <div class="nav-section__items">{{ content }}</div>
+  </div>
+{% endif %}

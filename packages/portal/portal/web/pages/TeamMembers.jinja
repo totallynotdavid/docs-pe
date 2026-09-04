@@ -1,22 +1,28 @@
-{#def user, csrf_token, team, members, candidates, error #}
-<Layout :title="'Personas · ' ~ team.name ~ ' · Worker'"
+{#def user, csrf_token, team, members, invites, error, teams=() #}
+<Layout :title="'Personas · ' ~ team.name"
         :user="user"
-        :csrf_token="csrf_token">
-  <TopBar title="Personas del equipo" />
+        :csrf_token="csrf_token"
+        :teams="teams"
+        active="team-settings-members"
+        :active_team="team">
+  <TopBar title="Personas"
+          icon="users"
+          :breadcrumb="[{'label': 'Equipos', 'href': '/?switch=1'}, {'label': team.name, 'href': '/teams/' ~ team.id}]">
+    <ActionButton type="submit" form="invite-form" size="sm">
+      Enviar invitación
+    </ActionButton>
+  </TopBar>
   <MainContent>
-    <h1 class="sr-only">Personas de {{ team.name }}</h1>
     <Panel>
-      <PanelHeader title="Añadir persona"
-                   description="Las personas deben tener una cuenta creada en la plataforma." />
+      <PanelHeader title="Invitar a una persona"
+                   description="Si todavía no tiene cuenta, le enviamos un enlace para crearla." />
       <PanelBody>
         {% if error %}<Message>{{ error }}</Message>{% endif %}
-        <FormLayout :action="'/teams/' ~ team.id ~ '/settings/members'"
+        <FormLayout id="invite-form"
+                    :action="'/teams/' ~ team.id ~ '/settings/members'"
                     :csrf_token="csrf_token">
-          <Field label="Persona">
-            <select name="email" required>
-              <option value="" selected disabled>Selecciona una persona</option>
-              {% for candidate in candidates %}<option value="{{ candidate.email }}">{{ candidate.email }}</option>{% endfor %}
-            </select>
+          <Field label="Correo electrónico">
+            <input type="email" name="email" required autofocus>
           </Field>
           <Field label="Nivel de acceso">
             <select name="role">
@@ -24,32 +30,102 @@
               <option value="team_leader">Puede administrar</option>
             </select>
           </Field>
-          <button type="submit">Guardar acceso</button>
         </FormLayout>
       </PanelBody>
     </Panel>
     <Panel>
       <PanelHeader title="Equipo actual"
                    description="Las personas administradoras pueden actualizar la configuración." />
-      <List>
-        {% for member, role in members %}
-          <ListItem>
-            <span>{{ member.email }}</span>
-            <Actions>
-              <MetaText>
-                {{ role|role_name }}
-              </MetaText>
-              {% if member.id != user.id %}
-                <InlineAction :action="'/teams/' ~ team.id ~ '/settings/members/remove'"
-                              :csrf_token="csrf_token">
-                  <input type="hidden" name="email" value="{{ member.email }}">
-                  <button type="submit">Quitar</button>
-                </InlineAction>
-              {% endif %}
-            </Actions>
-          </ListItem>
-        {% endfor %}
-      </List>
+      <DataTable>
+        <TableHeader>
+          <TableRow>
+            <TableHead>
+              Persona
+            </TableHead>
+            <TableHead>
+              Acceso
+            </TableHead>
+            <TableHead align="right">
+              Acciones
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {% for member, role in members %}
+            <TableRow>
+              <TableCell ellipsis>
+                {{ member.email }}
+              </TableCell>
+              <TableCell>
+                <MetaText>
+                  {{ role|role_name }}
+                </MetaText>
+              </TableCell>
+              <TableCell align="right">
+                {% if member.id != user.id %}
+                  <InlineAction :action="'/teams/' ~ team.id ~ '/settings/members/remove'"
+                                :csrf_token="csrf_token">
+                    <input type="hidden" name="email" value="{{ member.email }}">
+                    <ActionButton variant="link-danger" type="submit">
+                      Quitar
+                    </ActionButton>
+                  </InlineAction>
+                {% endif %}
+              </TableCell>
+            </TableRow>
+          {% endfor %}
+        </TableBody>
+      </DataTable>
     </Panel>
+    {% if invites %}
+      <Panel>
+        <PanelHeader title="Invitaciones pendientes" />
+        <DataTable>
+          <TableHeader>
+            <TableRow>
+              <TableHead>
+                Correo
+              </TableHead>
+              <TableHead>
+                Acceso
+              </TableHead>
+              <TableHead align="right">
+                Acciones
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {% for invite in invites %}
+              <TableRow>
+                <TableCell ellipsis>
+                  {{ invite.email }}
+                </TableCell>
+                <TableCell>
+                  <MetaText>
+                    {{ invite.role|role_name }}
+                  </MetaText>
+                </TableCell>
+                <TableCell align="right">
+                  <Actions>
+                    <InlineAction :action="'/teams/' ~ team.id ~ '/settings/invites/' ~ invite.id ~ '/resend'"
+                                  :csrf_token="csrf_token">
+                      <ActionButton variant="link" type="submit">
+                        Reenviar
+                      </ActionButton>
+                    </InlineAction>
+                    <InlineAction :action="'/teams/' ~ team.id ~ '/settings/invites/' ~ invite.id ~ '/cancel'"
+                                  :csrf_token="csrf_token">
+                      <ActionButton variant="link-danger" type="submit">
+                        Cancelar
+                      </ActionButton>
+                    </InlineAction>
+                  </Actions>
+                </TableCell>
+              </TableRow>
+            {% endfor %}
+          </TableBody>
+        </DataTable>
+      </Panel>
+    {% endif %}
   </MainContent>
 </Layout>

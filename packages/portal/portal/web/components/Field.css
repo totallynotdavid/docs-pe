@@ -1,0 +1,90 @@
+.field {
+  color: var(--foreground-light);
+  display: grid;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
+  gap: var(--spacing-1);
+}
+
+.control,
+.field input,
+.field select,
+.field textarea {
+  background: var(--background-transparent-lighter);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--foreground);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
+  height: var(--spacing-8);
+  padding: 0 var(--spacing-2);
+  transition:
+    border-color var(--motion-fast) linear,
+    background-color var(--motion-fast) linear;
+  width: 100%;
+}
+
+.control::placeholder,
+.field input::placeholder,
+.field textarea::placeholder {
+  color: var(--foreground-light);
+  font-weight: var(--font-weight-medium);
+}
+
+.control:focus,
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: var(--color-blue);
+  box-shadow: none;
+  outline: none;
+}
+
+.field textarea {
+  border-radius: var(--radius-sm);
+  height: auto;
+  min-height: calc(var(--spacing-12) * 2);
+  padding: var(--spacing-2);
+  resize: vertical;
+}
+
+.control:disabled,
+.field input:disabled,
+.field select:disabled,
+.field textarea:disabled {
+  color: var(--foreground-tertiary);
+  cursor: not-allowed;
+}
+
+.control[aria-invalid="true"],
+.field input[aria-invalid="true"],
+.field select[aria-invalid="true"],
+.field textarea[aria-invalid="true"] {
+  border-color: var(--destructive);
+}
+
+.control[aria-invalid="true"]:focus,
+.field input[aria-invalid="true"]:focus,
+.field select[aria-invalid="true"]:focus,
+.field textarea[aria-invalid="true"]:focus {
+  border-color: var(--destructive);
+}
+
+/* The passkey flows keep an empty live region for their status text; without
+   this it still claims a row in the form grid. Reserved to one line's height
+   otherwise, so an error appearing or clearing doesn't shift the field below
+   it. */
+.help-text:empty {
+  min-height: var(--font-size-xs);
+}
+
+.help-text {
+  color: var(--foreground-tertiary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-lg);
+}
+
+.help-text--error {
+  color: var(--destructive);
+}

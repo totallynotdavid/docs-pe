@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
+import re
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
@@ -11,19 +15,39 @@ from litestar import Request, Response, Router, get, post
 from litestar.datastructures import UploadFile
 from litestar.di import NamedDependency
 from litestar.enums import RequestEncodingType
-from litestar.params import Body, FromPath
+from litestar.params import Body, FromPath, FromQuery
 from litestar.response import Redirect
 from litestar.response.sse import ServerSentEvent, ServerSentEventMessage
 from litestar_htmx import HTMXRequest
 
 from portal.application.service import PortalService
+from portal.application.sessions import BrowserSessions
 from portal.domain.errors import PortalError
-from portal.domain.models import TERMINAL_JOB_STATES, BrowserSession
+from portal.domain.models import (
+    TERMINAL_JOB_STATES,
+    BrowserSession,
+    Entry,
+    JobItem,
+    JobItemCounts,
+    SubmissionReview,
+)
 from portal.settings import PortalSettings
 from portal.storage.port import ObjectStorage
 from portal.web.deps import require_verified_session
-from portal.web.render import render, render_fragment
-from portal.web.uploads import csv_input_lines, read_csv_upload
+from portal.web.render import (
+    entry_status_label,
+    item_state_label,
+    render,
+    render_fragment,
+    render_hx,
+)
+from portal.web.uploads import (
+    MAX_CSV_UPLOAD_BYTES,
+    MAX_CSV_UPLOAD_MB,
+    MAX_REQUEST_BODY_BYTES,
+    csv_input_lines,
+    read_csv_upload,
+)
 
 
 SOURCE_OPTIONS = (
@@ -61,6 +85,8 @@ SOURCE_OPTIONS = (
     },
 )
 
+SOURCE_NAMES = {option["id"]: option["name"] for option in SOURCE_OPTIONS}
+
 PROGRESS_POLL_SECONDS = 0.5
 
 
@@ -83,7 +109,34 @@ async def _form_context(
         "credentials": active_credentials,
         "source_options": SOURCE_OPTIONS,
         "error": error,
+        "max_upload_mb": MAX_CSV_UPLOAD_MB,
+        "max_upload_bytes": MAX_CSV_UPLOAD_BYTES,
     }
+
+
+def _review_by_source(
+    review: SubmissionReview,
+) -> tuple[dict[str, object], ...]:
+    """Return per-source totals and reusable counts for the review screen."""
+    reusable_pairs = {(item.document, item.source) for item in review.reusable}
+    totals: dict[str, int] = {}
+    reused: dict[str, int] = {}
+
+    for item in review.items:
+        totals[item.source] = totals.get(item.source, 0) + 1
+
+        if (item.document, item.source) in reusable_pairs:
+            reused[item.source] = reused.get(item.source, 0) + 1
+
+    return tuple(
+        {
+            "source": source,
+            "name": SOURCE_NAMES.get(source, source),
+            "total": total,
+            "reusable": reused.get(source, 0),
+        }
+        for source, total in totals.items()
+    )
 
 
 @get("/new")
@@ -106,7 +159,7 @@ class JobSubmissionForm:
     input_file: UploadFile | None = None
 
 
-@post("", status_code=200)
+@post("", status_code=200, request_max_body_size=MAX_REQUEST_BODY_BYTES)
 async def new_job_post(
     request: HTMXRequest,
     service: NamedDependency[PortalService],
@@ -120,24 +173,29 @@ async def new_job_post(
 ) -> Response:
     session = await require_verified_session(
         request,
-        service,
         settings,
         data.csrf_token,
     )
 
     try:
         uploaded_filename, content = await read_csv_upload(data.input_file)
+        filename = data.filename.strip() or uploaded_filename
+        lines = csv_input_lines(content)
+        sources = tuple(data.sources)
 
-        job = await service.submit_input(
-            actor_id=session.user.id,
-            team_id=team_id,
-            credential_version_id=data.credential_version_id,
-            filename=data.filename.strip() or uploaded_filename,
+        reference = await service.store_upload(
+            session.user.id,
+            team_id,
             content=content,
             content_type="text/csv; charset=utf-8",
-            lines=csv_input_lines(content),
-            sources=tuple(data.sources),
             storage=storage,
+        )
+
+        review = await service.preview_submission(
+            session.user.id,
+            team_id,
+            lines,
+            sources,
         )
     except (PortalError, ValueError, RuntimeError) as error:
         context = await _form_context(
@@ -149,6 +207,73 @@ async def new_job_post(
 
         return render("JobForm", **context)
 
+    if not review.reusable:
+        job = await service.confirm_submission(
+            actor_id=session.user.id,
+            team_id=team_id,
+            credential_version_id=data.credential_version_id,
+            filename=filename,
+            input_object_id=reference.id,
+            lines=lines,
+            sources=sources,
+            reuse=True,
+        )
+
+        return Redirect(f"/teams/{team_id}/jobs/{job.id}", status_code=303)
+
+    return render(
+        "JobReview",
+        user=session.user,
+        csrf_token=session.csrf_token,
+        team=await service.team(session.user.id, team_id),
+        review=review,
+        by_source=_review_by_source(review),
+        filename=filename,
+        sources=sources,
+        input_object_id=reference.id,
+        credential_version_id=data.credential_version_id,
+    )
+
+
+@post("/confirm", status_code=200)
+async def confirm_job_post(
+    request: HTMXRequest,
+    service: NamedDependency[PortalService],
+    settings: NamedDependency[PortalSettings],
+    storage: NamedDependency[ObjectStorage],
+    team_id: FromPath[UUID],
+) -> Response:
+    # Repeated form keys are required for msgspec to decode a list. Accept a
+    # single selected source as well.
+    form = await request.form()
+
+    session = await require_verified_session(
+        request,
+        settings,
+        str(form.get("csrf_token", "")),
+    )
+
+    # The upload is already durable. Do not trust a hidden field for the
+    # document count or contents.
+    reference = await service.input_reference(
+        session.user.id,
+        team_id,
+        UUID(str(form.get("input_object_id", ""))),
+    )
+    content = await storage.open(reference)
+    lines = csv_input_lines(content)
+
+    job = await service.confirm_submission(
+        actor_id=session.user.id,
+        team_id=team_id,
+        credential_version_id=UUID(str(form.get("credential_version_id", ""))),
+        filename=str(form.get("filename", "")),
+        input_object_id=reference.id,
+        lines=lines,
+        sources=tuple(str(value) for value in form.getall("sources")),
+        reuse=str(form.get("reuse", "reuse")) == "reuse",
+    )
+
     return Redirect(f"/teams/{team_id}/jobs/{job.id}", status_code=303)
 
 
@@ -159,13 +284,129 @@ async def job_detail(
     team_id: FromPath[UUID],
     job_id: FromPath[UUID],
 ) -> Response:
+    job = await service.job(page_session.user.id, team_id, job_id)
+    counts = await service.job_progress_counts(page_session.user.id, team_id, job_id)
+    items, total_items = await service.job_items(
+        page_session.user.id,
+        team_id,
+        job_id,
+        page=1,
+    )
+
     return render(
         "JobDetail",
         user=page_session.user,
         csrf_token=page_session.csrf_token,
         team=await service.team(page_session.user.id, team_id),
-        job=await service.job(page_session.user.id, team_id, job_id),
+        job=job,
+        counts=counts,
+        items=items,
+        total_items=total_items,
+        page=1,
     )
+
+
+@get("/{job_id:uuid}/items")
+async def job_items_page(
+    request: HTMXRequest,
+    page_session: NamedDependency[BrowserSession],
+    service: NamedDependency[PortalService],
+    team_id: FromPath[UUID],
+    job_id: FromPath[UUID],
+    page: FromQuery[int] = 1,
+) -> Response:
+    current_page = max(page, 1)
+    job = await service.job(page_session.user.id, team_id, job_id)
+    counts = await service.job_progress_counts(page_session.user.id, team_id, job_id)
+    items, total_items = await service.job_items(
+        page_session.user.id,
+        team_id,
+        job_id,
+        page=current_page,
+    )
+
+    # Direct page requests need the full JobDetail context; pagination normally
+    # uses the fragment through HTMX.
+    return render_hx(
+        request,
+        "JobDetail",
+        "JobItemsFragment",
+        user=page_session.user,
+        csrf_token=page_session.csrf_token,
+        team=await service.team(page_session.user.id, team_id),
+        job=job,
+        counts=counts,
+        items=items,
+        total_items=total_items,
+        page=current_page,
+    )
+
+
+_RESULT_HEADER = ("Documento", "Fuente", "Estado", "Resultado")
+_UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+@get("/{job_id:uuid}/download")
+async def job_download(
+    page_session: NamedDependency[BrowserSession],
+    service: NamedDependency[PortalService],
+    team_id: FromPath[UUID],
+    job_id: FromPath[UUID],
+) -> Response:
+    job, results = await service.job_results(page_session.user.id, team_id, job_id)
+
+    return Response(
+        _results_csv(results),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{_download_filename(job.filename)}"'
+            ),
+        },
+    )
+
+
+def _download_filename(job_filename: str) -> str:
+    stem = Path(job_filename).stem or "tarea"
+    safe = _UNSAFE_FILENAME_CHARS.sub("_", stem).strip("_") or "tarea"
+
+    return f"{safe[:80]}-resultados.csv"
+
+
+def _results_csv(results: tuple[tuple[JobItem, Entry | None], ...]) -> str:
+    """One row per item, expanded to one row per entry.rows line for an item
+    whose entry carries several (a RUC's several legal representatives, for
+    example). Columns are the union of every entry's columns in this job, in
+    first-seen order, since a job can mix sources with different shapes."""
+    columns: list[str] = []
+    seen: set[str] = set()
+
+    for _item, entry in results:
+        for column in entry.columns if entry else ():
+            if column not in seen:
+                seen.add(column)
+                columns.append(column)
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow((*_RESULT_HEADER, *columns))
+
+    for item, entry in results:
+        prefix = (item.document, item.source, item_state_label(item.state))
+
+        if entry is None or not entry.rows:
+            writer.writerow((*prefix, "", *([""] * len(columns))))
+            continue
+
+        status = entry_status_label(entry.status)
+
+        for row in entry.rows:
+            values = dict(zip(entry.columns, row, strict=True))
+            writer.writerow(
+                (*prefix, status, *(values.get(column, "") for column in columns))
+            )
+
+    return buffer.getvalue()
 
 
 @dataclass
@@ -187,7 +428,6 @@ async def cancel_job(
 ) -> Response:
     session = await require_verified_session(
         request,
-        service,
         settings,
         data.csrf_token,
     )
@@ -202,6 +442,7 @@ async def job_progress(
     request: Request,
     api_session: NamedDependency[BrowserSession],
     service: NamedDependency[PortalService],
+    sessions: NamedDependency[BrowserSessions],
     settings: NamedDependency[PortalSettings],
     team_id: FromPath[UUID],
     job_id: FromPath[UUID],
@@ -212,6 +453,7 @@ async def job_progress(
     return ServerSentEvent(
         _progress_events(
             service,
+            sessions,
             token=request.cookies.get(settings.session_cookie),
             actor_id=api_session.user.id,
             team_id=team_id,
@@ -223,6 +465,7 @@ async def job_progress(
 
 async def _progress_events(
     service: PortalService,
+    sessions: BrowserSessions,
     *,
     token: str | None,
     actor_id: UUID,
@@ -230,8 +473,13 @@ async def _progress_events(
     job_id: UUID,
     last_sequence: int,
 ) -> AsyncIterator[ServerSentEventMessage]:
+    job = await service.job(actor_id, team_id, job_id)
+    last_counts: JobItemCounts | None = None
+
     while True:
-        session = await service.browser_session(token)
+        # Re-checked on every poll: a stream must not outlive the session that
+        # opened it, and the session can be destroyed from another tab.
+        session = await sessions.load(token)
 
         if session is None or session.user.id != actor_id:
             return
@@ -246,22 +494,30 @@ async def _progress_events(
         for event in events:
             last_sequence = event.sequence
             job = await service.job(actor_id, team_id, job_id)
+            last_counts = await service.job_progress_counts(actor_id, team_id, job_id)
 
             yield ServerSentEventMessage(
                 id=event.sequence,
                 event="progress",
-                data=render_fragment("JobProgressFragment", job=job),
+                data=render_fragment("JobProgress", job=job, counts=last_counts),
             )
-
-            if job.state in TERMINAL_JOB_STATES:
-                yield ServerSentEventMessage(event="done", data="")
-                return
-
-        job = await service.job(actor_id, team_id, job_id)
 
         if job.state in TERMINAL_JOB_STATES:
             yield ServerSentEventMessage(event="done", data="")
             return
+
+        # Events cover job-level transitions. Poll state counts for item
+        # progress between those transitions.
+        counts = await service.job_progress_counts(actor_id, team_id, job_id)
+
+        if counts != last_counts:
+            last_counts = counts
+
+            yield ServerSentEventMessage(
+                id=last_sequence,
+                event="progress",
+                data=render_fragment("JobProgress", job=job, counts=counts),
+            )
 
         await asyncio.sleep(PROGRESS_POLL_SECONDS)
 
@@ -278,7 +534,10 @@ router = Router(
     route_handlers=[
         new_job_get,
         new_job_post,
+        confirm_job_post,
         job_detail,
+        job_items_page,
+        job_download,
         cancel_job,
         job_progress,
     ],

@@ -6,15 +6,28 @@ import base64
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
+import pytest
+
+from portal.credentials.secrets import encode_config
 from portal.domain.models import (
     MAX_LEASE_ATTEMPTS,
     InputLine,
     Job,
     JobState,
+    ProtectedSecret,
     SubmitJob,
 )
+from portal.repository.workers import PostgresWorkerRegistry
 
-from tests.portal.conftest import WORKER_TOKEN, object_reference, seed_team
+from tests.portal.conftest import (
+    UNREADABLE_SECRET,
+    WORKER_ID,
+    enroll_worker,
+    object_reference,
+    seed_site_admin,
+    seed_team,
+    submit_command,
+)
 
 
 if TYPE_CHECKING:
@@ -22,7 +35,7 @@ if TYPE_CHECKING:
 
     from litestar.testing import AsyncTestClient
     from portal.application.service import PortalService
-    from portal.credentials.secrets import AesGcmSecretProtector
+    from portal.credentials.secrets import EnvelopeProtector
     from portal.repository.jobs import PostgresJobRepository
 
 
@@ -80,15 +93,28 @@ async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results
         team_id,
         "resultados/uno.json",
     )
+    entry_id = uuid4()
 
     await pool.execute(
         """
+        INSERT INTO portal_entries
+            (id, document, source, status, columns, rows, last_job_id)
+        VALUES ($1, '10412345678', 'osiptel', 'ok', ARRAY['documento'],
+                '[["10412345678"]]'::jsonb, $2)
+        """,
+        entry_id,
+        partial_job.id,
+    )
+    await pool.execute(
+        """
         UPDATE portal_job_items
-           SET state = 'published', result_object_id = $1, published_at = now()
+           SET state = 'published', result_object_id = $1, published_at = now(),
+               entry_id = $3
          WHERE job_id = $2
         """,
         result_reference,
         partial_job.id,
+        entry_id,
     )
 
     cancelled = await service.cancel(actor_id, team_id, claimed.job_id)
@@ -99,7 +125,16 @@ async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results
             claimed.item_id,
             "trabajador-prueba",
             claimed.lease_fence,
-            result_reference,
+            document="10412345678",
+            source="osiptel",
+            provider="geonode",
+            status="ok",
+            columns=("documento",),
+            rows=(("10412345678",),),
+            error_code=None,
+            result_object_id=result_reference,
+            lane_index=0,
+            attempts=(),
         )
         is False
     )
@@ -203,99 +238,137 @@ async def test_a_repeatedly_expired_item_retires_and_fails_its_job(
     assert finished["terminal_reason"] == "no_results"
 
 
-async def test_published_search_finds_a_dni_inside_a_ruc_and_paginates(
+async def test_claim_prefers_a_lane_s_held_session_over_plain_fifo(
+    pool: asyncpg.Pool,
+    service: PortalService,
+    job_repository: PostgresJobRepository,
+) -> None:
+    """A lane already holding a (source, credential) session should keep
+    draining that pair's work, so its session gets reused across claims
+    instead of being closed after one lookup and reopened for the next."""
+    team_earlier = await seed_team(pool)
+    team_later = await seed_team(pool)
+
+    earlier_input = await object_reference(pool, team_earlier.team_id, "e.csv")
+    later_input = await object_reference(pool, team_later.team_id, "l.csv")
+
+    earlier_job = await service.submit(submit_command(team_earlier, earlier_input))
+    later_job = await service.submit(submit_command(team_later, later_input))
+
+    assert earlier_job.queue_sequence < later_job.queue_sequence
+
+    claimed = await job_repository.claim(
+        "trabajador",
+        ("osiptel",),
+        affinity_source="osiptel",
+        affinity_credential_version_id=team_later.credential_id,
+    )
+
+    assert claimed is not None
+    assert claimed.job_id == later_job.id
+    assert claimed.credential_version_id == team_later.credential_id
+
+
+async def test_claim_many_returns_every_requested_item_from_one_affinity_group(
+    pool: asyncpg.Pool,
+    service: PortalService,
+    job_repository: PostgresJobRepository,
+) -> None:
+    """A batch returns every requested item when one affinity group owns them."""
+    team = await seed_team(pool)
+
+    job = await service.submit(
+        SubmitJob(
+            actor_id=team.actor_id,
+            team_id=team.team_id,
+            credential_version_id=team.credential_id,
+            input_object_id=await object_reference(pool, team.team_id, "e.csv"),
+            filename="entrada.csv",
+            sources=("osiptel",),
+            lines=tuple(InputLine(i, f"1041234567{i - 1}") for i in range(1, 5)),
+        )
+    )
+    assert job.state is JobState.RUNNING
+
+    claimed = await job_repository.claim_many(
+        "trabajador",
+        ("osiptel",),
+        3,
+        affinity_source="osiptel",
+        affinity_credential_version_id=team.credential_id,
+    )
+
+    assert len(claimed) == 3
+    assert {item.job_id for item in claimed} == {job.id}
+    assert len({item.item_id for item in claimed}) == 3
+
+
+async def test_claim_falls_back_to_fifo_without_a_matching_affinity(
+    pool: asyncpg.Pool,
+    service: PortalService,
+    job_repository: PostgresJobRepository,
+) -> None:
+    team_earlier = await seed_team(pool)
+    team_later = await seed_team(pool)
+
+    earlier_input = await object_reference(pool, team_earlier.team_id, "e.csv")
+    later_input = await object_reference(pool, team_later.team_id, "l.csv")
+
+    earlier_job = await service.submit(submit_command(team_earlier, earlier_input))
+    await service.submit(submit_command(team_later, later_input))
+
+    claimed = await job_repository.claim("trabajador", ("osiptel",))
+
+    assert claimed is not None
+    assert claimed.job_id == earlier_job.id
+
+
+async def test_claim_skips_a_pair_whose_circuit_breaker_is_open(
     pool: asyncpg.Pool,
     service: PortalService,
     job_repository: PostgresJobRepository,
 ) -> None:
     job = await _submit_one(pool, service)
-    reference = await object_reference(
-        pool,
-        job.team_id,
-        "resultados/uno.json",
-    )
 
     await pool.execute(
         """
-        UPDATE portal_job_items
-           SET document = '10123456789', state = 'published',
-               result_object_id = $2, published_at = now()
-         WHERE job_id = $1
-        """,
-        job.id,
-        reference,
+        INSERT INTO portal_circuit_breakers
+            (source, provider, consecutive_failures, level, open_until)
+        VALUES ('osiptel', 'geonode', 0, 1, now() + interval '1 hour')
+        """
     )
+
+    assert await job_repository.claim("trabajador", ("osiptel",)) is None
 
     await pool.execute(
-        """
-        INSERT INTO portal_job_items
-            (id, job_id, team_id, ordinal, document, source, state,
-             result_object_id, published_at)
-        VALUES ($1, $2, $3, 2, '12345678', 'osiptel', 'published', $4, now())
-        """,
-        uuid4(),
-        job.id,
-        job.team_id,
-        reference,
+        "UPDATE portal_circuit_breakers SET open_until = now() - interval '1 second'"
     )
 
-    found, more = await job_repository.search_published(
-        job.team_id,
-        "12345678",
-        limit=20,
-        offset=0,
-    )
+    claimed = await job_repository.claim("trabajador", ("osiptel",))
 
-    assert {result.document for result in found} == {
-        "10123456789",
-        "12345678",
-    }
-    assert more is False
-
-    first_page, more = await job_repository.search_published(
-        job.team_id,
-        "12345678",
-        limit=1,
-        offset=0,
-    )
-
-    assert len(first_page) == 1
-    assert more is True
+    assert claimed is not None
+    assert claimed.job_id == job.id
 
 
 async def test_the_worker_api_leases_an_item_and_publishes_its_result(
     pool: asyncpg.Pool,
     service: PortalService,
-    client: AsyncTestClient,
-    protector: AesGcmSecretProtector,
+    worker_client: AsyncTestClient,
+    protector: EnvelopeProtector,
 ) -> None:
-    secret = await protector.protect(
-        {
-            "username": "equipo",
-            "password": "clave",
-        }
+    config = protector.protect(
+        encode_config({"username": "equipo", "password": "clave"})
     )
 
-    job = await _submit_one(
-        pool,
-        service,
-        ciphertext=secret.ciphertext,
-    )
+    job = await _submit_one(pool, service, config=config)
+    headers = await enroll_worker(pool)
 
-    headers = {
-        "Authorization": f"Bearer {WORKER_TOKEN}",
-        "X-Portal-Worker": "trabajador-uno",
-    }
+    anonymous = await worker_client.post("/claim", json={"sources": []})
 
-    anonymous = await client.post(
-        "/api/worker/claim",
-        json={"sources": []},
-    )
+    assert anonymous.status_code == 403
 
-    assert anonymous.status_code == 401
-
-    response = await client.post(
-        "/api/worker/claim",
+    response = await worker_client.post(
+        "/claim",
         json={"sources": ["osiptel"]},
         headers=headers,
     )
@@ -305,23 +378,70 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
     claimed = response.json()
 
     assert claimed["document"] == "10412345678"
+    assert claimed["credential_version_id"] == str(job.credential_version_id)
     assert claimed["credential"]["config"] == {
         "username": "equipo",
         "password": "clave",
     }
 
-    published = await client.post(
-        "/api/worker/publish",
+    published = await worker_client.post(
+        "/publish",
         json={
             "item_id": claimed["item_id"],
             "fence": claimed["fence"],
+            "lane_index": 3,
+            "source": claimed["source"],
+            "provider": claimed["credential"]["provider"],
+            "healthy_contact": True,
+            "document": claimed["document"],
+            "status": "ok",
+            "columns": ["modalidad"],
+            "rows": [["Postpago"]],
+            "error_code": None,
             "content": base64.b64encode(b'{"lineas": []}').decode("ascii"),
+            "attempts": [
+                {
+                    "fetch_attempt": 1,
+                    "outcome": "failed",
+                    "elapsed_ms": 340,
+                    "error_code": "upstream_not_ready",
+                },
+                {
+                    "fetch_attempt": 2,
+                    "outcome": "ok",
+                    "elapsed_ms": 210,
+                    "error_code": None,
+                },
+            ],
         },
         headers=headers,
     )
 
     assert published.status_code == 200
     assert published.json() == {"published": True}
+
+    attempts = await pool.fetch(
+        "SELECT lane_index, fetch_attempt, outcome, error_code, elapsed_ms "
+        "FROM portal_lookup_attempts WHERE job_item_id = $1 ORDER BY fetch_attempt",
+        UUID(claimed["item_id"]),
+    )
+
+    assert [dict(row) for row in attempts] == [
+        {
+            "lane_index": 3,
+            "fetch_attempt": 1,
+            "outcome": "failed",
+            "error_code": "upstream_not_ready",
+            "elapsed_ms": 340,
+        },
+        {
+            "lane_index": 3,
+            "fetch_attempt": 2,
+            "outcome": "ok",
+            "error_code": None,
+            "elapsed_ms": 210,
+        },
+    ]
 
     finished = await pool.fetchrow(
         "SELECT state FROM portal_jobs WHERE id = $1",
@@ -330,17 +450,157 @@ async def test_the_worker_api_leases_an_item_and_publishes_its_result(
 
     assert finished["state"] == "completed"
 
+    entry = await pool.fetchrow(
+        "SELECT status, columns, rows FROM portal_entries "
+        "WHERE document = $1 AND source = $2",
+        claimed["document"],
+        claimed["source"],
+    )
+
+    assert entry is not None
+    assert entry["status"] == "ok"
+    assert list(entry["columns"]) == ["modalidad"]
+
+    breaker = await pool.fetchrow(
+        "SELECT consecutive_failures, level, open_until "
+        "FROM portal_circuit_breakers WHERE source = $1 AND provider = $2",
+        claimed["source"],
+        claimed["credential"]["provider"],
+    )
+
+    assert breaker is not None
+    assert breaker["consecutive_failures"] == 0
+    assert breaker["level"] == 0
+    assert breaker["open_until"] is None
+
+
+async def test_reveal_credential_decrypts_by_credential_version_id(
+    pool: asyncpg.Pool,
+    service: PortalService,
+    worker_client: AsyncTestClient,
+    protector: EnvelopeProtector,
+) -> None:
+    """A direct-DB worker reveals the version id returned by its claim."""
+    config = protector.protect(
+        encode_config({"username": "equipo", "password": "clave"})
+    )
+    job = await _submit_one(pool, service, config=config)
+    headers = await enroll_worker(pool)
+
+    response = await worker_client.post(
+        "/reveal-credential",
+        json={"credential_version_id": str(job.credential_version_id)},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "provider": "geonode",
+        "config": {"username": "equipo", "password": "clave"},
+    }
+
+    audited = await pool.fetchrow(
+        "SELECT actor_id, target_type, target_id FROM portal_audit_log "
+        "WHERE action = 'credential.revealed' ORDER BY occurred_at DESC LIMIT 1"
+    )
+
+    assert audited is not None
+    assert audited["target_type"] == "credential_version"
+    assert audited["target_id"] == job.credential_version_id
+
+
+async def test_reveal_credential_rejects_an_unknown_version(
+    pool: asyncpg.Pool,
+    worker_client: AsyncTestClient,
+) -> None:
+    headers = await enroll_worker(pool)
+
+    response = await worker_client.post(
+        "/reveal-credential",
+        json={"credential_version_id": str(uuid4())},
+        headers=headers,
+    )
+
+    assert response.status_code == 409
+
+
+async def test_reveal_credential_refuses_an_unauthenticated_caller(
+    worker_client: AsyncTestClient,
+) -> None:
+    response = await worker_client.post(
+        "/reveal-credential",
+        json={"credential_version_id": str(uuid4())},
+    )
+
+    assert response.status_code == 403
+
+
+async def test_a_heartbeat_updates_status_and_staleness_flips_it_offline(
+    pool: asyncpg.Pool,
+    worker_client: AsyncTestClient,
+    service: PortalService,
+) -> None:
+    headers = await enroll_worker(pool)
+
+    beat = await worker_client.post(
+        "/heartbeat",
+        json={"cpu_percent": 12.5, "memory_mb": 256.0, "current_job_id": None},
+        headers=headers,
+    )
+    assert beat.status_code == 204
+
+    admin_id = await seed_site_admin(pool, "admin@osiptel.test")
+    health = await service.system_health(admin_id)
+
+    assert len(health.workers) == 1
+    worker = health.workers[0]
+    assert worker.worker_id == WORKER_ID
+    assert worker.online is True
+    assert worker.cpu_percent == pytest.approx(12.5)
+    assert worker.memory_mb == pytest.approx(256.0)
+
+    # Backdate the heartbeat past the staleness window to prove "offline" is
+    # computed from recency, not just from whether one was ever recorded.
+    await pool.execute(
+        """
+        UPDATE portal_workers
+           SET last_seen_at = now() - interval '1 hour'
+         WHERE worker_id = $1
+        """,
+        WORKER_ID,
+    )
+
+    stale = await service.system_health(admin_id)
+    assert stale.workers[0].online is False
+
+
+async def test_a_revoked_worker_stops_claiming(
+    pool: asyncpg.Pool,
+    service: PortalService,
+    worker_client: AsyncTestClient,
+) -> None:
+    await _submit_one(pool, service)
+    headers = await enroll_worker(pool)
+
+    await PostgresWorkerRegistry(pool).revoke(WORKER_ID)
+
+    refused = await worker_client.post(
+        "/claim",
+        json={"sources": ["osiptel"]},
+        headers=headers,
+    )
+
+    assert refused.status_code == 403
+    assert refused.json()["reason"] == "worker_not_authorized"
+
 
 async def _submit_one(
     pool: asyncpg.Pool,
     service: PortalService,
     *,
-    ciphertext: bytes = b"cifrado",
+    config: ProtectedSecret = UNREADABLE_SECRET,
 ) -> Job:
-    actor_id, team_id, credential_id = await seed_team(
-        pool,
-        ciphertext=ciphertext,
-    )
+    actor_id, team_id, credential_id = await seed_team(pool, config=config)
 
     return await service.submit(
         SubmitJob(

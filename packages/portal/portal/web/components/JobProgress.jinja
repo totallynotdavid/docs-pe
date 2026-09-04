@@ -1,0 +1,38 @@
+{#def job, counts #}
+<div class="job-progress">
+  <div class="job-progress__summary">
+    <div class="job-progress__heading">
+      <Status :value="job.state">
+        {{ job.state|job_state }}
+      </Status>
+      <p>{{ job_summary(job) }}</p>
+    </div>
+    <ProgressBar :value="counts.attempted"
+                 :total="counts.total"
+                 label="Documentos procesados" />
+    <Metrics>
+      <Metric label="Registros">
+        {{ counts.total }}
+      </Metric>
+      <Metric label="Publicados">
+        {{ counts.published }}
+      </Metric>
+      <Metric label="Con error">
+        {{ counts.failed }}
+      </Metric>
+      <Metric label="Excluidos">
+        {{ job.exclusions|length }}
+      </Metric>
+    </Metrics>
+  </div>
+  {% if job.exclusions %}
+    <section class="job-progress__exclusions">
+      <h2>Excluidos</h2>
+      <List variant="plain">
+        {% for exclusion in job.exclusions %}
+          <li>Línea {{ exclusion.ordinal }}: {{ exclusion.value }} ({{ exclusion.reason|exclusion_reason }})</li>
+        {% endfor %}
+      </List>
+    </section>
+  {% endif %}
+</div>

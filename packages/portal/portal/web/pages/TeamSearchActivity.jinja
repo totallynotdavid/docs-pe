@@ -1,0 +1,63 @@
+{#def user, csrf_token, team, entries, teams=() #}
+<Layout :title="'Actividad de búsqueda · ' ~ team.name"
+        :user="user"
+        :csrf_token="csrf_token"
+        :teams="teams"
+        active="team-settings-activity"
+        :active_team="team">
+  <TopBar title="Actividad de búsqueda"
+          icon="search"
+          :breadcrumb="[{'label': 'Equipos', 'href': '/?switch=1'}, {'label': team.name, 'href': '/teams/' ~ team.id}]" />
+  <MainContent>
+    <Panel>
+      <PanelHeader title="Búsquedas recientes"
+                   description="Quién buscó qué y cuántos resultados encontró." />
+      {% if entries %}
+        <DataTable>
+          <TableHeader>
+            <TableRow>
+              <TableHead>
+                Búsqueda
+              </TableHead>
+              <TableHead>
+                Quién
+              </TableHead>
+              <TableHead>
+                Cuándo
+              </TableHead>
+              <TableHead align="right">
+                Resultados
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {% for entry in entries %}
+              <TableRow>
+                <TableCell ellipsis>
+                  {{ entry.query }}
+                </TableCell>
+                <TableCell ellipsis>
+                  <MetaText>
+                    {{ entry.actor_email }}
+                  </MetaText>
+                </TableCell>
+                <TableCell>
+                  <MetaText>
+                    {{ entry.created_at.strftime("%d/%m %H:%M") }}
+                  </MetaText>
+                </TableCell>
+                <TableCell align="right">
+                  {{ entry.result_count }}
+                </TableCell>
+              </TableRow>
+            {% endfor %}
+          </TableBody>
+        </DataTable>
+      {% else %}
+        <EmptyState icon="search"
+                    title="Sin búsquedas todavía"
+                    description="Cuando alguien del equipo busque un documento, quedará registrado aquí." />
+      {% endif %}
+    </Panel>
+  </MainContent>
+</Layout>

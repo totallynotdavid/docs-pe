@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=83.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli"
+version = "0.1.0"
+description = "Standalone lookup command-line tool."
+requires-python = ">=3.11"
+dependencies = ["core"]
+
+[project.scripts]
+fetch = "cli.main:main"
+fetch-fleet = "cli.fleet:main"
+fetch-status = "cli.status:main"
+fetch-preflight = "cli.preflight:main"
+
+[tool.uv.sources]
+core = { path = "../core", editable = false }
+
+[tool.setuptools.packages.find]
+include = ["cli*"]

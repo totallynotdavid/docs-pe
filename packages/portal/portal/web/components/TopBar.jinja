@@ -1,5 +1,24 @@
-{#def title #}
-<header class="top-bar">
-  <span class="top-bar__title">{{ title }}</span>
-  <div class="top-bar__actions">{{ content }}</div>
+{#def title, icon="", breadcrumb=None #}
+<header class="page-header">
+  <div class="page-header__left">
+    <button class="page-header__expand"
+            type="button"
+            data-sidebar-toggle
+            aria-label="Expandir barra lateral">
+      <Icon name="sidebar-expand" :size="16" />
+    </button>
+    <div class="page-header__title">
+      {% if icon %}<Icon :name="icon" />{% endif %}
+      {% if breadcrumb %}
+        <nav class="page-header__breadcrumb" aria-label="Ruta">
+          {% for crumb in breadcrumb %}
+            <a href="{{ crumb.href }}">{{ crumb.label }}</a>
+            <Icon name="chevron-right" size="14" />
+          {% endfor %}
+        </nav>
+      {% endif %}
+      <h1>{{ title }}</h1>
+    </div>
+  </div>
+  <div class="page-header__right">{{ content }}</div>
 </header>

@@ -1,30 +1,42 @@
 .source-list {
   display: grid;
-  gap: 8px;
+  gap: var(--spacing-2);
 }
 
 .source-option {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  display: block !important;
-  padding: 12px;
+  display: block;
+  padding: var(--spacing-3);
   transition:
-    background var(--motion-fast),
-    border-color var(--motion-fast);
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+
+.source-option:hover {
+  background: var(--background-transparent-lighter);
+  border-color: var(--border-strong);
+}
+
+.source-option:has(:focus-visible) {
+  box-shadow: var(--focus-ring-shadow);
+}
+
+.source-option:has(input:checked) {
+  background: var(--background);
+  border-color: var(--foreground);
 }
 
 .source-option__control {
   accent-color: var(--primary);
   float: left;
-  margin: 3px 9px 0 0;
-  min-height: auto !important;
-  width: auto !important;
+  margin: 3px var(--spacing-2) 0 0;
 }
 
 .source-option__content {
   display: grid;
-  gap: 3px;
+  gap: var(--spacing-1);
   overflow: hidden;
 }
 
@@ -32,7 +44,7 @@
   align-items: baseline;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--spacing-2);
 }
 
 .source-option__name {
@@ -42,7 +54,7 @@
 
 .source-option__eligibility {
   color: var(--foreground-tertiary);
-  font-size: 11px;
+  font-size: var(--font-size-label);
 }
 
 .source-option__result {
@@ -52,13 +64,19 @@
 
 .source-option__preview {
   border-top: 1px solid var(--border);
-  gap: 5px;
-  padding-top: 8px;
+  display: none;
+  gap: var(--spacing-1);
+  margin-top: var(--spacing-2);
+  padding-top: var(--spacing-2);
+}
+
+.source-option:has(input:checked) .source-option__preview {
+  display: grid;
 }
 
 .source-option__preview-title {
   color: var(--foreground-tertiary);
-  font-size: 10px;
+  font-size: var(--font-size-tiny);
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -67,14 +85,14 @@
 .source-option__preview-table {
   color: var(--foreground-secondary);
   display: grid;
-  font-size: 11px;
-  gap: 2px;
+  font-size: var(--font-size-label);
+  gap: var(--spacing-1);
   overflow-x: auto;
 }
 
 .source-option__preview-table span {
   display: grid;
-  gap: 8px;
+  gap: var(--spacing-2);
   grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
   min-width: 340px;
 }

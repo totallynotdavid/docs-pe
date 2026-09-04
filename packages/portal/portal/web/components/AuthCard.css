@@ -1,39 +1,45 @@
-/* The signed-out card is not a panel: it keeps the rounded clip and nothing else. */
 .auth-card {
-  border-radius: var(--radius-md);
-  overflow: hidden;
+  align-items: center;
+  background: var(--background);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-elevation-1);
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-8) var(--spacing-6);
   text-align: center;
 }
 
-.auth-card__brand {
-  align-items: center;
-  background: var(--foreground);
-  border-radius: 6px;
-  color: var(--primary-foreground);
-  display: inline-flex;
-  font-size: var(--font-size-heading-sm);
-  font-weight: var(--font-weight-semibold);
-  height: 48px;
-  justify-content: center;
-  margin: 16px auto;
-  width: 48px;
-}
-
 .auth-card h1 {
-  font-size: 24px;
-  margin: 16px 0 7px;
+  font-size: var(--font-size-heading-md);
+  margin-top: var(--spacing-5);
 }
 
 .auth-card__description {
   color: var(--foreground-secondary);
   font-size: var(--font-size-caption);
-  margin-bottom: 24px;
+  line-height: var(--line-height-lg);
+  margin-top: var(--spacing-2);
 }
 
-.auth-card .form {
+.auth-card__body {
+  margin-top: var(--spacing-6);
   text-align: left;
+  width: 100%;
 }
 
-.auth-card .form button {
-  margin-top: 4px;
+.auth-card__body > * + * {
+  margin-top: var(--spacing-4);
+}
+
+.auth-card .form > .button {
+  justify-self: stretch;
+}
+
+.auth-card__alt {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: var(--spacing-2);
+  justify-items: stretch;
+  padding-top: var(--spacing-4);
 }

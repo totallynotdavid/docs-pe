@@ -1,50 +1,128 @@
-{#def user, csrf_token="", setup=False #}
-<aside class="sidebar">
-  <a class="sidebar__brand" href="/">
-    <span class="sidebar__brand-mark" aria-hidden="true">W</span>
-    Worker
-  </a>
-  {% if not setup %}
-    <nav class="sidebar__nav" aria-label="Navegación principal">
-      <p class="sidebar__nav-label">Espacio de trabajo</p>
-      <a class="sidebar__nav-link" href="/">
-        <Icon name="teams" />
-        Equipos
+{#def user, csrf_token="", minimal=False, active="", active_team=None, teams=() #}
+{% set search_href = ('/teams/' ~ active_team.id ~ '/search') if active_team else ('/admin/search' if user.is_site_admin else '') %}
+<aside class="{{ 'drawer drawer--minimal' if minimal else 'drawer' }}">
+  <div class="drawer__inner">
+    <header class="drawer__header">
+      <a class="drawer__brand" href="/">
+        <Brand />
+        <span>{{ PRODUCT_NAME }}</span>
       </a>
-      <a class="sidebar__nav-link" href="/notifications">
-        <Icon name="activity" />
-        Actividad
-      </a>
-      {% if user.is_site_admin %}
-        <a class="sidebar__nav-link sidebar__nav-link--admin"
-           href="/admin/teams">
-          <Icon name="admin" />
-          Administración
+      {% if not minimal %}
+        <button class="drawer__collapse"
+                type="button"
+                data-sidebar-toggle
+                aria-label="Contraer barra lateral">
+          <Icon name="sidebar-collapse" :size="16" />
+        </button>
+      {% endif %}
+    </header>
+    {% if not minimal %}
+      <nav class="drawer__scroll nav"
+           id="mobile-nav-panel"
+           data-mobile-nav-panel
+           aria-label="Navegación principal">
+        <div class="drawer__mobile-account">
+          <AccountMenu :user="user"
+                       :csrf_token="csrf_token"
+                       placement="below"
+                       id="account-menu-mobile" />
+        </div>
+        {% if active_team and teams|length > 1 %}
+          <TeamSwitcher :teams="teams" :active_team="active_team" />
+        {% endif %}
+        <NavSection label="Espacio de trabajo" id="workspace">
+          <NavItem :href="'/?switch=1' if teams|length > 1 else '/'"
+                   label="Equipos"
+                   icon="users"
+                   :active="active == 'teams'" />
+          {% if active_team %}
+            <NavItem :href="'/teams/' ~ active_team.id"
+                     label="Tareas"
+                     sub
+                     :active="active == 'team-jobs'" />
+            <NavItem :href="'/teams/' ~ active_team.id ~ '/search'"
+                     label="Buscar"
+                     sub
+                     :active="active == 'team-search'" />
+            {% if (active_team.role and active_team.role.value == 'team_leader') or user.is_site_admin %}
+              <NavItem :href="'/teams/' ~ active_team.id ~ '/settings/proxy'"
+                       label="Proxy"
+                       sub
+                       :active="active == 'team-settings-proxy'" />
+              <NavItem :href="'/teams/' ~ active_team.id ~ '/settings/members'"
+                       label="Miembros"
+                       sub
+                       :active="active == 'team-settings-members'" />
+              <NavItem :href="'/teams/' ~ active_team.id ~ '/settings/search-activity'"
+                       label="Actividad"
+                       sub
+                       :active="active == 'team-settings-activity'" />
+            {% endif %}
+          {% endif %}
+          {% if user.is_site_admin or (active_team and active_team.has_global_search) %}
+            <NavItem href="/admin/search"
+                     label="Búsqueda global"
+                     icon="search"
+                     :active="active == 'global-search'" />
+          {% endif %}
+          <NavItem href="/notifications"
+                   label="Actividad"
+                   icon="activity"
+                   :active="active == 'activity'" />
+          <NavItem href="/security"
+                   label="Seguridad"
+                   icon="shield"
+                   :active="active == 'security'" />
+        </NavSection>
+        {% if user.is_site_admin %}
+          <NavSection label="Administración" id="admin">
+            <NavItem href="/admin"
+                     label="Resumen"
+                     icon="settings"
+                     :active="active == 'admin'" />
+            <NavItem href="/admin/teams"
+                     label="Equipos"
+                     sub
+                     :active="active == 'admin-teams'" />
+            <NavItem href="/admin/users"
+                     label="Personas"
+                     sub
+                     :active="active == 'admin-users'" />
+            <NavItem href="/admin/search-activity"
+                     label="Búsquedas"
+                     sub
+                     :active="active == 'admin-search-activity'" />
+            <NavItem href="/admin/system"
+                     label="Sistema"
+                     sub
+                     :active="active == 'admin-system'" />
+          </NavSection>
+        {% endif %}
+      </nav>
+    {% endif %}
+    <div class="drawer__footer">
+      <AccountMenu :user="user"
+                   :csrf_token="csrf_token"
+                   :placement="'below' if minimal else 'above'" />
+    </div>
+  </div>
+  {% if not minimal %}
+    <nav class="drawer__tabbar" aria-label="Navegación móvil">
+      <button class="drawer__tab"
+              type="button"
+              data-mobile-nav-toggle
+              aria-expanded="false"
+              aria-controls="mobile-nav-panel">
+        <Icon name="list" :size="20" />
+        <span>Menú</span>
+      </button>
+      {% if search_href %}
+        <a class="{{ 'drawer__tab drawer__tab--active' if active in ('team-search', 'global-search') else 'drawer__tab' }}"
+           href="{{ search_href }}">
+          <Icon name="search" :size="20" />
+          <span>Buscar</span>
         </a>
       {% endif %}
     </nav>
   {% endif %}
-  <div class="sidebar__account" data-account>
-    <button class="sidebar__account-trigger"
-            type="button"
-            aria-expanded="false"
-            aria-controls="account-menu"
-            data-account-trigger>
-      <span class="sidebar__avatar">{{ user.email[0] }}</span>
-      <span>Mi cuenta</span>
-      <Icon name="chevron-down" :size="14" />
-    </button>
-    <div class="sidebar__account-menu"
-         id="account-menu"
-         hidden
-         data-account-menu>
-      <span class="sidebar__account-email">{{ user.email }}</span>
-      <InlineAction action="/logout" :csrf_token="csrf_token">
-        <button type="submit">
-          <Icon name="logout" :size="14" />
-          Cerrar sesión
-        </button>
-      </InlineAction>
-    </div>
-  </div>
 </aside>

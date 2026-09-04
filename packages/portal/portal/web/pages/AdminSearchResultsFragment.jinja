@@ -1,0 +1,65 @@
+{#def query, results, page, has_more #}
+{% if query %}
+  {% if results %}
+    <DataTable>
+      <TableHeader>
+        <TableRow>
+          <TableHead>
+            Documento
+          </TableHead>
+          <TableHead>
+            Fuente
+          </TableHead>
+          <TableHead align="right">
+            Estado
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {% for result in results %}
+          <TableRow>
+            <TableCell ellipsis>
+              <a href="/admin/search/entries/{{ result.id }}">{{ result.document }}</a>
+            </TableCell>
+            <TableCell>
+              <MetaText>
+                {{ result.source }}
+              </MetaText>
+            </TableCell>
+            <TableCell align="right">
+              <Status :value="result.status">
+                {{ result.status|entry_status }}
+              </Status>
+            </TableCell>
+          </TableRow>
+        {% endfor %}
+      </TableBody>
+    </DataTable>
+  {% else %}
+    <EmptyState icon="search"
+                title="Sin resultados"
+                :description="'Ningún documento coincide con “' ~ query ~ '”.'" />
+  {% endif %}
+{% else %}
+  <EmptyState icon="search"
+              title="Busca un documento"
+              description="Escribe un DNI o RUC para buscar en todos los equipos." />
+{% endif %}
+{% if page > 1 or has_more %}
+  <Pagination label="Paginación de búsqueda">
+    {% if page > 1 %}
+      <a hx-get="/admin/search?q={{ query }}&page={{ page - 1 }}"
+         hx-target="#admin-search-results">
+        <Icon name="chevron-left" :size="14" />
+        Anterior
+      </a>
+    {% endif %}
+    {% if has_more %}
+      <a hx-get="/admin/search?q={{ query }}&page={{ page + 1 }}"
+         hx-target="#admin-search-results">
+        Siguiente
+        <Icon name="chevron-right" :size="14" />
+      </a>
+    {% endif %}
+  </Pagination>
+{% endif %}

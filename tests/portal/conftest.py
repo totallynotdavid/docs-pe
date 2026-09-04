@@ -5,31 +5,52 @@ import base64
 import os
 import re
 
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, NamedTuple
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
+import aioboto3
 import asyncpg
+import pyotp
 import pytest
 
+from botocore.exceptions import ClientError
 from litestar.testing import AsyncTestClient, TestClient
 from portal.application.provisioning import ProvisioningService
 from portal.application.service import PortalService
-from portal.credentials.secrets import AesGcmSecretProtector
-from portal.domain.models import InputLine, SubmitJob, TeamRole
+from portal.application.sessions import BrowserSessions, OneTimeTokens
+from portal.credentials.masterkey import MasterKeyring
+from portal.credentials.secrets import EnvelopeProtector
+from portal.domain.models import (
+    AttemptRecord,
+    ClaimedWork,
+    InputLine,
+    ProtectedSecret,
+    SubmitJob,
+    TeamRole,
+)
+from portal.ephemeral import EphemeralStore
 from portal.migrations import apply_migrations
+from portal.notify.mailer import ConsoleMailer
+from portal.repository.audit import PostgresAuditLog
 from portal.repository.auth import PostgresAuthRepository
 from portal.repository.credentials import PostgresCredentialRepository
+from portal.repository.entries import PostgresEntryRepository
 from portal.repository.jobs import PostgresJobRepository
+from portal.repository.search_log import PostgresSearchLogRepository
 from portal.repository.teams import PostgresTeamRepository
-from portal.security import hash_password
+from portal.repository.workers import PostgresWorkerRegistry
+from portal.security import hash_password, new_worker_credential, token_hash
 from portal.settings import PortalSettings
-from portal.web.app import create_app
+from portal.web.app import create_web_app
+from portal.worker.api import create_worker_api
 
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+    from pathlib import Path
 
     import httpx
 
@@ -39,11 +60,34 @@ if TYPE_CHECKING:
 POSTGRES_DSN = (
     os.environ.get("PORTAL_TEST_DSN") or "postgresql://postgres@127.0.0.1:5432/postgres"
 )
-SECRET_KEY = base64.urlsafe_b64encode(b"c" * 32).decode("ascii")
 
-ORIGIN = "http://testserver.local"
+OBJECT_STORAGE_ENDPOINT = (
+    os.environ.get("PORTAL_TEST_OBJECT_STORAGE_ENDPOINT") or "http://127.0.0.1:9100"
+)
+OBJECT_STORAGE_BUCKET = "portal-objects"
+OBJECT_STORAGE_ACCESS_KEY = "portal-dev"
+OBJECT_STORAGE_SECRET_KEY = "portal-dev-secret"
+
+MASTER_KEY_VERSION = "v1"
+MASTER_KEY = base64.urlsafe_b64encode(b"c" * 32).decode("ascii")
+
+# The same key material the app fixtures load from disk, for seeding helpers
+# that run outside a fixture. Both open each other's envelopes.
+KEYRING = MasterKeyring.from_lines([f"{MASTER_KEY_VERSION} {MASTER_KEY}"])
+
+# https, like production: Secure cookies and the __Host- prefix are not gated on
+# the environment, so a test over http would exercise a shape nobody deploys.
+ORIGIN = "https://testserver.local"
 PASSWORD = "una-clave-larga-y-segura"
-WORKER_TOKEN = "ficha-de-prueba"
+
+# Fixed so a test can predict the code the authenticator would show.
+TOTP_SECRET = "JBSWY3DPEHPK3PXP"
+RECOVERY_CODE = "codigo-de-recuperacion"
+WORKER_ID = "poseidon-1"
+WORKER_HOSTNAME = "poseidon-1.tailnet.ts.net"
+
+# Stands in for a real envelope where the test never decrypts it.
+UNREADABLE_SECRET = ProtectedSecret(b"cifrado", b"\x00", MASTER_KEY_VERSION)
 
 
 @pytest.fixture(scope="session")
@@ -78,14 +122,15 @@ class PortalDatabase:
     dsn: str
 
 
-@pytest.fixture
-async def portal_db(
-    request: pytest.FixtureRequest,
-    portal_cluster: str,
+@asynccontextmanager
+async def empty_database(
+    cluster: str,
+    label: str,
 ) -> AsyncIterator[PortalDatabase]:
-    prefix = request.node.name[:20].replace("[", "_").replace("]", "")
+    """A database of its own, created and dropped, with no schema applied."""
+    prefix = label[:20].replace("[", "_").replace("]", "")
     database = f"portal_{prefix}_{uuid4().hex}".lower()
-    maintenance_dsn, test_dsn = _database_dsns(portal_cluster, database)
+    maintenance_dsn, test_dsn = _database_dsns(cluster, database)
 
     maintenance = await asyncpg.connect(maintenance_dsn)
 
@@ -98,7 +143,6 @@ async def portal_db(
         pool = await asyncpg.create_pool(test_dsn, min_size=1, max_size=12)
 
         try:
-            await apply_migrations(pool)
             yield PortalDatabase(pool, test_dsn)
         finally:
             await pool.close()
@@ -111,6 +155,25 @@ async def portal_db(
             )
         finally:
             await maintenance.close()
+
+
+@pytest.fixture
+async def unmigrated_db(
+    request: pytest.FixtureRequest,
+    portal_cluster: str,
+) -> AsyncIterator[PortalDatabase]:
+    async with empty_database(portal_cluster, request.node.name) as database:
+        yield database
+
+
+@pytest.fixture
+async def portal_db(
+    request: pytest.FixtureRequest,
+    portal_cluster: str,
+) -> AsyncIterator[PortalDatabase]:
+    async with empty_database(portal_cluster, request.node.name) as database:
+        await apply_migrations(database.pool)
+        yield database
 
 
 @pytest.fixture
@@ -141,23 +204,69 @@ def job_repository(portal_db: PortalDatabase) -> PostgresJobRepository:
 
 
 @pytest.fixture
-def service(
-    auth_repository: PostgresAuthRepository,
-    team_repository: PostgresTeamRepository,
-    credential_repository: PostgresCredentialRepository,
-    job_repository: PostgresJobRepository,
-) -> PortalService:
-    return PortalService(
-        auth_repository,
-        team_repository,
-        credential_repository,
-        job_repository,
-    )
+def entry_repository(portal_db: PortalDatabase) -> PostgresEntryRepository:
+    return PostgresEntryRepository(portal_db.pool)
 
 
 @pytest.fixture
-def protector() -> AesGcmSecretProtector:
-    return AesGcmSecretProtector(SECRET_KEY)
+def audit_repository(portal_db: PortalDatabase) -> PostgresAuditLog:
+    return PostgresAuditLog(portal_db.pool)
+
+
+@pytest.fixture
+def search_log_repository(portal_db: PortalDatabase) -> PostgresSearchLogRepository:
+    return PostgresSearchLogRepository(portal_db.pool)
+
+
+@pytest.fixture
+def worker_registry(portal_db: PortalDatabase) -> PostgresWorkerRegistry:
+    return PostgresWorkerRegistry(portal_db.pool)
+
+
+@pytest.fixture
+def service(
+    team_repository: PostgresTeamRepository,
+    credential_repository: PostgresCredentialRepository,
+    job_repository: PostgresJobRepository,
+    entry_repository: PostgresEntryRepository,
+    search_log_repository: PostgresSearchLogRepository,
+    worker_registry: PostgresWorkerRegistry,
+) -> PortalService:
+    return PortalService(
+        team_repository,
+        credential_repository,
+        job_repository,
+        entry_repository,
+        search_log_repository,
+        worker_registry,
+    )
+
+
+@pytest.fixture(scope="session")
+def master_key_file(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A real key file, so tests load the keyring the way a deployment does."""
+    path = tmp_path_factory.mktemp("keys") / "master.key"
+    path.write_text(f"{MASTER_KEY_VERSION} {MASTER_KEY}\n", encoding="utf-8")
+
+    return path
+
+
+@pytest.fixture
+def protector() -> EnvelopeProtector:
+    return EnvelopeProtector(KEYRING)
+
+
+@pytest.fixture
+def store(pool: asyncpg.Pool) -> EphemeralStore:
+    return EphemeralStore(pool)
+
+
+@pytest.fixture
+def sessions(
+    store: EphemeralStore,
+    auth_repository: PostgresAuthRepository,
+) -> BrowserSessions:
+    return BrowserSessions(store, auth_repository)
 
 
 @pytest.fixture
@@ -165,30 +274,77 @@ def provisioning(
     auth_repository: PostgresAuthRepository,
     team_repository: PostgresTeamRepository,
     credential_repository: PostgresCredentialRepository,
-    protector: AesGcmSecretProtector,
+    protector: EnvelopeProtector,
+    audit_repository: PostgresAuditLog,
+    store: EphemeralStore,
 ) -> ProvisioningService:
     return ProvisioningService(
         auth_repository,
         team_repository,
         credential_repository,
         protector,
+        audit_repository,
+        "testserver.local",
+        public_origin=ORIGIN,
+        setup_tokens=OneTimeTokens(store),
+        mailer=ConsoleMailer(),
+    )
+
+
+@pytest.fixture(scope="session", autouse=True)
+async def _object_storage_bucket() -> None:
+    session = aioboto3.Session()
+
+    async with session.client(
+        "s3",
+        endpoint_url=OBJECT_STORAGE_ENDPOINT,
+        aws_access_key_id=OBJECT_STORAGE_ACCESS_KEY,
+        aws_secret_access_key=OBJECT_STORAGE_SECRET_KEY,
+        region_name="us-east-1",
+    ) as client:
+        try:
+            await client.create_bucket(Bucket=OBJECT_STORAGE_BUCKET)
+        except ClientError as error:
+            if error.response["Error"]["Code"] != "BucketAlreadyOwnedByYou":
+                raise
+
+
+@pytest.fixture
+def settings(
+    portal_db: PortalDatabase,
+    master_key_file: Path,
+) -> PortalSettings:
+    # No Turnstile keys, so open_human_check() returns the disabled check. That
+    # is the same branch a developer's laptop takes, and validate() refuses it
+    # in production.
+    return PortalSettings(
+        database_dsn=portal_db.dsn,
+        public_origin=ORIGIN,
+        master_key_file=master_key_file,
+        object_storage_endpoint=OBJECT_STORAGE_ENDPOINT,
+        object_storage_bucket=OBJECT_STORAGE_BUCKET,
+        object_storage_access_key=OBJECT_STORAGE_ACCESS_KEY,
+        object_storage_secret_key=OBJECT_STORAGE_SECRET_KEY,
     )
 
 
 @pytest.fixture
-def app(
-    portal_db: PortalDatabase,
-    protector: AesGcmSecretProtector,
-    tmp_path_factory: pytest.TempPathFactory,
-) -> Litestar:
-    return create_app(
-        PortalSettings(
-            database_dsn=portal_db.dsn,
-            worker_bootstrap_token=WORKER_TOKEN,
-            object_root=tmp_path_factory.mktemp("objects"),
-        ),
-        protector,
-    )
+def app(settings: PortalSettings) -> Litestar:
+    return create_web_app(settings)
+
+
+@pytest.fixture
+def worker_api(settings: PortalSettings) -> Litestar:
+    return create_worker_api(settings)
+
+
+@pytest.fixture
+async def worker_client(worker_api: Litestar) -> AsyncIterator[AsyncTestClient]:
+    async with AsyncTestClient(
+        app=worker_api,
+        base_url="https://worker-api.tailnet.test",
+    ) as http_client:
+        yield http_client
 
 
 @pytest.fixture
@@ -206,9 +362,8 @@ class SeededTeam(NamedTuple):
 async def seed_team(
     pool: asyncpg.Pool,
     *,
-    ciphertext: bytes = b"cifrado",
+    config: ProtectedSecret = UNREADABLE_SECRET,
     password_hash: str = "x",
-    is_site_admin: bool = False,
 ) -> SeededTeam:
     actor_id, team_id, credential_id = uuid4(), uuid4(), uuid4()
     credential_root_id = uuid4()
@@ -216,13 +371,12 @@ async def seed_team(
     async with pool.acquire() as connection:
         await connection.execute(
             """
-            INSERT INTO portal_users (id, email, password_hash, is_site_admin)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO portal_users (id, email, password_hash)
+            VALUES ($1, $2, $3)
             """,
             actor_id,
             f"{actor_id.hex}@example.test",
             password_hash,
-            is_site_admin,
         )
 
         await connection.execute(
@@ -259,13 +413,16 @@ async def seed_team(
             """
             INSERT INTO portal_team_proxy_credential_versions
                 (id, credential_id, team_id, version, provider, config_ciphertext,
-                 key_id, lifecycle, is_active, created_by)
-            VALUES ($1, $2, $3, 1, 'geonode', $4, 'clave-prueba', 'active', true, $5)
+                 wrapped_data_key, master_key_version, lifecycle, is_active,
+                 created_by)
+            VALUES ($1, $2, $3, 1, 'geonode', $4, $5, $6, 'active', true, $7)
             """,
             credential_id,
             credential_root_id,
             team_id,
-            ciphertext,
+            config.ciphertext,
+            config.wrapped_data_key,
+            config.master_key_version,
             actor_id,
         )
 
@@ -325,8 +482,65 @@ async def object_reference(
     return reference_id
 
 
+async def publish_claimed(
+    pool: asyncpg.Pool,
+    job_repository: PostgresJobRepository,
+    claimed: ClaimedWork,
+    *,
+    status: str = "ok",
+    columns: tuple[str, ...] = ("documento",),
+    rows: tuple[tuple[object, ...], ...] | None = None,
+    error_code: str | None = None,
+    worker_id: str = "trabajador",
+    provider: str = "geonode",
+    lane_index: int = 0,
+    attempts: tuple[AttemptRecord, ...] = (),
+) -> bool:
+    """Publish a claimed item with an entry payload for search assertions."""
+    team_id = await job_repository.item_team(claimed.item_id)
+    assert team_id is not None
+
+    return await job_repository.publish(
+        claimed.item_id,
+        worker_id,
+        claimed.lease_fence,
+        document=claimed.document,
+        source=claimed.source,
+        provider=provider,
+        status=status,
+        columns=columns,
+        rows=rows if rows is not None else ((claimed.document,),),
+        error_code=error_code,
+        result_object_id=await object_reference(
+            pool,
+            team_id,
+            f"salida/{claimed.item_id}.json",
+        ),
+        lane_index=lane_index,
+        attempts=attempts,
+    )
+
+
 def csrf_token(html: str) -> str:
     found = re.search(r'name="csrf_token" value="([^"]+)"', html)
+
+    assert found is not None
+
+    return found.group(1)
+
+
+def hidden_value(html: str, name: str) -> str:
+    """A single hidden <input>'s value, e.g. JobReview's input_object_id.
+
+    djlint wraps a tag with several attributes onto multiple lines and
+    reorders them, so this matches name= and value= independently within
+    one <input ...> tag rather than assuming they are adjacent.
+    """
+    found = re.search(
+        rf'<input\b(?=[^>]*\bname="{re.escape(name)}")'
+        rf'(?=[^>]*\bvalue="([^"]*)")[^>]*>',
+        html,
+    )
 
     assert found is not None
 
@@ -337,16 +551,32 @@ def login(
     client: TestClient,
     email: str,
     password: str = PASSWORD,
+    totp_secret: str | None = None,
 ) -> httpx.Response:
+    """Sign in, completing the second factor when the account asks for one."""
     page = client.get("/login")
 
-    return client.post(
+    response = client.post(
         "/login",
         data={
             "email": email,
             "password": password,
             "csrf_token": csrf_token(page.text),
         },
+        headers={"Origin": ORIGIN},
+        follow_redirects=False,
+    )
+
+    if response.headers.get("location") != "/login/mfa":
+        return response
+
+    return submit_mfa_code(client, pyotp.TOTP(totp_secret or TOTP_SECRET).now())
+
+
+def submit_mfa_code(client: TestClient, code: str) -> httpx.Response:
+    return client.post(
+        "/login/mfa",
+        data={"code": code},
         headers={"Origin": ORIGIN},
         follow_redirects=False,
     )
@@ -360,6 +590,18 @@ def sync_client(app: Litestar) -> TestClient:
     return TestClient(app, base_url=ORIGIN)
 
 
+async def enroll_worker(pool: asyncpg.Pool) -> dict[str, str]:
+    """Register a worker and return the headers it authenticates with."""
+    credential = new_worker_credential()
+
+    await PostgresWorkerRegistry(pool).issue(WORKER_ID, credential, WORKER_HOSTNAME)
+
+    return {
+        "Authorization": f"Bearer {credential}",
+        "X-Portal-Worker": WORKER_ID,
+    }
+
+
 @dataclass(frozen=True)
 class Experience:
     admin_id: UUID
@@ -369,6 +611,22 @@ class Experience:
     credential_id: UUID
 
 
+async def seed_site_admin(pool: asyncpg.Pool, email: str) -> UUID:
+    """Promote a new account, which the schema only allows once MFA exists."""
+    auth = PostgresAuthRepository(pool)
+    protector = EnvelopeProtector(KEYRING)
+    user = await auth.create_account(email, hash_password(PASSWORD))
+
+    await auth.enable_totp(
+        user.id,
+        protector.protect(TOTP_SECRET.encode("utf-8")),
+        (token_hash(RECOVERY_CODE),),
+        promote_to_site_admin=True,
+    )
+
+    return user.id
+
+
 async def build_experience(
     pool: asyncpg.Pool,
     team_repository: PostgresTeamRepository,
@@ -376,26 +634,24 @@ async def build_experience(
     hashed = hash_password(PASSWORD)
     team = await seed_team(pool, password_hash=hashed)
     other = await seed_team(pool, password_hash=hashed)
-    admin_id = await seed_user(pool, email="admin@osiptel.test")
+    admin_id = await seed_site_admin(pool, "admin@osiptel.test")
     member_id = await seed_user(pool, email="miembro@osiptel.test")
 
     await pool.execute(
         """
         UPDATE portal_users
-           SET password_hash = $2,
-               is_site_admin = (id = $1),
+           SET password_hash = $1,
                email = CASE id
-                           WHEN $3 THEN 'lider@osiptel.test'
-                           WHEN $4 THEN 'otro@osiptel.test'
+                           WHEN $2 THEN 'lider@osiptel.test'
+                           WHEN $3 THEN 'otro@osiptel.test'
                            ELSE email
                        END
-         WHERE id = ANY($5::uuid[])
+         WHERE id = ANY($4::uuid[])
         """,
-        admin_id,
         hashed,
         team.actor_id,
         other.actor_id,
-        [admin_id, member_id, team.actor_id, other.actor_id],
+        [member_id, team.actor_id, other.actor_id],
     )
 
     await team_repository.add_member(

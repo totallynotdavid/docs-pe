@@ -1,0 +1,61 @@
+services:
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio-data:/data
+    networks: [dokploy-network]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # Talks to minio by service DNS name, not network_mode: service:minio.
+  # Sharing minio's network namespace made this container's own startup
+  # depend on minio's container ID staying valid: after dockerd restarts
+  # both independently (its own restart-policy engine, not docker compose,
+  # so `depends_on` order doesn't apply), a namespace bound to minio's old
+  # ID fails permanently with "cannot join network namespace of a non
+  # running container" and never self-heals without a manual recreate.
+  # Plain service DNS just retries the TCP connection until minio answers.
+  tailscale:
+    image: tailscale/tailscale:latest
+    networks: [dokploy-network]
+    cap_add: [net_admin, net_raw]
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY_OBJECTSTORAGE}
+      TS_HOSTNAME: portal-object-storage
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_EXTRA_ARGS: --advertise-tags=tag:core
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        /usr/local/bin/containerboot &
+        boot_pid=$!
+        while kill -0 "$$boot_pid" 2>/dev/null; do
+          tailscale --socket=/tmp/tailscaled.sock serve --service=svc:objectstorage --tcp=9000 tcp://minio:9000 >/dev/null 2>&1
+          sleep 10
+        done
+        exit 1
+    volumes:
+      - ts-objectstorage-state:/var/lib/tailscale
+    restart: unless-stopped
+    depends_on:
+      minio:
+        condition: service_healthy
+
+volumes:
+  minio-data:
+    external: true
+    name: ${MINIO_VOLUME_NAME}
+  ts-objectstorage-state:
+
+networks:
+  dokploy-network:
+    external: true

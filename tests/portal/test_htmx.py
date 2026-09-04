@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from portal.security import hash_password
+
 from tests.portal.conftest import (
+    PASSWORD,
     build_experience,
     login,
-    object_reference,
+    publish_claimed,
+    seed_team,
     submit_job,
     sync_client,
 )
@@ -36,14 +40,7 @@ async def _publish_result(
     claimed = await job_repository.claim("trabajador", ("osiptel",))
     assert claimed is not None
     assert claimed.job_id == job_id
-
-    published = await job_repository.publish(
-        claimed.item_id,
-        "trabajador",
-        claimed.lease_fence,
-        await object_reference(pool, team_id, "salida/uno.json"),
-    )
-    assert published
+    assert await publish_claimed(pool, job_repository, claimed)
 
     return job_id
 
@@ -73,7 +70,75 @@ async def test_htmx_search_finds_a_published_result(
 
     assert search.status_code == 200
     assert "10412345678" in search.text
-    assert "registros.csv" in search.text
+    assert "osiptel" in search.text
+    assert f"/teams/{experience.team_id}/entries/" in search.text
+
+
+async def test_search_result_links_to_an_entry_detail_page_that_renders(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    job_repository: PostgresJobRepository,
+    app: Litestar,
+) -> None:
+    experience = await build_experience(pool, team_repository)
+
+    with sync_client(app) as client:
+        assert login(client, "lider@osiptel.test").status_code == 303
+        await _publish_result(
+            pool,
+            job_repository,
+            client,
+            experience.team_id,
+            experience.credential_id,
+        )
+
+        entry_id = await pool.fetchval(
+            "SELECT id FROM portal_entries WHERE document = '10412345678'"
+        )
+        detail = client.get(f"/teams/{experience.team_id}/entries/{entry_id}")
+
+    assert detail.status_code == 200
+    assert "10412345678" in detail.text
+    assert "osiptel" in detail.text
+
+
+async def test_a_team_cannot_reach_another_teams_entry_by_guessing_its_id(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    job_repository: PostgresJobRepository,
+    app: Litestar,
+) -> None:
+    """A team cannot read an entry confirmed only by another team."""
+    owner = await build_experience(pool, team_repository)
+    outsider_team = await seed_team(pool, password_hash=hash_password(PASSWORD))
+
+    with sync_client(app) as client:
+        assert login(client, "lider@osiptel.test").status_code == 303
+        await _publish_result(
+            pool,
+            job_repository,
+            client,
+            owner.team_id,
+            owner.credential_id,
+        )
+
+        entry_id = await pool.fetchval(
+            "SELECT id FROM portal_entries WHERE document = '10412345678'"
+        )
+
+    with sync_client(app) as outsider_client:
+        assert (
+            login(
+                outsider_client,
+                f"{outsider_team.actor_id.hex}@example.test",
+            ).status_code
+            == 303
+        )
+        response = outsider_client.get(
+            f"/teams/{outsider_team.team_id}/entries/{entry_id}"
+        )
+
+    assert response.status_code == 404
 
 
 async def test_htmx_search_shows_an_empty_state_for_no_matches(
@@ -100,7 +165,8 @@ async def test_htmx_search_shows_an_empty_state_for_no_matches(
         )
 
     assert search.status_code == 200
-    assert "No hay resultados" in search.text
+    assert 'class="empty-state"' in search.text
+    assert "Sin resultados" in search.text
 
 
 async def test_htmx_job_list_pagination_links_to_the_next_and_previous_pages(

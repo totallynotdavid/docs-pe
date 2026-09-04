@@ -1,25 +1,29 @@
-{#def user, csrf_token, team, query, results, page, has_more #}
-<Layout :title="'Buscar · ' ~ team.name ~ ' · Worker'"
+{#def user, csrf_token, team, query, results, page, has_more, minimal=False #}
+<Layout :title="'Buscar · ' ~ team.name"
         :user="user"
-        :csrf_token="csrf_token">
-  <TopBar title="Buscar documentos" />
+        :csrf_token="csrf_token"
+        :minimal="minimal"
+        active="team-search"
+        :active_team="team">
+  <TopBar title="Buscar documentos" icon="search" />
+  <SecondaryBar>
+    <SearchForm :action="'/teams/' ~ team.id ~ '/search'"
+                :query="query"
+                :hx-get="'/teams/' ~ team.id ~ '/search'"
+                hx-target="#search-results"
+                hx-push-url="true" />
+  </SecondaryBar>
   <MainContent>
-    <h1 class="sr-only">Buscar documentos en {{ team.name }}</h1>
     <Panel>
       <PanelBody>
-        <SearchForm :action="'/teams/' ~ team.id ~ '/search'"
-                    :query="query"
-                    hx-get="/teams/{{ team.id }}/search"
-                    hx-target="#search-results"
-                    hx-push-url="true" />
+        <div id="search-results">
+          <SearchResultsFragment :team="team"
+                                 :query="query"
+                                 :results="results"
+                                 :page="page"
+                                 :has_more="has_more" />
+        </div>
       </PanelBody>
-      <div id="search-results">
-        <SearchResultsFragment :team="team"
-                               :query="query"
-                               :results="results"
-                               :page="page"
-                               :has_more="has_more" />
-      </div>
     </Panel>
   </MainContent>
 </Layout>

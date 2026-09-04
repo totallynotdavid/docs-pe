@@ -36,8 +36,6 @@ def test_parses_a_verified_debt_response() -> None:
 
 
 def test_parses_a_dni_debt_response() -> None:
-    # The parser is document-kind agnostic: a DNI is just another document
-    # number, echoed back the same way a RUC is.
     debt = {"DocumentNumber": DNI, "DebtTotal": "0.0", "HasPunishment": False}
     result = parse_lookup_result(
         _payload(document=DNI, debt=debt), expected_document=DNI

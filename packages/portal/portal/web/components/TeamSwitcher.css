@@ -1,0 +1,32 @@
+.team-switcher {
+  margin-bottom: var(--spacing-2);
+  position: relative;
+}
+
+.team-switcher__trigger {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--foreground);
+  display: flex;
+  gap: var(--spacing-2);
+  height: var(--spacing-8);
+  justify-content: space-between;
+  padding: 0 var(--spacing-2);
+  width: 100%;
+}
+
+.team-switcher__trigger:hover,
+.team-switcher__trigger[aria-expanded="true"] {
+  background: var(--background-transparent-lighter);
+}
+
+.team-switcher__name {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

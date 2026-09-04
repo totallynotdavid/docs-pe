@@ -1,58 +1,61 @@
 # docs-pe
 
-[![ci](https://github.com/totallynotdavid/phone-numbers-by-carrier/actions/workflows/ci.yml/badge.svg)](https://github.com/totallynotdavid/phone-numbers-by-carrier/actions/workflows/ci.yml)
+Command-line, browser, and portal tools for looking up public Peruvian identity,
+telephone, taxpayer, and number-portability data.
 
-Takes a CSV of Peruvian DNIs or RUCs and looks each one up on public government
-sites. Returns registered phone lines, taxpayer identity records, legal
-representatives, and carrier debt.
+Inputs, state databases, and CSV exports can contain personal data. Keep them
+private, do not commit them, and use the services only where the collection and
+use are authorized.
 
-## Getting started
+Choose the smallest runner that matches the site's protocol. `fetch` handles
+ordinary HTTP at unattended scale, `browser` handles Chrome and browser gates,
+`capture` discovers requests in your own profile, and the portal coordinates
+shared jobs, teams, results, and worker nodes.
 
-```sh
-mise install                              # install toolchain
-mise run install                          # uv sync
-cp .env.example .env                      # then fill in proxy credentials
-uv run --env-file .env fetch --input docs.csv --output out.csv --sites osiptel
-```
+## Get started
 
-The `fetch`, `browser`, and `portal` packages need proxy credentials in `.env`;
-`capture` does not. See [docs/proxies.md](docs/proxies.md) for vendor setup.
-
-Other tasks, all from the repo root:
+Install the pinned toolchain and dependencies:
 
 ```sh
-mise run format                           # ruff format + ruff check --fix
-mise run check                            # mypy across workspace
-mise run test                             # pytest all packages
-mise run build                            # PyInstaller binary for fetch
-mise run dev                              # postgres + portal web (Ctrl+C stops everything)
-mise run reset                            # wipe local postgres; next `mise run dev` starts clean
+mise install
+mise run install
 ```
 
-This is a
-[uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/) with
-four packages. [fetch](packages/fetch/readme.md) makes HTTP requests through
-proxies and is the workhorse; [browser](packages/browser/readme.md) drives
-Chrome over the DevTools protocol for sites that need JS, reCAPTCHA, or similar;
-[capture](packages/capture/readme.md) reverse-engineers a site using your own
-Chrome browser; [portal](packages/portal/readme.md) is the web UI for managing
-fetch jobs, auth, teams, and results. A new site typically starts in `capture`
-(discover the request), moves to `browser` (automate it), then lands in `fetch`
-(run it unattended). Each package keeps its own copy of a site's parser and
-columns rather than sharing code; see
-[docs/architecture.md](docs/architecture.md) for why.
+Create a CSV whose first column contains identifiers, copy the environment
+template, and add proxy credentials to `.env`. See the
+[input format](docs/input-format.md) for accepted forms and normalization:
 
-Results land in `results/` (gitignored). State is stored in SQLite
-(`*.state.sqlite3`), which is the source of truth; see
-[docs/architecture.md](docs/architecture.md) for the job lifecycle, resume
-behavior, and how state works.
+```sh
+printf '%s\n' '12345678' > subjects.csv
+cp .env.example .env
+```
 
-## Read next
+Run a small OSIPTEL lookup:
 
-- [fetch](packages/fetch/readme.md), if you're running a job for the first time
-- [docs/troubleshooting.md](docs/troubleshooting.md), if you're debugging a job
-  failure, then [docs/sites/](docs/sites/) for the specific site
-- [docs/adding-a-site.md](docs/adding-a-site.md), if you're adding a new site
-- [portal](packages/portal/readme.md), if you're running the web UI
-- [docs/architecture.md](docs/architecture.md), if you're reviewing code or want
-  to understand the whole system before picking a package
+```sh
+uv run --env-file .env fetch \
+  --input subjects.csv \
+  --output results/out.csv \
+  --sites osiptel
+```
+
+Inspect a completed or interrupted run from its SQLite state database:
+
+```sh
+uv run fetch-status --output results/out.csv
+```
+
+See [Documentation](docs/readme.md) for the state model, troubleshooting, output
+files, and other task guides.
+
+## Choose a runner
+
+| Tool | Use it when |
+| --- | --- |
+| [`fetch`](packages/cli/readme.md) | The site accepts ordinary HTTP requests and the job needs unattended scale. |
+| [`browser`](packages/browser/readme.md) | The site needs Chrome, JavaScript, or browser reputation. |
+| [`capture`](packages/capture/readme.md) | You need to discover a request with your own Chrome profile. |
+| [`portal`](packages/portal/readme.md) | People need job submission, teams, reusable results, and a worker fleet. |
+
+See [Documentation](docs/readme.md) for the full task index. Contributors
+should read [Contributing](CONTRIBUTING.md).

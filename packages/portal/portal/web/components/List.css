@@ -1,21 +1,21 @@
 .list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .list li {
   align-items: center;
-  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
   display: flex;
-  gap: 16px;
+  gap: var(--spacing-4);
   justify-content: space-between;
-  min-height: 53px;
-  padding: 9px 17px;
+  min-height: var(--spacing-12);
+  padding: var(--spacing-3) var(--spacing-4);
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
-.list li:last-child {
-  border-bottom: 0;
+.list li:first-child {
+  border-top: 0;
 }
 
 .list li:hover {
@@ -31,53 +31,15 @@
   text-decoration: underline;
 }
 
-.meta {
-  color: var(--foreground-tertiary);
-  font-size: var(--font-size-caption);
-}
-
-.status {
-  color: var(--foreground-secondary);
-  font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-medium);
-}
-
-.status--completed {
-  color: var(--success);
-}
-
-.status--failed,
-.status--cancelled {
-  color: var(--destructive);
-}
-
-.status--cancelling {
-  color: var(--warning);
-}
-
-.empty-state {
-  color: var(--foreground-secondary);
-  padding: 25px 17px;
-}
-
 .list--plain {
   color: var(--foreground-secondary);
-  margin: 10px 0;
-  padding-left: 20px;
+  list-style: disc;
+  margin: var(--spacing-2) 0;
+  padding-left: var(--spacing-5);
 }
 
 .list--plain li {
-  margin: 4px 0;
-}
-
-.pagination {
-  margin: 16px 17px;
-}
-
-.pagination a {
-  color: var(--color-blue-11);
-  font-weight: var(--font-weight-medium);
-  margin-right: 14px;
+  margin: var(--spacing-1) 0;
 }
 
 @media (max-width: 720px) {
