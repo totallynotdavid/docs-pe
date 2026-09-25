@@ -19,7 +19,7 @@ Focused work, when a full run is too slow:
 
 ```
 uv run pytest tests/cli                          no database needed
-uv run pytest tests/portal                       starts a postgres cluster
+mise x -- uv run pytest tests/portal             after mise run db:start objects:start; mise x supplies this checkout's ports
 uv run pytest tests/core/sites/osiptel/test_lookup.py::test_name
 uv run mypy packages/portal
 uv run ruff check packages/portal
