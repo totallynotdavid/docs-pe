@@ -22,14 +22,15 @@ x-portal-environment: &portal-environment
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?}
       POSTGRES_USER: ${POSTGRES_USER:?}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    # The 18 image keeps its cluster in a versioned subdirectory of this path.
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     ports:
       - ${POSTGRES_PUBLISHED_PORT:-5432}:5432
     restart: unless-stopped
