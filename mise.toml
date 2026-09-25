@@ -33,7 +33,8 @@ description = "Refresh vendored browser assets"
 run = ["npm ci --no-audit --no-fund", "npm run vendor"]
 
 [tasks."portal:docker:build"]
-run = "docker build --file packages/portal/Dockerfile --tag portal ."
+description = "Build the portal image and tag it as PORTAL_IMAGE (default portal:local)"
+run = 'docker build --file packages/portal/Dockerfile --tag "${PORTAL_IMAGE:-portal:local}" .'
 
 [tasks."portal:key"]
 description = "Write the local master key file if it is missing"

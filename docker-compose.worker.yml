@@ -1,8 +1,15 @@
 services:
   worker:
-    build:
-      context: .
-      dockerfile: packages/portal/Dockerfile
+    image: ${PORTAL_IMAGE:?}
     command: ["python", "-m", "portal.worker.agent"]
-    env_file: [.env]
+    # The agent chooses the mode: self-enrollment when the bootstrap token is
+    # set, otherwise the fixed credential and DSN from `portal-admin worker issue`.
+    environment:
+      PORTAL_WORKER_API_URL: ${PORTAL_WORKER_API_URL:?}
+      PORTAL_WORKER_ID: ${PORTAL_WORKER_ID:?}
+      PORTAL_WORKER_BOOTSTRAP_TOKEN: ${PORTAL_WORKER_BOOTSTRAP_TOKEN:-}
+      PORTAL_WORKER_TAILSCALE_HOSTNAME: ${PORTAL_WORKER_TAILSCALE_HOSTNAME:-}
+      PORTAL_WORKER_CREDENTIAL: ${PORTAL_WORKER_CREDENTIAL:-}
+      PORTAL_WORKER_DATABASE_DSN: ${PORTAL_WORKER_DATABASE_DSN:-}
+      PORTAL_WORKER_CONCURRENCY: ${PORTAL_WORKER_CONCURRENCY:-}
     restart: unless-stopped

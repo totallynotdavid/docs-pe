@@ -1,0 +1,146 @@
+# The portal core. Deploys as raw Compose text: no repository files and no
+# build, so every portal service runs the prebuilt ${PORTAL_IMAGE}.
+# docs/operations/portal-topology.md describes the network boundary.
+
+x-portal-environment: &portal-environment
+  PORTAL_ENVIRONMENT: ${PORTAL_ENVIRONMENT:-production}
+  PORTAL_PUBLIC_ORIGIN: ${PORTAL_PUBLIC_ORIGIN:?}
+  PORTAL_TLS_TERMINATED_UPSTREAM: ${PORTAL_TLS_TERMINATED_UPSTREAM:-true}
+  PORTAL_DATABASE_DSN: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+  PORTAL_MASTER_KEY_FILE: /app/.data/keys/master.key
+  PORTAL_OBJECT_STORAGE_ENDPOINT: http://garage:3900
+  PORTAL_OBJECT_STORAGE_REGION: garage
+  PORTAL_OBJECT_STORAGE_BUCKET: ${GARAGE_DEFAULT_BUCKET:?}
+  PORTAL_OBJECT_STORAGE_ACCESS_KEY: ${GARAGE_DEFAULT_ACCESS_KEY:?}
+  PORTAL_OBJECT_STORAGE_SECRET_KEY: ${GARAGE_DEFAULT_SECRET_KEY:?}
+  PORTAL_TURNSTILE_SITE_KEY: ${PORTAL_TURNSTILE_SITE_KEY:-}
+  PORTAL_TURNSTILE_SECRET: ${PORTAL_TURNSTILE_SECRET:-}
+  PORTAL_RESEND_API_KEY: ${PORTAL_RESEND_API_KEY:-}
+  PORTAL_MAIL_FROM: ${PORTAL_MAIL_FROM:-}
+  PORTAL_WORKER_BOOTSTRAP_TOKEN: ${PORTAL_WORKER_BOOTSTRAP_TOKEN:-}
+  PORTAL_WORKER_DATABASE_ADDRESS: ${PORTAL_WORKER_DATABASE_ADDRESS:-}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?}
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - ${POSTGRES_PUBLISHED_PORT:-5432}:5432
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  garage:
+    image: dxflrs/garage:v2.3.0
+    command: ["/garage", "server", "--single-node", "--default-bucket"]
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?}
+      GARAGE_DEFAULT_ACCESS_KEY: ${GARAGE_DEFAULT_ACCESS_KEY:?}
+      GARAGE_DEFAULT_SECRET_KEY: ${GARAGE_DEFAULT_SECRET_KEY:?}
+      GARAGE_DEFAULT_BUCKET: ${GARAGE_DEFAULT_BUCKET:?}
+    configs:
+      - source: garage
+        target: /etc/garage.toml
+    volumes:
+      - garage-data:/var/lib/garage
+    restart: unless-stopped
+    healthcheck:
+      # The image has no shell. The bucket exists only once --default-bucket
+      # has finished, so this is also the readiness signal for S3 clients.
+      test: ["CMD", "/garage", "bucket", "info", "${GARAGE_DEFAULT_BUCKET:?}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  init:
+    image: ${PORTAL_IMAGE:?}
+    environment: *portal-environment
+    command:
+      - sh
+      - -ec
+      - |
+        if [ ! -e "$$PORTAL_MASTER_KEY_FILE" ]; then
+          portal-admin key install --path "$$PORTAL_MASTER_KEY_FILE" --version v1
+        fi
+        portal-admin migrate
+    volumes:
+      - master-key:/app/.data/keys
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    image: ${PORTAL_IMAGE:?}
+    command: ["python", "-m", "portal.web.app"]
+    environment: *portal-environment
+    volumes:
+      - master-key:/app/.data/keys:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 2)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      garage:
+        condition: service_healthy
+
+  worker-api:
+    image: ${PORTAL_IMAGE:?}
+    command: ["python", "-m", "portal.worker.api"]
+    environment:
+      <<: *portal-environment
+      PORTAL_WORKER_API_HOST: 0.0.0.0
+      PORTAL_WORKER_API_PORT: 8443
+      PORTAL_WORKER_API_WORKERS: ${PORTAL_WORKER_API_WORKERS:-4}
+    volumes:
+      - master-key:/app/.data/keys:ro
+    ports:
+      - ${WORKER_API_PUBLISHED_PORT:-8443}:8443
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8443), 2)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      garage:
+        condition: service_healthy
+
+configs:
+  garage:
+    content: |
+      metadata_dir = "/var/lib/garage/meta"
+      data_dir = "/var/lib/garage/data"
+      db_engine = "lmdb"
+      replication_factor = 1
+
+      rpc_bind_addr = "[::]:3901"
+      rpc_public_addr = "127.0.0.1:3901"
+
+      [s3_api]
+      s3_region = "garage"
+      api_bind_addr = "[::]:3900"
+
+volumes:
+  postgres-data:
+  garage-data:
+  master-key:
