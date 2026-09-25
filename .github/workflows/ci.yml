@@ -92,6 +92,11 @@ jobs:
 
       - run: uv run mypy .
 
+      - name: Check the AWS test infrastructure
+        run: |
+          mise install terraform shellcheck
+          mise run --skip-tools infra:check
+
       # The database is disposable, and service containers cannot receive
       # these PostgreSQL server flags directly.
       - name: Disable PostgreSQL durability
