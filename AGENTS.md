@@ -10,6 +10,7 @@ mise run format        ruff format + ruff check --fix
 mise run check         mypy across the repository
 mise run test          pytest across every package, portal included
 mise run build         PyInstaller single binary for fetch
+mise run infra:check   shellcheck and terraform validate for the AWS test servers (infra/aws)
 mise run dev           start postgres, bootstrap, and run the portal (Ctrl+C stops everything)
 mise run reset         wipe the local postgres cluster; next `mise run dev` starts clean
 ```

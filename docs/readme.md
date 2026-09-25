@@ -24,6 +24,7 @@ shortest command-line introduction.
 | Apply or change the portal schema | [`Schema changes`](operations/portal-deployment.md#schema-changes) |
 | Add or remove a worker node | [`Worker fleet`](operations/worker-fleet.md) |
 | Run a multi-host fetch | [`Sharded fetch`](operations/sharded-fetch.md) |
+| Create disposable AWS test servers | [`AWS test servers`](../infra/aws/readme.md) |
 | Perform trusted portal SQL intervention | [`Portal SQL runbook`](../packages/portal/operations.md) |
 | Read dated measurements | [`Historical results`](reports/results.md) |
 
