@@ -112,4 +112,7 @@ jobs:
       - name: Test
         env:
           PORTAL_TEST_DSN: postgresql://postgres:postgres@127.0.0.1:5432/postgres
-        run: uv run pytest
+        # The tests find MinIO at the port mise derives for this checkout.
+        run: |
+          eval "$(mise env --shell bash)"
+          uv run pytest
