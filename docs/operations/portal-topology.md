@@ -24,7 +24,7 @@ the worker's scoped PostgreSQL role.
 
 | Service | Image | Purpose | Host port |
 | --- | --- | --- | ---: |
-| `postgres` | `postgres:17-alpine` | Portal database | `POSTGRES_PUBLISHED_PORT` (5432) |
+| `postgres` | `postgres:18-alpine` | Portal database | `POSTGRES_PUBLISHED_PORT` (5432) |
 | `garage` | `dxflrs/garage:v2.3.0` | S3 object store, single node | none |
 | `init` | `${PORTAL_IMAGE}` | One shot: master key, then migrations | none |
 | `web` | `${PORTAL_IMAGE}` | Browser application on port 8000 | none |
@@ -104,7 +104,9 @@ tailnet name and `POSTGRES_PUBLISHED_PORT`. The database name and options come
 from the core's own DSN. Production validation refuses to start without the
 setting.
 
-Workers set `PORTAL_WORKER_API_URL` to `http://<core host>:<published worker-api port>`.
+Workers set `PORTAL_WORKER_API_URL` to `http://<core host>:<published worker-api port>`,
+which the deploy tool derives from `PORTAL_WORKER_DATABASE_ADDRESS` and
+`WORKER_API_PUBLISHED_PORT`.
 
 ## Connection budget
 

@@ -49,8 +49,10 @@ restate its content in a package readme:
   sunat, portabilidad)
 - `docs/adding-a-site.md`: capture → browser → core workflow
 - `docs/reports/results.md`: historical job measurements
-- `docs/operations/portal-deployment.md`: Dokploy topology, cloudflared edge,
-  master key, tailnet
+- `docs/operations/portal-deployment.md`: deploying with `ops/deploy.py`,
+  adding and removing workers, master key, the end-to-end test
+- `docs/operations/portal-topology.md`: Compose layout, cloudflared edge,
+  published ports, tailnet
 
 See `ARCHITECTURE.md` for:
 

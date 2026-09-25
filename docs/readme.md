@@ -22,7 +22,8 @@ shortest command-line introduction.
 | Deploy the portal | [`Portal deployment`](operations/portal-deployment.md) |
 | Understand portal network boundaries | [`Portal topology`](operations/portal-topology.md) |
 | Apply or change the portal schema | [`Schema changes`](operations/portal-deployment.md#schema-changes) |
-| Add or remove a worker node | [`Worker fleet`](operations/worker-fleet.md) |
+| Add or remove a worker node | [`Deploy`](operations/portal-deployment.md#deploy) |
+| Test a deployment end to end | [`End-to-end test`](operations/portal-deployment.md#end-to-end-test) |
 | Run a multi-host fetch | [`Sharded fetch`](operations/sharded-fetch.md) |
 | Create disposable AWS test servers | [`AWS test servers`](../infra/aws/readme.md) |
 | Perform trusted portal SQL intervention | [`Portal SQL runbook`](../packages/portal/operations.md) |
