@@ -4,6 +4,9 @@ python = "3.14.7"
 postgres = "18.6"
 minio = "2025.01.20.14.49.07"
 node = "26.8.1"
+terraform = "1.16"
+aws-cli = "2"
+shellcheck = "0.11.0"
 
 [tasks.install]
 run = "uv sync --all-groups"
@@ -64,7 +67,7 @@ depends = ["db:init", "objects:init", "portal:key"]
 run = """
 data_dir="$PWD/.data/postgres"
 
-# Development owns its postmaster. Stop a cluster left by `db:start` first.
+# development controls its postmaster; stop a cluster left by db:start first.
 mise x postgres -- pg_ctl -D "$data_dir" stop -m fast -w 2>/dev/null || true
 
 # The local cluster is disposable, so use relaxed durability for faster writes.
@@ -164,6 +167,35 @@ run = [
   "uv run mypy .",
   "uv run djlint packages/portal/portal/web/components packages/portal/portal/web/pages --check",
 ]
+
+[tasks."infra:check"]
+description = "Lint the AWS test script and validate its Terraform"
+run = [
+  "shellcheck scripts/e2e-aws.sh",
+  "terraform -chdir=infra/aws fmt -check -recursive",
+  "terraform -chdir=infra/aws init -input=false -backend=false",
+  "terraform -chdir=infra/aws validate",
+]
+
+[tasks."e2e:aws"]
+description = "Create core and worker on AWS, provision them, run the hook, and destroy them"
+run = "scripts/e2e-aws.sh all"
+
+[tasks."e2e:aws:up"]
+description = "Create core and worker on AWS and print their public IPs"
+run = "scripts/e2e-aws.sh up"
+
+[tasks."e2e:aws:provision"]
+description = "Run vps-setup on both servers, then install Docker and Dokploy"
+run = "scripts/e2e-aws.sh provision"
+
+[tasks."e2e:aws:down"]
+description = "Destroy both AWS servers"
+run = "scripts/e2e-aws.sh down"
+
+[tasks."e2e:aws:sweep"]
+description = "Terminate AWS test leftovers older than two hours"
+run = "scripts/e2e-aws.sh sweep"
 
 [tasks.test]
 depends = ["db:start", "objects:start"]
