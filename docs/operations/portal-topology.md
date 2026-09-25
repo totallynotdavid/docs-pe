@@ -1,82 +1,112 @@
 # Portal topology
 
-This page describes the production network and Compose layout. It is a
-reference for the person configuring Tailscale and Dokploy. Follow
+This page describes the Compose layout and network boundary of one portal
+deployment. It is a reference for the person configuring Dokploy, host
+provisioning, and the tailnet policy. Follow
 [Portal deployment](portal-deployment.md) for the release procedure.
 
 ## Traffic boundaries
 
 ```text
 browser -> Cloudflare -> cloudflared -> web
-web -> PostgreSQL, object store, master key
-worker-api -> PostgreSQL, object store, master key
-worker node -> worker-api (Tailscale)
-worker node -> PostgreSQL (scoped role)
+web, worker-api, init -> postgres, garage     (project network)
+worker node -> worker-api                     (core host, published 8443)
+worker node -> postgres                       (core host, published 5432, scoped role)
 ```
 
-The worker API has no public route. Workers reach it over the tailnet for
-enrollment, credential reveals, and result publication. Queue, heartbeat, and
-proxy-slot operations use the worker's scoped PostgreSQL role.
+The worker API has no public route. Workers reach it for enrollment, credential
+reveals, and result publication. Queue, heartbeat, and proxy-slot operations use
+the worker's scoped PostgreSQL role.
 
-PostgreSQL, object storage, and `worker-api` each run behind a Tailscale
-sidecar. Each sidecar advertises a `svc:` Service instead of binding a host port:
+## The core Compose file
 
-| Service | Port | Consumer |
-| --- | ---: | --- |
-| `svc:database` | 5432 | Worker nodes and portal processes |
-| `svc:objectstorage` | 9000 | Worker-api and portal processes |
-| `svc:worker-api` | 8443 | Worker nodes |
+`docker-compose.core.yml` is the whole core of a deployment:
 
-The ACL policy grants these services to `tag:worker-fleet` only. Put
-`tag:core` on the shared-service sidecars, not on their host, and put
-`tag:worker-fleet` on every worker node.
+| Service | Image | Purpose | Host port |
+| --- | --- | --- | ---: |
+| `postgres` | `postgres:17-alpine` | Portal database | `POSTGRES_PUBLISHED_PORT` (5432) |
+| `garage` | `dxflrs/garage:v2.3.0` | S3 object store, single node | none |
+| `init` | `${PORTAL_IMAGE}` | One shot: master key, then migrations | none |
+| `web` | `${PORTAL_IMAGE}` | Browser application on port 8000 | none |
+| `worker-api` | `${PORTAL_IMAGE}` | Worker API on port 8443 | `WORKER_API_PUBLISHED_PORT` (8443) |
 
-## Tailscale and Dokploy prerequisites
+The file deploys as raw text (Dokploy's "raw" Compose source). It binds no
+repository file and builds nothing: every portal service runs the prebuilt
+`PORTAL_IMAGE`, and Garage's configuration is inline in a top-level `configs:`
+entry.
 
-Define all three Services in the Tailscale admin console with their port and
-`do-not-validate` in the endpoint field. These endpoints carry PostgreSQL wire,
-S3, or the worker API's own HTTP protocol, so the default endpoint probe cannot
-validate them. An ACL grant and a running sidecar do not create the Service
-resource required by auto-approvers or service advertisement.
+Garage runs `garage server --single-node --default-bucket`. It configures its
+own single-node layout and creates the access key and bucket named by
+`GARAGE_DEFAULT_ACCESS_KEY`, `GARAGE_DEFAULT_SECRET_KEY`, and
+`GARAGE_DEFAULT_BUCKET`. Its S3 region is `garage`. Its health check passes only
+once the bucket exists.
 
-Give each shared-service sidecar a reusable auth key with ephemeral nodes
-enabled: `TS_AUTHKEY_DATABASE`, `TS_AUTHKEY_OBJECTSTORAGE`, and
-`TS_AUTHKEY_WORKER_API`.
+The file derives the internal addresses itself. Portal processes connect to
+`postgres:5432` with the `POSTGRES_*` credentials and to `http://garage:3900`
+with the Garage key. The operator does not set `PORTAL_DATABASE_DSN` or any
+`PORTAL_OBJECT_STORAGE_*` variable for the core.
 
-All Compose projects use the external `dokploy-network`. The worker API Compose
-file uses the container path in `PORTAL_MASTER_KEY_FILE`; the web container must
-use the path at which its own read-only master-key mount appears.
+### Startup order
 
-## Web DNS
+`init` starts once PostgreSQL is healthy. It installs master key `v1` if the
+`master-key` volume has none, then runs `portal-admin migrate`. `web` and
+`worker-api` start only after `init` exits successfully and Garage is healthy.
 
-`web` runs as a Dokploy application, which is a Docker Swarm service. Its task
-DNS does not include Tailscale's MagicDNS resolver. After every `web` deploy,
-apply the resolver manually:
+A later `up` runs `init` again. It finds the key, finds no pending migration,
+and changes nothing. The long-running services keep their containers.
 
-```sh
-docker service update --dns-add 100.100.100.100 <web's Swarm service name>
-```
+### Volumes
 
-Dokploy recreates the Swarm service from its stored specification on every
-deploy, so the override is lost and `*.ts.net` lookups fail until it is applied
-again. Find the service name with `docker service ls`, matching Dokploy's
-`appName` for the `web` application.
+All volumes are ordinary named volumes owned by the Compose project, so their
+Docker names carry the project name as a prefix:
 
-`web` stays on Swarm because it needs a domain and Traefik routing. Worker nodes
-use plain Compose and do not need this DNS override. The fleet uses the Dokploy
-Compose resource defined by `docker-compose.worker.yml`, not `docker service`.
+| Volume | Contents |
+| --- | --- |
+| `postgres-data` | PostgreSQL cluster |
+| `garage-data` | Garage metadata and object blocks |
+| `master-key` | `master.key`, mounted at `/app/.data/keys` |
 
-## Volumes and sidecar advertisement
+`init` mounts `master-key` read-write. `web` and `worker-api` mount it
+read-only. No other process holds the key.
 
-For an existing installation, set `POSTGRES_VOLUME_NAME` and
-`MINIO_VOLUME_NAME` to the current Docker volume names. Confirm them with
-`docker volume ls` before starting Compose. A new name creates an empty store.
+## Isolation between deployments
 
-Each shared-service sidecar runs `tailscale serve --service=...` directly and
-reasserts the endpoint every 10 seconds. `TS_SERVE_CONFIG` does not reliably
-apply the `services:` endpoint mapping through containerboot, and a configured
-endpoint does not survive a sidecar restart. If containerboot exits, the wrapper
-also exits so `restart: unless-stopped` can recreate the sidecar.
+Each deployment is its own Compose project with its own default network and its
+own volumes. No service names an external network. Dokploy attaches
+`dokploy-network` itself, and only to a service that has a domain, which is
+`web`. PostgreSQL, Garage, and `worker-api` never join a network another project
+shares, so no other project can resolve `postgres` to this deployment. When
+Dokploy adds `dokploy-network` to `web`, it also adds `default`, so `web` keeps
+reaching PostgreSQL and Garage on the project network.
+
+Two deployments on one host need different `POSTGRES_PUBLISHED_PORT` and
+`WORKER_API_PUBLISHED_PORT` values.
+
+### Published ports
+
+PostgreSQL and `worker-api` publish their ports on the host. Host provisioning
+makes those ports answer only on loopback and to tailnet peers. Docker forwards
+published ports through its own chains, so the restriction belongs in
+`DOCKER-USER` and must match the ingress interface. A container of another
+project on the same host reaches the host's address from a Docker bridge, and
+without that rule it would reach the published port.
+
+The tailnet policy grants each deployment's worker nodes TCP 5432 and 8443 on
+that deployment's core host, and nothing on another deployment's core host.
+
+## Worker-facing addresses
+
+`worker-api` reaches PostgreSQL as `postgres:5432`, which a worker node cannot
+resolve. The DSN it hands a worker at enrollment, and the one
+`portal-admin worker issue` prints, takes its host and port from
+`PORTAL_WORKER_DATABASE_ADDRESS` (`host` or `host:port`): the core host's
+tailnet name and `POSTGRES_PUBLISHED_PORT`. The database name and options come
+from the core's own DSN. Production validation refuses to start without the
+setting.
+
+Workers set `PORTAL_WORKER_API_URL` to `http://<core host>:<published worker-api port>`.
+
+## Connection budget
 
 Budget PostgreSQL connections for every web, worker-api, worker, admin, and
 operator process. Each worker also keeps a dedicated connection for
