@@ -214,8 +214,8 @@ def test_run_drops_already_done_rucs_on_a_resumed_run(
 def test_budget_clamps_a_cli_override_to_the_sites_own_ceiling(
     tmp_path: Path,
 ) -> None:
-    # OSIPTEL needs a fresh session per lookup; a multi-site --session-budget
-    # meant for a looser site must not relax that.
+    # OSIPTEL needs a fresh session per lookup. A --session-budget meant for a
+    # looser site must not relax that.
     osiptel = fake_site("osiptel", "value", session_budget=1)
     cfg = _cfg(tmp_path, tmp_path / "in.csv", (osiptel,))
 

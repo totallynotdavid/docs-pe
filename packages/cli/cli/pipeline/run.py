@@ -137,7 +137,8 @@ async def _run_workers(
     run_id: str,
     totals: dict[str, RunTotals],
 ) -> None:
-    # Slot ids are process-global because sticky proxy ports cannot collide.
+    # Slot ids count per provider across every site, so no two lanes in this
+    # process share a sticky proxy port.
     next_slot = {provider.name: 0 for provider in providers}
     lane_id = 0
 

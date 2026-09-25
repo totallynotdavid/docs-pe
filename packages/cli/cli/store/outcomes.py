@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 """
 
-# Success is terminal, clears error details, and cannot be overwritten by failure.
+# Success always overwrites. The failure and not-found upserts leave an `ok`
+# row alone.
 UPSERT_SUCCESS = """
 INSERT INTO outcomes
     (site, doc, status, payload, error_code, error_detail,
