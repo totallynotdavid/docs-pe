@@ -33,7 +33,6 @@ async def test_two_teams_confirming_the_same_document_share_one_entry_row(
     service: PortalService,
     job_repository: PostgresJobRepository,
 ) -> None:
-    """Publishing the same document and source for two teams updates one entry."""
     team_a = await seed_team(pool)
     team_b = await seed_team(pool)
 
@@ -167,7 +166,6 @@ async def test_reuse_eligibility_never_crosses_the_team_boundary(
     service: PortalService,
     job_repository: PostgresJobRepository,
 ) -> None:
-    """Reuse eligibility is scoped to the team that confirmed the entry."""
     team_a = await seed_team(pool)
     team_b = await seed_team(pool)
 

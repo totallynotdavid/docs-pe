@@ -40,10 +40,10 @@ POLL_INTERVAL_SECONDS = 0.05
 
 @pytest.fixture(autouse=True)
 def _stub_the_external_network(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Stand in for the only two things a real fetch reaches outside this
-    process: the target site's HTTP response and the proxy provider's own
-    session. Claiming, credential reveal, execution's retry/breaker
-    plumbing, publishing, and the S3 write all still run for real."""
+    """Stub the target site's response and the proxy provider's session, the
+    two services a fetch reaches beyond the test's own Postgres and MinIO.
+    Claiming, credential reveal, retry and breaker handling, publishing and the
+    S3 write run for real."""
     monkeypatch.setitem(
         site_registry.SITES,
         "osiptel",
@@ -74,7 +74,6 @@ async def test_worker_agent_claims_executes_and_publishes_the_happy_path(
     job_repository: PostgresJobRepository,
     worker_client: AsyncTestClient,
 ) -> None:
-    """A worker claims, executes, and publishes a queued item."""
     team = await seed_team(
         pool,
         config=protector.protect(encode_config({"password": "no-importa"})),

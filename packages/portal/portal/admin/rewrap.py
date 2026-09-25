@@ -22,12 +22,12 @@ class Rewrapped(NamedTuple):
 async def rewrap(pool: Pool, keyring: MasterKeyring) -> Rewrapped:
     """Move every stored data key onto the active master key.
 
-    Only the wrapped data key changes. Payload ciphertext is never read, never
-    decrypted, and never rewritten, so this runs in one pass over small blobs
-    however large the payloads are. Once it reports zero rows left behind, the
-    superseded key can be deleted from the key file.
+    Only the wrapped data key and its master key version change. Payload
+    ciphertext is never read, decrypted, or rewritten, so this runs in one pass
+    over small blobs however large the payloads are. Once a run rewraps zero
+    rows, the superseded key can be deleted from the key file.
 
-    Rows are updated one at a time on purpose: a partial run is safe, because
+    Rows are updated one at a time on purpose. A partial run is safe, because
     every row still names the key that wraps it, and rerunning finishes the job.
     """
     return Rewrapped(

@@ -311,8 +311,6 @@ function setupRecoveryCodes() {
   });
 }
 
-// WebAuthn uses binary values while the API represents them as base64url text.
-
 function base64urlToBuffer(value) {
   const padded = value.replace(/-/g, "+").replace(/_/g, "/");
   const withPadding = padded.padEnd(padded.length + ((4 - (padded.length % 4)) % 4), "=");

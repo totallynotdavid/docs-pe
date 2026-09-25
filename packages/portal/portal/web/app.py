@@ -61,8 +61,8 @@ def create_web_app(settings: PortalSettings | None = None) -> Litestar:
     resolved = settings or PortalSettings.from_environment()
     resolved.validate()
 
-    # Loaded here rather than on first use: a key file that is missing or
-    # malformed should stop the process at startup, not the first login.
+    # Loaded before the app exists, so a missing or malformed key file stops
+    # the process at startup rather than at the first login.
     return _build(resolved, MasterKeyring.from_file(resolved.master_key_file))
 
 
@@ -134,9 +134,9 @@ def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
 
     middleware: list[Middleware] = [SecurityHeaders, RememberLastTeam]
 
-    # Not gated on PORTAL_ENVIRONMENT: a deployment that declares an https
-    # origin gets the redirect, and one that terminates TLS upstream would
-    # otherwise loop forever redirecting traffic it already received over https.
+    # The redirect follows the declared origin, not PORTAL_ENVIRONMENT. Behind
+    # upstream TLS termination every request arrives as plain HTTP, so
+    # redirecting it would loop forever.
     if settings.serves_https and not settings.tls_terminated_upstream:
         middleware.insert(0, HTTPSRedirect)
 
@@ -173,8 +173,6 @@ def run(argv: Sequence[str]) -> None:
     settings = PortalSettings.from_environment()
     settings.validate()
 
-    # Trust only Cloudflare's client-address header. `proxy_headers` would trust
-    # client-supplied forwarding headers at the local proxy.
     uvicorn.run(
         create_web_app(settings),
         host="0.0.0.0",

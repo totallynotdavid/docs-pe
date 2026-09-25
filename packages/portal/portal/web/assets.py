@@ -9,7 +9,6 @@ STATIC_DIR = Path(__file__).with_name("static")
 
 
 def _hashed_stylesheet(content: str, prefix: str, static_dir: Path) -> str:
-    """Write `content` under a content-hashed filename."""
     digest = hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
     filename = f"{prefix}.{digest}.css"
     path = static_dir / filename
@@ -41,7 +40,6 @@ def build_component_stylesheet(
 
 
 def build_tokens_stylesheet(static_dir: Path = STATIC_DIR) -> str:
-    """Serve the design tokens under a content-hashed name."""
     content = (static_dir / "tokens.css").read_text(encoding="utf-8")
 
     return _hashed_stylesheet(content, "tokens", static_dir)

@@ -55,8 +55,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CONCURRENCY = 25
 
-# Release idle sticky sessions so finite shared slots remain available to other
-# workers.
+# A lane closes its sticky session after this many idle dispatch rounds, so
+# finite shared slots return to other workers.
 IDLE_SESSION_CLOSE_AFTER = 5
 
 # Keep heartbeats ahead of stale-worker cleanup so live workers retain their
@@ -145,11 +145,10 @@ class WorkerAgent:
         )
 
     async def run(self) -> None:
-        """Run the worker with resources created from its configuration."""
-        # Lanes hold this pool only for brief claim/slot/heartbeat calls, never
-        # for the length of a fetch, so its size doesn't scale with
-        # concurrency. Keep it in step with the role's CONNECTION LIMIT in
-        # repository/workers.py.
+        # Lanes hold a connection only for brief claim, slot and heartbeat
+        # calls, never for a fetch, so the pool does not grow with concurrency.
+        # The worker role's CONNECTION LIMIT must cover this pool and the
+        # LISTEN connection.
         pool = await asyncpg.create_pool(
             self.options.database_dsn,
             min_size=2,
@@ -236,8 +235,8 @@ class WorkerAgent:
                 )
                 await slots.renew(worker_id=self.options.worker_id, held=held_slots)
             except (asyncpg.PostgresError, OSError):
-                # A missed heartbeat just makes the worker look briefly stale;
-                # it must never take down the claim/execute/publish loops.
+                # A missed heartbeat only makes the worker look briefly stale.
+                # It must not stop the claim, execute and publish loops.
                 logger.warning("worker_heartbeat_failed", exc_info=True)
 
     async def _listen_loop(self) -> None:
@@ -340,7 +339,8 @@ class WorkerAgent:
     def _assign(
         self, lane_indices: list[int], claimed: tuple[ClaimedWork, ...]
     ) -> list[int]:
-        """Hand each claimed item to one idle lane."""
+        """Hand each claimed item to one idle lane. Return the lanes left
+        without an item."""
         for lane_index, work in zip(lane_indices, claimed, strict=False):
             self._queues[lane_index].put_nowait(work)
             self._idle_lanes.discard(lane_index)
@@ -394,7 +394,8 @@ class WorkerAgent:
         claimed: ClaimedWork,
         lane_index: int,
     ) -> WorkLease:
-        """Use this claim's provider credential and close a changed one."""
+        """A lane keeps its provider session only across claims with the same
+        source and credential version."""
         key = (claimed.source, claimed.credential_version_id)
 
         if lane.key is not None and lane.key != key:
@@ -438,7 +439,8 @@ class WorkerAgent:
                 self._credential_cache.move_to_end(credential_version_id)
                 return credential
 
-            # Re-reveal after the TTL so credential rotation reaches this worker.
+            # Dropping the entry after the TTL lets a credential rotation reach
+            # this worker.
             del self._credential_cache[credential_version_id]
 
         response = await client.post(
@@ -467,7 +469,6 @@ class WorkerAgent:
         slots: PostgresProxySlots,
         lane: LaneSession,
     ) -> None:
-        """Close the lane session and release its provider slot, if held."""
         if lane.provider is not None:
             with contextlib.suppress(Exception):
                 await close_session(lane.state, provider=lane.provider)
@@ -584,7 +585,8 @@ class WorkerAgent:
     async def _claim_slot(
         self, slots: PostgresProxySlots, provider_name: str, lane_index: int
     ) -> int:
-        """Return a fleet slot for providers that use a shared pool."""
+        """A provider without a shared slot pool gets the lane number, counted
+        from 1."""
         if spec_for(provider_name).tuning.slot_pool is None:
             return lane_index + 1
 
@@ -598,8 +600,9 @@ class WorkerAgent:
             if slot_id is not None:
                 return slot_id
 
-            # Every real slot is leased to a still-live worker somewhere in
-            # the fleet: back off and retry rather than fail this lookup.
+            # No slot was claimable this moment: each one is either under an
+            # unexpired lease or row-locked by another worker's claim, which
+            # SKIP LOCKED passes over. Waiting keeps this lookup from failing.
             await asyncio.sleep(SLOT_WAIT_SECONDS)
 
     async def _release_slot(

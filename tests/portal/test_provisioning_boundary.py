@@ -387,7 +387,8 @@ async def test_deactivating_the_last_active_site_admin_is_blocked(
 async def test_the_installation_must_retain_an_active_site_admin(
     pool: asyncpg.Pool,
 ) -> None:
-    """The database constraint covers concurrent paths beyond service guards."""
+    """A direct UPDATE skips the service guard, as two concurrent demotions
+    would both pass it, so the database refuses it."""
     admin_id = await seed_site_admin(pool, "unico@osiptel.test")
 
     with pytest.raises(asyncpg.exceptions.CheckViolationError):

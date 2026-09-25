@@ -39,8 +39,8 @@ def _is_host_and_port(address: str) -> bool:
     parts = urlsplit(f"//{address}")
 
     try:
-        # urlsplit parses the port lazily; this raises on a non-numeric or
-        # out-of-range value.
+        # urlsplit parses the port lazily, so reading it raises on a
+        # non-numeric or out-of-range value.
         _ = parts.port
     except ValueError:
         return False
@@ -212,9 +212,9 @@ class PortalSettings:
     def allowed_hosts(self) -> tuple[str, ...]:
         """Host header values this origin answers to.
 
-        Litestar matches the header verbatim, port included, so an origin that
-        names a port has to allow both forms: the browser sends the port when
-        it is not the scheme's default and omits it when it is.
+        Litestar matches the header verbatim, port included. An origin that
+        names any port, default or not, also allows the bare hostname. That is
+        the header a browser sends when the port is the scheme's default.
         """
         netloc = urlparse(self.public_origin).netloc
 

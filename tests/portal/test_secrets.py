@@ -27,8 +27,8 @@ def test_every_payload_gets_its_own_data_key(protector: EnvelopeProtector) -> No
     first = protector.protect(payload)
     second = protector.protect(payload)
 
-    # Identical input, unrelated stored bytes: a leaked database shows nothing
-    # about which credentials match each other.
+    # Identical input still stores unrelated bytes, so a leaked database does
+    # not show which credentials match.
     assert first.wrapped_data_key != second.wrapped_data_key
     assert first.ciphertext != second.ciphertext
 
@@ -62,7 +62,6 @@ def test_a_truncated_ciphertext_is_refused(protector: EnvelopeProtector) -> None
 
 
 def test_a_rotated_keyring_still_opens_what_the_old_key_wrapped() -> None:
-    """Key rotation preserves old ciphertext and selects the new key for writes."""
     old = EnvelopeProtector(
         MasterKeyring.from_lines([f"{MASTER_KEY_VERSION} {MASTER_KEY}"])
     )
@@ -79,7 +78,8 @@ def test_a_rotated_keyring_still_opens_what_the_old_key_wrapped() -> None:
 
 
 def test_dropping_a_key_still_in_use_fails_loudly() -> None:
-    """An operator error, not a corrupt secret, so it must not read as one."""
+    """A missing key is an operator error, so it must not raise the
+    corrupt-secret CredentialConfigurationError."""
     sealed = EnvelopeProtector(
         MasterKeyring.from_lines([f"{MASTER_KEY_VERSION} {MASTER_KEY}"])
     ).protect(b"clave-del-proxy")

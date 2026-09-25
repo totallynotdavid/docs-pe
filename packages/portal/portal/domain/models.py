@@ -96,7 +96,8 @@ class AuditAction(StrEnum):
 
 
 class LoginRejection(StrEnum):
-    """Why a login stopped. Recorded, never shown: the page stays generic."""
+    """Recorded for the audit log, never shown, so the login page stays
+    generic."""
 
     HUMAN_CHECK = "human_check"
     CSRF = "csrf"
@@ -218,9 +219,7 @@ class CredentialVersion:
 
 @dataclass(frozen=True)
 class ProtectedSecret:
-    """An enveloped payload: what gets stored, and all that gets stored.
-
-    The data key that encrypted `ciphertext` exists only in wrapped form here.
+    """The data key that encrypted `ciphertext` exists only in wrapped form here.
     `master_key_version` names the keyring entry that can unwrap it, which is
     what lets a rotation leave older rows readable until they are re-wrapped.
     """
@@ -270,10 +269,9 @@ class SubmissionPlan:
 
 @dataclass(frozen=True)
 class SubmissionReview:
-    """A submission plan plus which of its items this team already has a
-    fresh answer for. Shown to the leader before any job is created, so
-    reuse is a visible choice,
-    never a silent skip."""
+    """`reusable` lists the planned items this team already has a fresh
+    answer for. The leader sees it before any job is created, so reuse is a
+    visible choice, never a silent skip."""
 
     items: tuple[PlannedItem, ...]
     exclusions: tuple[ExcludedInput, ...]
@@ -332,8 +330,8 @@ class JobItemCounts:
     def attempted(self) -> int:
         """Items that have left pending/running, whatever the outcome.
 
-        The progress bar tracks this rather than `published` alone: a job
-        working through a lot of failures still visibly moves.
+        The progress bar tracks this rather than `published` alone, so a job
+        working through many failures still visibly moves.
         """
         return self.published + self.failed + self.cancelled
 
@@ -388,9 +386,8 @@ class JobEvent:
 
 @dataclass(frozen=True)
 class JobNotification:
-    """A JobEvent plus the context a cross-job, cross-team feed needs: which
-    job and which team, since the feed is the only place that isn't already
-    scoped to one of them."""
+    """A JobEvent with its job and team, which the cross-job, cross-team feed
+    needs because it is the only view not already scoped to one of them."""
 
     id: UUID
     job_id: UUID

@@ -29,8 +29,8 @@ async def test_an_expired_key_reads_as_missing_and_can_be_taken_over(
     assert await store.take("clave") is None
     assert await store.replace("clave", "nuevo", LONG) is False
 
-    # An expired row must not block the key: a session token that lapsed is
-    # free for the next holder in the same statement that writes it.
+    # An expired row does not block the key. put_new overwrites it in the same
+    # statement, with no sweep in between.
     assert await store.put_new("clave", "nuevo", LONG) is True
     assert await store.read("clave") == "nuevo"
 

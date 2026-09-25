@@ -137,7 +137,6 @@ class PostgresTeamRepository:
         return tuple(user_row(row) for row in rows)
 
     async def teams_for_user_detail(self, user_id: UUID) -> tuple[Team, ...]:
-        """Every team a user belongs to, for the admin user-detail page."""
         async with self._pool.acquire() as connection:
             rows = await connection.fetch(
                 """
@@ -156,10 +155,6 @@ class PostgresTeamRepository:
         )
 
     async def teams_where_sole_leader(self, user_id: UUID) -> tuple[Team, ...]:
-        """Teams that would lose their last leader if user_id were removed.
-
-        Prevents deactivating an account while it is the team's last leader.
-        """
         async with self._pool.acquire() as connection:
             rows = await connection.fetch(
                 """

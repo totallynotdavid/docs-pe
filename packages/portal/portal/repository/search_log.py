@@ -13,11 +13,10 @@ if TYPE_CHECKING:
 
 
 class PostgresSearchLogRepository:
-    """Append-only record of what teams searched, for usage visibility.
+    """Append-only record of what teams searched.
 
-    Team leaders see their own team's raw queries; admins see counts across
-    every team but never the query text itself, the same document-level
-    privacy boundary search results already keep between teams.
+    A team's leaders and site admins read its raw queries on the team page.
+    The installation-wide admin overview shows only counts per team.
     """
 
     def __init__(self, pool: Pool) -> None:
@@ -64,9 +63,6 @@ class PostgresSearchLogRepository:
         return tuple(_entry_row(row) for row in rows)
 
     async def team_totals(self, *, days: int = 14) -> tuple[TeamSearchActivity, ...]:
-        """Every team's search volume, most active first. Counts only: an
-        admin overseeing the whole install doesn't need another team's
-        document-level query text to judge whether search is being used."""
         rows = await self._pool.fetch(
             """
             SELECT team.id, team.name,

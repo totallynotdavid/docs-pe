@@ -108,7 +108,6 @@ async def test_a_team_cannot_reach_another_teams_entry_by_guessing_its_id(
     job_repository: PostgresJobRepository,
     app: Litestar,
 ) -> None:
-    """A team cannot read an entry confirmed only by another team."""
     owner = await build_experience(pool, team_repository)
     outsider_team = await seed_team(pool, password_hash=hash_password(PASSWORD))
 

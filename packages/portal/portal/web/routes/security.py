@@ -104,8 +104,8 @@ async def security_totp_confirm_post(
         )
         return render("Security", **context)
 
-    # A live TOTP confirmation is fresh second-factor proof: no reason to
-    # send someone who just typed a code straight back through /step-up.
+    # Confirming a live TOTP code is fresh second-factor proof, so the user is
+    # not sent straight back through /step-up.
     await sessions.mark_step_up_verified(request.cookies.get(settings.session_cookie))
 
     if recovery_codes is None:

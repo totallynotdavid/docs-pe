@@ -17,8 +17,8 @@ class ClaimRequest(msgspec.Struct, frozen=True):
 class CredentialLease(msgspec.Struct, frozen=True):
     """The proxy configuration for one job, in the clear.
 
-    This is the only shape plaintext proxy credentials take outside the
-    database, and it exists for exactly one response.
+    It is the only shape that carries plaintext proxy credentials out of
+    worker-api.
     """
 
     provider: str

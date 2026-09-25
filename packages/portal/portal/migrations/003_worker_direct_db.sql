@@ -24,17 +24,17 @@ CREATE TRIGGER portal_jobs_notify_running_update
     WHEN (NEW.state = 'running' AND OLD.state IS DISTINCT FROM NEW.state)
     EXECUTE FUNCTION portal_notify_work_available();
 
--- Job insertion already wakes the dispatcher, so this only covers lease
--- expiry returning an item to pending.
+-- New items become claimable when their job starts running, which the job
+-- triggers cover. This one covers lease expiry returning an item to pending.
 CREATE TRIGGER portal_job_items_notify_pending
     AFTER UPDATE OF state ON portal_job_items
     FOR EACH ROW
     WHEN (NEW.state = 'pending' AND OLD.state IS DISTINCT FROM NEW.state)
     EXECUTE FUNCTION portal_notify_work_available();
 
--- Grant workers only the queue, lease, heartbeat, slot, and result metadata
--- operations they perform directly. Credential ciphertext is not readable by
--- the worker role; worker-api performs the audited decryption.
+-- The worker role is granted only the tables that the worker's claim,
+-- heartbeat, slot, breaker and publish operations touch. It cannot read
+-- credential ciphertext, so worker-api performs the audited decryption.
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'portal_worker_base') THEN

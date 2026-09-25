@@ -59,7 +59,8 @@ if TYPE_CHECKING:
 
 
 class PortalService(AuthorizedService):
-    """Team-scoped reads and writes. Authentication lives in LoginService."""
+    """Authentication lives in LoginService, and account and team
+    administration in ProvisioningService."""
 
     def __init__(
         self,
@@ -188,10 +189,8 @@ class PortalService(AuthorizedService):
         team_id: UUID,
         job_id: UUID,
     ) -> tuple[Job, tuple[tuple[JobItem, Entry | None], ...]]:
-        """Every non-excluded item for a job paired with the entry it
-        resolved to, for the results download. Restricted to leaders and
-        site admins: job_items is member-readable, but a full export is a
-        bulk data-handling action, not a progress check."""
+        """Leaders and site admins only. job_items is member-readable, but a
+        full export is a bulk data-handling action, not a progress check."""
         job = await self._jobs.job(job_id, team_id)
 
         if job is None:
@@ -258,9 +257,8 @@ class PortalService(AuthorizedService):
             offset=(page - 1) * page_size,
         )
 
-        # Logged on every page, not just the first: page 2 of a scan is still
-        # a search someone ran, and a leader scanning activity wants the
-        # real count of lookups, not just distinct queries.
+        # Every page is logged, not just the first. Page 2 of a scan is still
+        # a search someone ran, and leaders want the real count of lookups.
         await self._search_log.record(team_id, actor_id, needle, len(results))
 
         return results, has_more
@@ -274,10 +272,8 @@ class PortalService(AuthorizedService):
         page: int,
         page_size: int = 20,
     ) -> tuple[tuple[Entry, ...], bool]:
-        """Search across every team's collected entries, not just the
-        caller's own. Never logged to portal_search_log: that table is
-        team-scoped activity for a team's own leaders and doesn't have a
-        row shape for a cross-team lookup."""
+        """Never logged to portal_search_log. Each of its rows belongs to one
+        team, and a cross-team lookup has none."""
         needle = query.strip()
 
         if not needle:
@@ -315,7 +311,6 @@ class PortalService(AuthorizedService):
         lines: tuple[InputLine, ...],
         sources: tuple[str, ...],
     ) -> SubmissionReview:
-        """Preview validation and reusable answers before creating a job."""
         plan = plan_submission(lines, sources)
 
         if not plan.items:
@@ -357,7 +352,6 @@ class PortalService(AuthorizedService):
         sources: tuple[str, ...],
         reuse: bool,
     ) -> Job:
-        """Create a job after the leader confirms the submission."""
         await self._require_active_credential(credential_version_id, team_id)
 
         return await self._admit(
@@ -410,9 +404,8 @@ class PortalService(AuthorizedService):
         self,
         actor_id: UUID,
     ) -> tuple[JobNotification, ...]:
-        # A site admin isn't necessarily a member of any team, so their own
-        # memberships would leave this feed empty even though they're meant
-        # to see activity across the whole installation.
+        # A site admin may belong to no team and still sees activity across
+        # the whole installation.
         if await self._teams.is_site_admin(actor_id):
             team_ids = tuple(team.id for team in await self._teams.all_teams())
         else:
@@ -434,7 +427,6 @@ class PortalService(AuthorizedService):
         content_type: str,
         storage: ObjectStorage,
     ) -> ObjectReference:
-        """Store an uploaded CSV and record its object reference."""
         del actor_id
 
         reference = ObjectReference(

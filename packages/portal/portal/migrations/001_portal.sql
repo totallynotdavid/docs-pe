@@ -337,7 +337,8 @@ CREATE INDEX portal_proxy_credential_events_version_idx
         created_at
     );
 
--- Key rotation may only rewrite the wrapped key and master-key version.
+-- The ciphertext and the version's identity are fixed. Key rotation rewrites
+-- only the wrapped key and master-key version.
 CREATE OR REPLACE FUNCTION portal_reject_proxy_credential_version_mutation()
 RETURNS trigger
 LANGUAGE plpgsql

@@ -19,7 +19,8 @@ VALUES ($1, $2)
 ON CONFLICT (source, provider) DO NOTHING
 """
 
-# Keep breaker transitions atomic so concurrent workers cannot lose failures.
+# One UPDATE computes the transition from the row's current values, so
+# concurrent workers cannot lose each other's failures.
 _RECORD_OUTCOME = """
 UPDATE portal_circuit_breakers b
    SET consecutive_failures = CASE

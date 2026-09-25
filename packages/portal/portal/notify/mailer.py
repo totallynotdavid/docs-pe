@@ -22,8 +22,6 @@ class Mailer(Protocol):
 
 
 class ResendMailer:
-    """Send messages through Resend."""
-
     def __init__(self, api_key: str, mail_from: str, client: httpx.AsyncClient) -> None:
         self._api_key = api_key
         self._mail_from = mail_from

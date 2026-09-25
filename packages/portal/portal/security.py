@@ -74,8 +74,9 @@ def new_session_token() -> str:
 
 
 def token_hash(token: str) -> str:
-    # utf-8 rather than ascii: every token this hashes is urlsafe base64, but a
-    # bearer header is attacker-controlled and must not be able to raise here.
+    # utf-8 rather than ascii. Every token the portal issues is urlsafe base64,
+    # but the value hashed here arrives from a cookie, form or bearer header
+    # and must not be able to raise.
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
@@ -106,7 +107,8 @@ def totp_enrollment_uri(secret: str, *, email: str, issuer: str) -> str:
 
 
 def totp_qr_svg(uri: str) -> str:
-    """Inline <svg>, not an <img> data: URI: nothing to re-decode client-side."""
+    """Inline <svg>, because the CSP's default-src 'self' blocks an <img> with
+    a data: URI."""
     return segno.make(uri, error="m").svg_inline(scale=4, dark="#000", light="#fff")
 
 
@@ -153,10 +155,6 @@ def _totp(secret: str) -> pyotp.TOTP:
         digits=TOTP_DIGITS,
         interval=TOTP_INTERVAL_SECONDS,
     )
-
-
-# Keep the WebAuthn dependency behind this module so callers use the same
-# boundary as the TOTP helpers.
 
 
 @dataclass(frozen=True)

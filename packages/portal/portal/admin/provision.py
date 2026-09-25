@@ -66,8 +66,8 @@ def _proxy_values(provider: str) -> dict[str, str]:
 
 
 def _print_setup_status(email: str, *, needs_setup: bool) -> None:
-    """Never prints a secret: nothing generated here is shown to whoever runs
-    this command, only to the account owner, in their own browser."""
+    """Never prints a secret. Only the account owner sees a second factor, in
+    their own browser."""
     if needs_setup:
         print(
             f"Second factor: pending. Sign in as {email} and open "

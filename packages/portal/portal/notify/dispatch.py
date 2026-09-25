@@ -117,8 +117,8 @@ async def _send_one(
     recipient = await pool.fetchval(_RECIPIENT_FOR_EVENT, event_id)
 
     if recipient is None:
-        # The job's submitter no longer resolves to a live account. Nothing
-        # to retry: mark it sent so the row stops being claimed.
+        # The job's submitter no longer resolves to an account, so a retry
+        # cannot succeed. Marking the row sent stops it being claimed.
         await _record_outcome(
             pool,
             outbox_id,
@@ -159,8 +159,6 @@ async def dispatch_once(pool: Pool, mailer: Mailer) -> None:
 
 @contextlib.asynccontextmanager
 async def dispatching(pool: Pool, mailer: Mailer) -> AsyncIterator[None]:
-    """Run the email outbox dispatcher for as long as the app is up."""
-
     async def loop() -> None:
         while True:
             await asyncio.sleep(DISPATCH_INTERVAL_SECONDS)

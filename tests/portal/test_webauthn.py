@@ -177,7 +177,7 @@ async def test_totp_setup_is_confirm_gated(
     )
     assert still_unenrolled is False
 
-    # A typo does not burn the setup_token: the same QR/secret still works.
+    # A typo does not spend the setup_token, so the same secret still works.
     code = pyotp.TOTP(_secret_from_uri(setup.enrollment_uri)).now()
     recovery_codes = await provisioning.confirm_totp_setup(
         user_id,
@@ -226,7 +226,7 @@ async def test_passkey_registration_and_last_factor_removal_policy(
     assert passkeys[0].label == "Llave de prueba"
     assert passkeys[0].credential_id == authenticator.credential_id
 
-    # Promote the candidate: they already carry a factor, so no pending state.
+    # The candidate already has a factor, so promotion leaves nothing pending.
     needs_setup = await provisioning.promote_to_site_admin(
         admin_id,
         user_id=candidate_id,
@@ -337,7 +337,7 @@ async def test_discoverable_passkey_login_needs_no_password(
     )
 
     with sync_client(app) as client:
-        # No password step at all: straight to the discoverable challenge.
+        # A discoverable passkey login has no password step.
         options_response = client.post(
             "/login/passkey/options", headers={"Origin": ORIGIN}
         )
@@ -381,9 +381,8 @@ async def test_admin_promotion_completes_via_self_service_totp(
     provisioning: ProvisioningService,
     app: Litestar,
 ) -> None:
-    """End-to-end: ensure_site_admin leaves the account pending, and it
-    reaches is_site_admin only once it completes its own enrollment, the same
-    path a signed-in user reaches through /security."""
+    """ensure_site_admin leaves the account pending until it enrolls a factor
+    through /security, like any signed-in user."""
     hashed = hash_password(PASSWORD)
     administrator, needs_setup = await provisioning.ensure_site_admin(
         "bootstrap-pending@osiptel.test",
@@ -404,6 +403,6 @@ async def test_admin_promotion_completes_via_self_service_totp(
             headers={"Origin": ORIGIN},
             follow_redirects=False,
         )
-        # No factor exists yet, so there is nothing to challenge: straight to
-        # a session, redirected to /security instead of the dashboard.
+        # With no factor to challenge, login opens a session and sends the
+        # account to /security.
         assert response.headers["location"] == "/security"

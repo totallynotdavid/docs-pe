@@ -14,9 +14,9 @@ from portal.domain.models import InputLine
 MAX_CSV_UPLOAD_MB = 15
 MAX_CSV_UPLOAD_BYTES = MAX_CSV_UPLOAD_MB * 1024 * 1024
 
-# request_max_body_size caps the whole multipart body, not just the file: the
-# other form fields and multipart boundaries add a little on top of the CSV
-# itself, so the request-level cap needs headroom over the file-content cap.
+# request_max_body_size caps the whole multipart body. Form fields and
+# boundaries add a little on top of the CSV, so the request cap needs headroom
+# over the file cap.
 REQUEST_OVERHEAD_BYTES = 64 * 1024
 MAX_REQUEST_BODY_BYTES = MAX_CSV_UPLOAD_BYTES + REQUEST_OVERHEAD_BYTES
 

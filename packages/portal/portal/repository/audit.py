@@ -15,9 +15,8 @@ if TYPE_CHECKING:
 class PostgresAuditLog:
     """Append-only record of who did what.
 
-    Nothing reads this table back through the application: a trigger and a
-    grant both refuse UPDATE and DELETE, so the only operation the portal has
-    on its own audit trail is INSERT.
+    The application only inserts. A trigger refuses UPDATE and DELETE, and so
+    does the portal_app grant where that role exists.
     """
 
     def __init__(self, pool: Pool) -> None:

@@ -82,9 +82,9 @@ class PermissionDenied(PortalError):
 class StepUpRequired(PermissionDenied):
     """The actor is authorized but their second-factor proof is stale.
 
-    A subclass of PermissionDenied rather than a sibling: it is audited by the
-    same after_exception hook, and callers that only handle PermissionDenied
-    still fail closed instead of falling through.
+    A subclass of PermissionDenied rather than a sibling, so the same
+    after_exception hook audits it and callers that handle only
+    PermissionDenied still fail closed.
     """
 
 

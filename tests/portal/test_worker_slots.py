@@ -160,9 +160,8 @@ async def test_heartbeat_renews_a_held_slots_lease(
 async def test_heartbeat_without_reporting_a_held_slot_does_not_renew_it(
     pool: asyncpg.Pool, worker_client: AsyncTestClient
 ) -> None:
-    """A slot this worker actually holds but doesn't list is exactly what a
-    freshly restarted process reports for its predecessor's leaked rows: no
-    renewal, so the lease keeps counting down instead of being masked."""
+    """A restarted process holds its predecessor's slots without listing them.
+    The heartbeat must not renew those, so their leases run out."""
     headers = await enroll_worker(pool)
 
     claimed = await worker_client.post(

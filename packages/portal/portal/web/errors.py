@@ -32,9 +32,7 @@ class LoginRequired(Exception):
 
 
 async def record_permission_denied(exception: Exception, scope: Scope) -> None:
-    """Audit every refusal, whoever it was and whatever they were reaching for.
-
-    This runs as an after_exception hook rather than inside the response
+    """This runs as an after_exception hook rather than inside the response
     handler because those are synchronous, and because a refusal is worth
     recording even when the response that follows is a plain 403 page.
     """
@@ -61,10 +59,10 @@ def _to_login(request: Request, error: Exception) -> Response:
 def _to_step_up(request: Request, error: Exception) -> Response:
     """Bounce to the reverify form, landing back on the page that asked.
 
-    A POST that raised this loses whatever it was submitting: the browser
-    lands on a fresh GET after reverifying, not a replay of the original
-    form. Sensitive admin forms are short, and this only fires when the
-    session's second-factor proof has gone stale, which is rare.
+    A POST that raised this loses its submission. After reverifying, the
+    browser lands on a fresh GET, not a replay of the original form. That is
+    acceptable because sensitive admin forms are short and the second-factor
+    proof goes stale rarely.
     """
     del error
     return Redirect(
@@ -95,9 +93,9 @@ def _problem(request: Request, error: Exception, *, status_code: int) -> Respons
 def _too_large(request: Request, error: Exception) -> Response:
     """The multipart body exceeded new_job_post's request_max_body_size.
 
-    Litestar rejects this while streaming the request, ahead of read_csv_upload,
-    so there is no InputValidationError to catch here: build one to reuse the
-    same CSV_TOO_LARGE message instead of duplicating its text.
+    Litestar rejects the body while streaming it, before read_csv_upload runs,
+    so no InputValidationError exists yet. Building one reuses the
+    CSV_TOO_LARGE message.
     """
     del error
     return _problem(

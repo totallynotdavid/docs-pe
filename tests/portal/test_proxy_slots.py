@@ -93,9 +93,9 @@ async def test_release_with_the_wrong_worker_id_is_a_no_op(pool: asyncpg.Pool) -
 
 
 async def test_a_slot_with_an_expired_lease_is_reclaimable(pool: asyncpg.Pool) -> None:
-    """The lease alone decides reclaimability: no dependency on the holder's
-    worker_id being revoked or its heartbeat going stale, since a restarted
-    process reuses the same worker_id and would otherwise mask this."""
+    """Only the lease decides reclaimability. A restarted process reuses its
+    worker_id, so a check on revocation or heartbeat staleness would hide the
+    leaked slot."""
     await _issue(pool, "gone")
     await _issue(pool, "here")
     slots = PostgresProxySlots(pool)

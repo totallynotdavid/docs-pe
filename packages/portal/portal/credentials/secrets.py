@@ -20,10 +20,9 @@ if TYPE_CHECKING:
 
 
 class EnvelopeProtector:
-    """Envelope encryption: one fresh data key per payload, wrapped by a master key.
-
-    A payload is encrypted under a key that exists only for the duration of the
-    call, and only the wrapped form of that key is stored beside the ciphertext.
+    """Each payload is encrypted under a fresh data key that exists only for
+    the duration of the call. Only the key's wrapped form, under a master key,
+    is stored beside the ciphertext.
     """
 
     def __init__(self, keyring: MasterKeyring) -> None:

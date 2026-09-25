@@ -236,7 +236,8 @@
     border-collapse: collapse;
   }
 
-  /* This layered rule must override unlayered component display rules. */
+  /* !important lets this layered rule override unlayered component display
+     rules. */
   [hidden] {
     display: none !important;
   }
@@ -291,8 +292,7 @@
   }
 }
 
-/* Visible to a screen reader, never to the eye. Unlayered so it always wins
-   over whatever the element it hides would otherwise be given. */
+/* Unlayered, so it wins over the layered rules of the element it hides. */
 .sr-only {
   clip-path: inset(50%);
   height: 1px;

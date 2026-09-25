@@ -1,7 +1,6 @@
--- Historical `results/` scans predate the portal's job queue: they never went
--- through a real submission, so their jobs need a way to say that, and a
--- team's copy of an already-imported batch needs a way to point back at the
--- master batch it was assigned from.
+-- Historical `results/` scans never went through a submission, so origin marks
+-- their jobs as backfill. copied_from_job_id points a team's copy of an
+-- imported batch at the master batch it was assigned from.
 ALTER TABLE portal_jobs
     ADD COLUMN origin text NOT NULL DEFAULT 'submission'
         CONSTRAINT portal_jobs_origin_known

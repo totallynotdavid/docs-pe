@@ -47,8 +47,6 @@ async def dashboard(
     def destination(team_id: UUID) -> str:
         return f"/teams/{team_id}/search" if minimal else f"/teams/{team_id}"
 
-    # A remembered team or a single available team bypasses the picker.
-    # `?switch=1` forces the picker.
     if not switch:
         if len(teams) == 1:
             return Redirect(destination(teams[0].id), status_code=303)

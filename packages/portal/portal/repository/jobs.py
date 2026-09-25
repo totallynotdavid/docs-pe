@@ -147,7 +147,8 @@ RETURNING
     candidate.credential_version_id
 """
 
-# Preserve requested source order within each job before comparing jobs.
+# The oldest running job with a claimable item wins, and within it the item
+# with the lowest ordinal.
 _CLAIM_ANY = """
 WITH candidate AS (
     SELECT top_item.id AS item_id, job.lease_fence, job.credential_version_id
@@ -543,7 +544,8 @@ class PostgresJobRepository:
                     None,
                 )
 
-            # Published objects remain valid; the advanced fence rejects late writes.
+            # Objects already published stay valid. The advanced fence rejects
+            # late writes.
             await connection.execute(
                 """
                 UPDATE portal_job_items
@@ -1097,7 +1099,6 @@ class PostgresJobRepository:
         self,
         credential_version_id: UUID,
     ) -> JobCredential | None:
-        """Load the credential selected for a claimed item."""
         row = await self._pool.fetchrow(
             """
             SELECT provider, config_ciphertext, wrapped_data_key, master_key_version

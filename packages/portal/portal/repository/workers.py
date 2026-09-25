@@ -26,8 +26,8 @@ HEARTBEAT_STALE_AFTER = timedelta(seconds=45)
 class PostgresWorkerRegistry:
     """Per-worker identities for `worker-api`.
 
-    Being on the tailnet says a request came from some worker node; this says
-    which one, and lets a single compromised node be cut off immediately
+    The tailnet shows that a request came from some worker node. The identity
+    shows which one, so a single compromised node can be cut off immediately
     instead of waiting for a tailnet ACL change to propagate.
     """
 
@@ -132,8 +132,8 @@ class PostgresWorkerRegistry:
             if not exists:
                 await connection.execute(f'CREATE ROLE "{role}" NOLOGIN')
 
-            # 8 pool connections (worker/agent.py) + 1 LISTEN connection + margin
-            # for the old connection to close during a re-enroll/reconnect.
+            # The limit covers the agent's pool of 8, its LISTEN connection, and
+            # the old connection still closing during a re-enroll or reconnect.
             await connection.execute(
                 f'ALTER ROLE "{role}" LOGIN '
                 f"PASSWORD '{escaped_password}' CONNECTION LIMIT 12"
@@ -190,7 +190,6 @@ def valid_worker_id(worker_id: str) -> str:
 
 
 def worker_role_name(worker_id: str) -> str:
-    """Return the Postgres login role name for a worker."""
     role = f"portal_worker_{valid_worker_id(worker_id)}"
 
     if len(role) > 63:
@@ -205,9 +204,7 @@ def worker_database_dsn(
     worker_id: str,
     password: str,
 ) -> str:
-    """Return the DSN a worker's scoped login role uses to reach the portal database.
-
-    The database name and options come from the admin DSN. The host and port
+    """The database name and options come from the admin DSN. The host and port
     come from `worker_address`, because the admin DSN names the database as
     the core's own processes see it, which a worker node cannot resolve.
     """

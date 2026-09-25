@@ -15,7 +15,6 @@ from portal.domain.models import (
 )
 
 
-# Reuse only successful or explicitly not-found answers.
 SOURCE_FRESHNESS: dict[str, timedelta] = {
     "osiptel": timedelta(days=7),
     "sunat": timedelta(days=90),
@@ -84,7 +83,6 @@ def build_review(
     plan: SubmissionPlan,
     reusable_pairs: frozenset[tuple[str, str]],
 ) -> SubmissionReview:
-    """Mark which planned items this team can reuse."""
     reusable = tuple(
         item for item in plan.items if (item.document, item.source) in reusable_pairs
     )

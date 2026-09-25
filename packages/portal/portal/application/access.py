@@ -25,8 +25,9 @@ F = TypeVar("F", bound="Callable[..., Any]")
 
 
 def public(fn: F) -> F:
-    """No actor-scoped check: self-scoped ("my own rows") or pre-session
-    (bootstrap, called before any BrowserSession exists)."""
+    """No decorator check. The method scopes its own reads and writes to what
+    actor_id may see, or runs before any BrowserSession exists, as bootstrap
+    and invite redemption do."""
     _mark(fn, fn, "public")
     return fn
 
@@ -55,10 +56,9 @@ def team_leader(
 ) -> Callable[[F], F]:
     """Requires actor_id to hold the team_leader role on team_id.
 
-    Both are resolved from the wrapped method's bound arguments: a plain
-    string names a parameter, a callable receives the whole argument mapping
-    for the rare method (e.g. one taking a single command object) where the
-    id is nested rather than a top-level parameter.
+    Both are resolved from the wrapped method's bound arguments. A string
+    names a parameter. A callable receives the whole argument mapping, for a
+    method whose id is nested in a command object.
     """
 
     def decorator(fn: F) -> F:
@@ -107,9 +107,8 @@ def site_admin_or_global_search(
     """Requires site-admin standing, or membership on a team with the paid
     global-search entitlement (portal_teams.has_global_search).
 
-    Deliberately not team_id-scoped: global search's whole point is looking
-    beyond one team, so there is no team_id parameter to resolve. The
-    entitlement check itself still runs per-actor, not per-request-team.
+    It takes no team_id, because global search looks beyond one team. The
+    entitlement is checked for the actor, not for a team in the request.
     """
 
     def decorator(fn: F) -> F:
@@ -181,7 +180,6 @@ def is_step_up_fresh(
     *,
     within: timedelta = STEP_UP_WINDOW,
 ) -> bool:
-    """Return whether the step-up proof is still fresh."""
     return verified_at is not None and datetime.now(UTC) - verified_at <= within
 
 
@@ -210,10 +208,10 @@ def site_admin_step_up(*, within: timedelta = STEP_UP_WINDOW) -> Callable[[F], F
     """@site_admin plus a fresh second-factor proof, for the handful of admin
     actions sensitive enough to demand step-up MFA on top of the role check.
 
-    Composed as one decorator rather than two stacked separately so the
-    pairing is structural: nothing importable from this module lets a caller
-    attach a freshness check to a role other than site_admin. The role check
-    runs first, so a non-admin sees "not a site admin" rather than "step up".
+    One decorator rather than two stacked separately, so no public decorator
+    in this module attaches a freshness check to a role other than
+    site_admin. The role check runs first, so a non-admin sees "not a site
+    admin" rather than "step up".
     """
 
     def decorator(fn: F) -> F:
@@ -226,11 +224,9 @@ class AuthorizedService:
     """Base for application services whose public async methods each carry an
     explicit access-control decorator.
 
-    A subclass that defines a public async method without @site_admin,
-    @site_admin_step_up(...), @team_leader(...), @team_reader(...), or
-    @public raises TypeError when the class body finishes executing, i.e. at
-    import time. That happens once, at process startup or test collection,
-    well before the method could serve a request unchecked.
+    A subclass that defines a public async method without one of this
+    module's access-control decorators raises TypeError at import time,
+    before the method can serve a request unchecked.
     """
 
     def __init_subclass__(cls, **kwargs: Any) -> None:

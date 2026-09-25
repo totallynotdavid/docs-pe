@@ -180,9 +180,6 @@ async def admin_user_action_post(
             )
             return Redirect("/admin/users", status_code=303)
         elif data.action == "promote":
-            # Never generates or shows a second factor here: a target with
-            # none yet is only marked pending_site_admin and completes their
-            # own enrollment at /security on next login.
             await provisioning.promote_to_site_admin(
                 session.user.id,
                 user_id=user_id,

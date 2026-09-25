@@ -18,9 +18,9 @@ async def test_applying_the_schema_twice_changes_nothing(
 ) -> None:
     """The ledger, not the SQL, is what makes a second run safe.
 
-    None of the statements in the schema are idempotent on their own, so a
-    runner that lost track of what it had applied would fail on the first
-    CREATE TABLE rather than quietly doing damage. This asserts the ledger.
+    The schema's CREATE TABLE statements are not idempotent, so a runner that
+    lost track of what it had applied would fail on the first of them rather
+    than quietly doing damage. This asserts the ledger.
     """
     await apply_migrations(unmigrated_db.pool)
     await apply_migrations(unmigrated_db.pool)
@@ -69,13 +69,12 @@ async def test_a_passkey_alone_satisfies_the_site_admin_invariant(
         b"\xca\xfe\xba\xbe",
     )
 
-    # A passkey alone is enough: promoting does not need mfa_enabled too.
+    # Promotion needs no mfa_enabled when the account has a passkey.
     await pool.execute(
         "UPDATE portal_users SET is_site_admin = true WHERE id = $1", user_id
     )
 
-    # Removing that one passkey now must be rejected: it is this admin's
-    # last factor.
+    # The passkey is this admin's last factor, so removing it is rejected.
     with pytest.raises(asyncpg.exceptions.CheckViolationError):
         await pool.execute(
             "DELETE FROM portal_webauthn_credentials WHERE user_id = $1", user_id

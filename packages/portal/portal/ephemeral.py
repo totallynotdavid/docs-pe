@@ -19,16 +19,16 @@ SWEEP_INTERVAL_SECONDS = 60.0
 class EphemeralStore:
     """Keyed values that expire on their own and are never a system of record.
 
-    Sessions, rate-limit counters, and single-use tokens live here; users,
-    teams, credentials, jobs, and the audit log live in their own tables.
-    Truncating this one logs everyone out and resets every counter, and costs
-    nothing else.
+    Sessions, rate-limit counters, and single-use tokens live here. Truncating
+    the table logs everyone out, resets every counter, and voids every flow in
+    progress, such as a login form, an MFA or passkey challenge, or a TOTP or
+    passkey enrollment. No durable record is lost.
 
-    Values are opaque strings rather than typed columns because nothing queries
-    them: every access is by exact key, so a column per caller would buy schema
-    churn and no capability.
+    Values are opaque strings because every access is by exact key, so typed
+    columns per caller would add schema churn and no capability.
 
-    Expiry-aware writes make a live key have one winner when requests race.
+    Writes check expiry in the same statement, so requests racing for a live
+    key have one winner.
     """
 
     def __init__(self, pool: Pool) -> None:
@@ -131,7 +131,7 @@ class EphemeralStore:
         await self._pool.execute("DELETE FROM portal_ephemeral WHERE key = $1", key)
 
     async def sweep(self) -> int:
-        """Delete expired rows. Reads already ignore them; this reclaims space."""
+        """Reads already ignore expired rows, so this only reclaims space."""
         deleted = await self._pool.execute(
             "DELETE FROM portal_ephemeral WHERE expires_at <= now()"
         )
@@ -141,8 +141,6 @@ class EphemeralStore:
 
 @contextlib.asynccontextmanager
 async def sweeping(store: EphemeralStore) -> AsyncIterator[None]:
-    """Run the expiry sweep for as long as the app is up."""
-
     async def loop() -> None:
         while True:
             await asyncio.sleep(SWEEP_INTERVAL_SECONDS)

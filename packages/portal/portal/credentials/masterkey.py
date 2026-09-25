@@ -25,7 +25,7 @@ _VERSION_ALPHABET = frozenset(
 
 @dataclass(frozen=True)
 class DataKey:
-    """A single-use key: `plaintext` encrypts one payload, `wrapped` is stored."""
+    """`plaintext` encrypts one payload, and only `wrapped` is stored."""
 
     plaintext: bytes
     wrapped: bytes
@@ -36,10 +36,8 @@ class MasterKeyring:
     """The keys that wrap data keys, loaded once from a file on disk.
 
     The file holds one key per line as `<version> <urlsafe-base64 32 bytes>`.
-    The first line is the active key and wraps every new data key; the rest stay
-    loaded so payloads written before a rotation can still be opened. Rotation
-    prepends a key, reloads the application, re-wraps stored data keys, and
-    removes the retired key.
+    The first line is the active key and wraps every new data key. The rest
+    stay loaded so payloads written before a rotation can still be opened.
     """
 
     def __init__(self, active_version: str, keys: dict[str, AESGCM]) -> None:
@@ -101,7 +99,6 @@ class MasterKeyring:
         )
 
     def rewrap(self, data_key: bytes) -> bytes:
-        """Wrap an existing data key under the active master key."""
         nonce = secrets.token_bytes(NONCE_BYTES)
         active = self._keys[self._active_version]
 

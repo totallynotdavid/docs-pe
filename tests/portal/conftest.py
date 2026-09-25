@@ -86,7 +86,7 @@ MASTER_KEY = base64.urlsafe_b64encode(b"c" * 32).decode("ascii")
 # that run outside a fixture. Both open each other's envelopes.
 KEYRING = MasterKeyring.from_lines([f"{MASTER_KEY_VERSION} {MASTER_KEY}"])
 
-# https, like production: Secure cookies and the __Host- prefix are not gated on
+# https, like production. Secure cookies and the __Host- prefix do not depend on
 # the environment, so a test over http would exercise a shape nobody deploys.
 ORIGIN = "https://testserver.local"
 PASSWORD = "una-clave-larga-y-segura"
@@ -542,12 +542,8 @@ def csrf_token(html: str) -> str:
 
 
 def hidden_value(html: str, name: str) -> str:
-    """A single hidden <input>'s value, e.g. JobReview's input_object_id.
-
-    djlint wraps a tag with several attributes onto multiple lines and
-    reorders them, so this matches name= and value= independently within
-    one <input ...> tag rather than assuming they are adjacent.
-    """
+    """djlint wraps and reorders attributes, so name= and value= are matched
+    independently within one <input> tag."""
     found = re.search(
         rf'<input\b(?=[^>]*\bname="{re.escape(name)}")'
         rf'(?=[^>]*\bvalue="([^"]*)")[^>]*>',
@@ -624,7 +620,8 @@ class Experience:
 
 
 async def seed_site_admin(pool: asyncpg.Pool, email: str) -> UUID:
-    """Promote a new account, which the schema only allows once MFA exists."""
+    """Promote a new account, which the schema allows only once it has a second
+    factor. TOTP is enrolled here."""
     auth = PostgresAuthRepository(pool)
     protector = EnvelopeProtector(KEYRING)
     user = await auth.create_account(email, hash_password(PASSWORD))

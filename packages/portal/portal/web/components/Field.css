@@ -70,10 +70,9 @@
   border-color: var(--destructive);
 }
 
-/* The passkey flows keep an empty live region for their status text; without
-   this it still claims a row in the form grid. Reserved to one line's height
-   otherwise, so an error appearing or clearing doesn't shift the field below
-   it. */
+/* An empty help text keeps one font size of height, so a message appearing or
+   clearing shifts the fields below it less. Any message still grows it. The
+   passkey flows leave it empty as the live region for their status text. */
 .help-text:empty {
   min-height: var(--font-size-xs);
 }

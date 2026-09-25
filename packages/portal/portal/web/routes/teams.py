@@ -259,9 +259,8 @@ async def team_invite_cancel(
 def _latest_per_connection(
     credentials: tuple[CredentialVersion, ...],
 ) -> list[CredentialVersion]:
-    """One row per connection, its newest version. credentials_for_team is
-    already ordered label, version DESC, so the first row seen per
-    credential_id is that connection's current one."""
+    """credentials_for_team orders by label, version DESC, so the first row
+    seen per credential_id is that connection's newest version."""
     latest: dict[UUID, CredentialVersion] = {}
 
     for credential in credentials:
@@ -295,7 +294,8 @@ async def _proxy_context(
         ),
         None,
     )
-    # An edit cannot change provider. Use the add flow to replace a connection.
+    # The edit form offers no provider picker, so it keeps the connection's
+    # provider. Switching provider goes through the add flow.
     active_provider = editing.provider if editing else provider
     fields = ProvisioningService.provider_fields(active_provider)
 

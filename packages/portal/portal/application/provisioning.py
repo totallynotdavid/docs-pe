@@ -304,10 +304,8 @@ class ProvisioningService(AuthorizedService):
 
     @site_admin
     async def is_sole_active_admin(self, actor_id: UUID, user_id: UUID) -> bool:
-        """UI hint only: whether removing this person's admin standing would
-        need to be blocked. Not itself a guard; see _guard_account_removal
-        and portal_installation_must_have_admin for the real enforcement.
-        """
+        """A UI hint that guards nothing. portal_installation_must_have_admin
+        enforces the rule."""
         user = await self._auth.user_by_id(user_id)
 
         if user is None or not user.is_site_admin or not user.is_active:
@@ -374,10 +372,9 @@ class ProvisioningService(AuthorizedService):
     ) -> bool:
         """Promote, or mark the target pending their own enrollment.
 
-        Returns needs_setup. A target who already self-enrolled a factor (see
-        the self-service methods below) promotes immediately: the promoting
-        admin never generates or sees another account's second factor, only
-        whether one is still needed.
+        Returns needs_setup. A target who already enrolled a second factor is
+        promoted immediately. The promoting admin never generates or sees
+        another account's second factor, only whether one is still needed.
         """
         user = await self._auth.user_by_id(user_id)
 
@@ -410,8 +407,9 @@ class ProvisioningService(AuthorizedService):
         if user_id == actor_id:
             raise ProvisioningError(Reason.USER_CANNOT_DEACTIVATE_SELF)
 
-        # The database trigger is the concurrency-safe backstop; this check
-        # only handles the actor and target preconditions.
+        # Refusing self-demotion is the only check here, because
+        # portal_installation_must_have_admin keeps the last admin under
+        # concurrent requests.
         user = await self._auth.demote(user_id)
 
         await self._record(AuditAction.USER_DEMOTED, actor_id, trace, user=user_id)
@@ -468,13 +466,13 @@ class ProvisioningService(AuthorizedService):
         setup_token: str,
         code: str,
     ) -> tuple[str, ...] | None:
-        """Confirm the setup token without spending it on an invalid code.
+        """Return the new recovery codes, or None when the user already had a
+        second factor.
 
-        A wrong code does not spend setup_token: the secret is a long-lived QR
-        the user already has in
-        front of them, not a guessable target, so a typo should mean "try
-        again" rather than "scan a new code." Only a successful confirm (or
-        the token's own TTL) retires it.
+        A wrong code does not spend setup_token. The user already holds the
+        secret, so guessing gains nothing, and a typo means "try again" rather
+        than "scan a new code". Only a successful confirm or the token's TTL
+        retires it.
         """
         user = await self._reload(actor_id)
         pending = await self._peek_setup(_TOTP_SETUP, setup_token, user.id)
@@ -589,11 +587,8 @@ class ProvisioningService(AuthorizedService):
         role: TeamRole,
         trace: RequestTrace,
     ) -> None:
-        """Add directly when the email already has an account; otherwise
-        invite it. A team leader can only add someone who already has a
-        platform account through /admin/users, which they cannot reach:
-        inviting by email is the only door available to them.
-        """
+        """Team leaders cannot create accounts, so an invitation is how they
+        bring in someone who has none."""
         if role not in {TeamRole.TEAM_LEADER, TeamRole.TEAM_MEMBER}:
             raise ProvisioningError(Reason.ROLE_INVALID)
 
@@ -971,14 +966,9 @@ class ProvisioningService(AuthorizedService):
         actor_id: UUID,
         user_id: UUID,
     ) -> PortalUser:
-        """Shared precondition for deactivate_user and delete_user: never act
-        on your own account, never strip a team of its last leader.
-
-        No app-level "last site admin" check: the actor must itself be an
-        active site admin (site_admin_step_up) and can't target itself (just
-        above), so a different, active admin target always leaves at least
-        the actor standing. portal_installation_must_have_admin is the real
-        backstop, for the concurrent-request case this can't reason about.
+        """There is no last-site-admin check here. The actor is an active site
+        admin and cannot be the target, so the actor remains an admin.
+        portal_installation_must_have_admin covers concurrent requests.
         """
         if user_id == actor_id:
             raise ProvisioningError(Reason.USER_CANNOT_DEACTIVATE_SELF)
@@ -1026,10 +1016,8 @@ class ProvisioningService(AuthorizedService):
 
     @staticmethod
     def _slugify(name: str) -> str:
-        """Derive a slug from a team name for the browser flow, where slug is
-        a DB uniqueness detail nobody should have to type in. Capped at 58
-        chars to leave room for a "-NN" disambiguator under _SLUG's 63-char
-        limit; CLI provisioning still takes an explicit slug via _slug."""
+        """The base is capped at 58 characters to leave room for a "-NN"
+        suffix under _SLUG's 63-character limit."""
         base = _SLUGIFY.sub("-", name.strip().lower()).strip("-")[:58]
 
         if len(base) < 2:

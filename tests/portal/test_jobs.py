@@ -77,8 +77,7 @@ async def test_team_member_landing_on_team_page_is_sent_to_search(
     team_repository: PostgresTeamRepository,
     app: Litestar,
 ) -> None:
-    """A plain member has nothing to manage on this page: send them straight
-    to the search they can actually use instead of an empty-state detour."""
+    """A plain member has nothing to manage on the team page."""
     team_id = (await build_experience(pool, team_repository)).team_id
 
     with sync_client(app) as client:
@@ -261,8 +260,7 @@ async def test_csv_upload_over_the_body_limit_gets_the_friendly_message(
     app: Litestar,
 ) -> None:
     """Litestar's request_max_body_size rejects this before new_job_post runs,
-    ahead of read_csv_upload's own checks: the app must still render its own
-    CSV_TOO_LARGE message rather than Litestar's generic 413 body.
+    and the app must still render CSV_TOO_LARGE, not Litestar's generic 413.
     """
     people = await build_experience(pool, team_repository)
 
@@ -297,9 +295,8 @@ def _upload_csv(
     credential_id: UUID,
     documents: str,
 ) -> httpx.Response:
-    """POST /jobs directly, without submit_job's 303-on-success assumption:
-    a submission this team already has a fresh answer for renders the
-    JobReview screen (200) instead of admitting immediately."""
+    """Unlike submit_job, this does not expect a 303. A submission the team
+    already has fresh answers for renders the review screen with 200."""
     return client.post(
         f"/teams/{team_id}/jobs",
         data={
@@ -353,10 +350,8 @@ async def test_confirming_a_single_source_review_reuses_without_refetching(
     job_repository: PostgresJobRepository,
     app: Litestar,
 ) -> None:
-    """Regression: Litestar's URL-encoded body binding decodes a single-value
-    `sources` field as a scalar, not a list, so a structured Body(URL_ENCODED)
-    form here 400s whenever a leader picks (or has cached) exactly one
-    source. confirm_job_post reads request.form() raw to accept that input."""
+    """One selected source arrives as a single `sources` key, not a repeated
+    one, and a form model would reject it with 400."""
     people = await build_experience(pool, team_repository)
 
     with sync_client(app) as client:

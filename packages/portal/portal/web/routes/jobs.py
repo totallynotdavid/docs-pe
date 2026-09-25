@@ -117,7 +117,6 @@ async def _form_context(
 def _review_by_source(
     review: SubmissionReview,
 ) -> tuple[dict[str, object], ...]:
-    """Return per-source totals and reusable counts for the review screen."""
     reusable_pairs = {(item.document, item.source) for item in review.reusable}
     totals: dict[str, int] = {}
     reused: dict[str, int] = {}
@@ -243,8 +242,8 @@ async def confirm_job_post(
     storage: NamedDependency[ObjectStorage],
     team_id: FromPath[UUID],
 ) -> Response:
-    # Repeated form keys are required for msgspec to decode a list. Accept a
-    # single selected source as well.
+    # A msgspec form model decodes a list only from repeated keys. The raw
+    # form's getall() also accepts a single selected source.
     form = await request.form()
 
     session = await require_verified_session(
@@ -325,8 +324,8 @@ async def job_items_page(
         page=current_page,
     )
 
-    # Direct page requests need the full JobDetail context; pagination normally
-    # uses the fragment through HTMX.
+    # HTMX pagination renders only the fragment, but a direct page request
+    # needs the full JobDetail context.
     return render_hx(
         request,
         "JobDetail",
@@ -477,8 +476,8 @@ async def _progress_events(
     last_counts: JobItemCounts | None = None
 
     while True:
-        # Re-checked on every poll: a stream must not outlive the session that
-        # opened it, and the session can be destroyed from another tab.
+        # The session can be destroyed from another tab, and the stream must
+        # not outlive it.
         session = await sessions.load(token)
 
         if session is None or session.user.id != actor_id:

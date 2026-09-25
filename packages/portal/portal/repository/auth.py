@@ -160,10 +160,10 @@ class PostgresAuthRepository:
     ) -> None:
         """Commit an already-confirmed TOTP secret.
 
-        recovery_code_hashes is None when the caller already holds an active
-        second factor (adding TOTP alongside an existing passkey): the
-        existing recovery set stays valid and is left untouched. Otherwise
-        this is the user's first factor and the whole set is (re)issued.
+        recovery_code_hashes is None when the user already holds an active
+        second factor, such as a passkey. The existing recovery set then stays
+        valid. Otherwise this is the user's first factor and the whole set is
+        replaced.
         """
         async with self._pool.acquire() as connection, connection.transaction():
             await connection.execute(
@@ -318,10 +318,13 @@ class PostgresAuthRepository:
         return _webauthn_credential_row(row) if row is not None else None
 
     async def touch_webauthn_credential(self, row_id: UUID, *, sign_count: int) -> bool:
-        """Optimistic-concurrency counter bump: the WHERE clause is what turns
-        a replayed/cloned assertion into a rejected write instead of a race.
+        """The WHERE clause checks the counter in the same statement that
+        records it, so two concurrent uses of an advancing counter cannot both
+        pass.
+
         Many platform authenticators never advance past 0, which WebAuthn
-        Level 2 says is not itself a sign of cloning, so 0-to-0 is allowed."""
+        Level 2 says is not itself a sign of cloning, so 0-to-0 is allowed. A
+        credential whose counter stays at 0 gets no replay detection here."""
         async with self._pool.acquire() as connection:
             updated = await connection.fetchval(
                 """
@@ -339,8 +342,9 @@ class PostgresAuthRepository:
         return updated is not None
 
     async def promote_now(self, user_id: UUID) -> PortalUser:
-        """The target already carries a qualifying factor: skip the pending
-        state and promote directly."""
+        """Promote without the pending state. The caller must know the target
+        already carries a second factor, or portal_admin_requires_second_factor
+        rejects the commit."""
         async with self._pool.acquire() as connection:
             row = await connection.fetchrow(
                 f"""
@@ -490,10 +494,11 @@ class PostgresAuthRepository:
     async def delete_if_unused(self, user_id: UUID) -> bool:
         """True if the account had no history and could be removed outright.
 
-        Every created_by/submitted_by/actor_id column that points at
-        portal_users is a plain RESTRICT foreign key, so letting the database
-        reject the DELETE is the only check that can never drift out of sync
-        with what actually references a user.
+        History columns such as created_by and submitted_by are RESTRICT
+        foreign keys, so letting the database reject the DELETE is the only
+        check that cannot drift from what references a user. The actor_id of
+        job and credential events is SET NULL instead, so those events alone
+        do not keep an account.
         """
         async with self._pool.acquire() as connection:
             try:

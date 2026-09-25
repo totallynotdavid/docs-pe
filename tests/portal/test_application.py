@@ -277,9 +277,8 @@ async def test_reconfiguring_a_retired_credential_revives_it(
     service: PortalService,
     credential_repository: PostgresCredentialRepository,
 ) -> None:
-    """Reconfiguring under the same label is how "editing" and "reconnecting"
-    work: same identity, so it should undo an earlier retire, not collide
-    with it."""
+    """Editing and reconnecting both reconfigure under the same label, so
+    reconfiguring undoes an earlier retire instead of colliding with it."""
     team = await seed_team(pool)
     [credential] = await service.credentials(team.actor_id, team.team_id)
 

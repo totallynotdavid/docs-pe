@@ -42,9 +42,8 @@ if TYPE_CHECKING:
     from portal.turnstile import HumanCheck
 
 
-# A passkey login challenge, distinct from PENDING_MFA: it names the account
-# only when this is the second-factor path (see begin_passkey_login), and
-# what it stores is a WebAuthn challenge rather than a bare user id.
+# Unlike PENDING_MFA, this token stores a WebAuthn challenge, and it names the
+# account only on the second-factor path.
 PASSKEY_LOGIN = "passkey_login"
 PASSKEY_LOGIN_TTL = timedelta(minutes=5)
 
@@ -98,11 +97,9 @@ LoginOutcome = SessionIssued | MfaChallengeIssued | LoginRejected
 
 
 class LoginService:
-    """The whole login pipeline, in the order it has to happen.
-
-    Each step in attempt() only runs once the one before it passed, so a
-    request that fails the human check never reaches the password hash, and a
-    replayed form token never reaches the throttle counters.
+    """attempt() runs the human check, then the form token, before anything
+    else, so a request that fails the human check never reaches the password
+    hash, and a replayed form token never reaches the throttle counters.
     """
 
     def __init__(
@@ -189,13 +186,12 @@ class LoginService:
     async def begin_passkey_login(
         self, pending_token: str | None
     ) -> PasskeyLoginChallenge:
-        """pending_token names the account when called from /login/mfa (a
-        passkey offered as an alternative to a TOTP code); None means a
-        passwordless, discoverable login called straight from /login.
+        """pending_token names the account on /login/mfa, where a passkey is
+        an alternative to a TOTP code. None starts a passwordless,
+        discoverable login from /login.
 
-        Reads PENDING_MFA rather than consuming it: fetching options is not
-        itself a guess, so it must not spend the one attempt a wrong TOTP
-        code would. complete_passkey_login below is what settles PASSKEY_LOGIN.
+        PENDING_MFA is read, not consumed. Fetching options is not a guess,
+        so it must not spend the one attempt a wrong TOTP code would.
         """
         user_id: UUID | None = None
 
@@ -232,11 +228,10 @@ class LoginService:
     async def complete_passkey_login(
         self, attempt: PasskeyLoginAttempt
     ) -> LoginOutcome:
-        """A userVerification: required assertion is possession plus the
-        device's own knowledge/inherence check, so unlike a TOTP code it
-        already satisfies the second factor on its own: this always
-        establishes with mfa_verified=True, whether reached from /login/mfa
-        or directly from /login (see begin_passkey_login).
+        """An assertion with userVerification required proves possession and
+        the device's own PIN or biometric check, so it is a complete second
+        factor. The session is established with mfa_verified=True from
+        /login/mfa and from /login alike.
         """
         pending = await self._tokens.consume(PASSKEY_LOGIN, attempt.login_token)
 
@@ -273,8 +268,6 @@ class LoginService:
         if verified is None:
             return await self._reject_passkey(attempt)
 
-        # WHERE sign_count advanced is what turns a replayed/cloned
-        # assertion into a rejected write instead of a silent pass.
         if not await self._users.touch_webauthn_credential(
             stored.id,
             sign_count=verified.new_sign_count,
@@ -332,8 +325,8 @@ class LoginService:
         if totp_matches(revealed.decode("utf-8"), code):
             return True
 
-        # totp_matches only accepts six digits, so anything else reaching here
-        # can only be a recovery code, and spending one is a single UPDATE.
+        # Any code totp_matches rejects is tried as a recovery code, and
+        # spending one is a single UPDATE.
         return await self._users.consume_recovery_code(user.id, token_hash(code))
 
     async def verify_second_factor(

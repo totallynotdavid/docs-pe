@@ -53,9 +53,9 @@ UPDATE portal_proxy_slots AS s
 class PostgresProxySlots:
     """Assign fleet-wide provider slots with expiring leases.
 
-    A lane keeps its slot while it works one provider credential. Renewal
-    receives the exact slots held by the current process. An unrenewed lease
-    expires, while an explicit release makes a slot available immediately.
+    A lane keeps its slot while it works one provider credential. An
+    unrenewed lease expires, while an explicit release makes a slot available
+    immediately.
     """
 
     def __init__(self, pool: Pool) -> None:

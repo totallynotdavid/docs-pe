@@ -12,13 +12,13 @@ if TYPE_CHECKING:
 
 
 def client_trace(request: Request) -> RequestTrace:
-    """Trust exactly one header for the client address.
+    """CF-Connecting-IP is the one header trusted for the client address.
 
-    Cloudflare sets CF-Connecting-IP after stripping any client-supplied copy,
-    and the origin accepts connections only from Cloudflare, so this is the
-    single source for who is calling. X-Forwarded-For is deliberately not
-    consulted: it is the header an attacker would forge to move themselves into
-    a fresh rate-limit bucket.
+    Cloudflare sets it after stripping any client-supplied copy, and a
+    deployed origin is reachable only through Cloudflare. Without the header,
+    the socket peer is used. X-Forwarded-For is not consulted, because it is
+    the header an attacker would forge to move themselves into a fresh
+    rate-limit bucket.
     """
     return RequestTrace(
         ip=_client_ip(request),

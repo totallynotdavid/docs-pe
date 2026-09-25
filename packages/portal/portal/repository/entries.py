@@ -29,10 +29,9 @@ def entry_row(row: Record) -> Entry:
     )
 
 
-# Entries with these statuses count as a usable answer for the submission
-# review's "already known" check. 'failed' never does: a failed attempt has
-# nothing to hand back, no matter how recent, so it always falls through to
-# a fresh lookup.
+# Only these statuses answer the submission review's "already known" check. A
+# failed entry has nothing to hand back, however recent, so its pair is looked
+# up again.
 _REUSABLE_STATUSES = ("ok", "not_found")
 
 
@@ -56,9 +55,8 @@ class PostgresEntryRepository:
     ) -> tuple[tuple[Entry, ...], bool]:
         """Entries this team has ever confirmed, matching needle.
 
-        Scoped through portal_job_items.team_id, never through a filter on
-        portal_entries alone: an entry another team confirmed must never
-        surface here just because the document happens to match.
+        The scope goes through portal_job_items.team_id, so an entry that only
+        another team confirmed never appears here.
         """
         rows = await self._pool.fetch(
             """
@@ -160,9 +158,9 @@ class PostgresEntryRepository:
         """Of `pairs` (document, source), the ones this team already has a
         fresh, usable answer for, mapped to the existing entry's id.
 
-        Scoped to this team's own portal_job_items throughout: a document
-        another team scanned is never offered back here, no matter how
-        fresh, so reuse can never let one team draw on another's proxy spend.
+        The scope is this team's own portal_job_items, so a document another
+        team scanned is never offered here, and reuse never draws on another
+        team's proxy spend.
         """
         if not pairs:
             return {}

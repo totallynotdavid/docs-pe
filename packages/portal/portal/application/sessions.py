@@ -17,9 +17,9 @@ if TYPE_CHECKING:
     from portal.repository.auth import PostgresAuthRepository
 
 
-# Idle expiry is the store's TTL, refreshed on every authenticated request. The
-# absolute cap is enforced here because a sliding TTL cannot express "no matter
-# how active, this session ends": without it a stolen cookie lives forever.
+# Idle expiry is the store's TTL, refreshed on every authenticated request. A
+# sliding TTL alone would keep a stolen cookie alive for as long as it is used,
+# so load() also caps a session's age at SESSION_LIFETIME.
 SESSION_IDLE = timedelta(hours=12)
 SESSION_LIFETIME = timedelta(days=7)
 
@@ -34,9 +34,11 @@ class BrowserSessions:
     """Cookie sessions in the ephemeral store, keyed by the hashed cookie.
 
     The cookie value itself is never stored, so a store dump does not yield
-    usable cookies, and the identity behind a session is re-read from Postgres
-    on every request rather than cached in the record: revoking an
-    administrator takes effect on their next request, not at expiry.
+    usable cookies.
+
+    The user behind a session is re-read from Postgres on every request, not
+    cached in the record, so deactivating an account or revoking an
+    administrator takes effect on their next request.
     """
 
     def __init__(self, store: EphemeralStore, users: PostgresAuthRepository) -> None:
@@ -85,14 +87,13 @@ class BrowserSessions:
             await self._store.discard(key)
             return None
 
-        # Conditional refresh: a session destroyed between the read and here
-        # must stay destroyed rather than be written back.
+        # replace() refreshes only a live key, so a session destroyed after
+        # the read is not written back.
         if not await self._store.replace(key, stored, SESSION_IDLE):
             return None
 
         user = await self._users.user_by_id(UUID(record["user_id"]))
 
-        # Deactivation takes effect on the account's next request.
         if user is None or not user.is_active:
             await self._store.discard(key)
             return None
@@ -116,11 +117,9 @@ class BrowserSessions:
             await self._store.discard(_session_key(token))
 
     async def mark_step_up_verified(self, token: str | None) -> bool:
-        """Stamp fresh second-factor proof onto an already-open session.
-
-        Distinct from mint()'s mfa_verified_at: a long-lived session earns
-        this by completing MFA a second time mid-session (see /step-up), not
-        just by having done so once at login.
+        """mint() stamps mfa_verified_at at login. This restamps it when the
+        user completes MFA again mid-session through /step-up, so a session
+        older than the step-up window can pass the check again.
         """
         if not token:
             return False
@@ -140,8 +139,9 @@ class BrowserSessions:
 class OneTimeTokens:
     """Short-lived tokens that are spent on first use.
 
-    Single use is a property of the read, not of a cleanup pass: taking a token
-    removes it in the same operation, so a replay finds nothing.
+    Single use is a property of the read, not of a cleanup pass. consume()
+    removes the token in the same statement that reads it, so a replay finds
+    nothing.
     """
 
     def __init__(self, store: EphemeralStore) -> None:
@@ -161,9 +161,9 @@ class OneTimeTokens:
         return await self._store.take(_token_key(purpose, token))
 
     async def peek(self, purpose: str, token: str | None) -> str | None:
-        """Read without spending. For a step that must not count as the one
-        guess a token's later consume() bounds, such as fetching WebAuthn
-        options before the user has produced (or failed to produce) a proof.
+        """Read without spending, for a step that must not count as the one
+        guess consume() allows, such as fetching WebAuthn options before the
+        user has produced a proof.
         """
         if not token:
             return None

@@ -41,7 +41,6 @@ CONTENT_SECURITY_POLICY = (
     "frame-ancestors 'none'"
 )
 
-# Keep browser permissions disabled unless a feature explicitly needs one.
 PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
 
 # Browsers ignore HSTS served over plain HTTP, so send it unconditionally.
@@ -119,11 +118,11 @@ LAST_TEAM_COOKIE_MAX_AGE = 180 * 24 * 60 * 60
 
 
 class RememberLastTeam:
-    """Sets a last-visited-team cookie on every successful /teams/{id}/...
-    response, so dashboard() can skip the team picker next visit the same way
-    it already does when there is only one team. Read-only convenience, never
-    a source of authorization: every team route still checks membership on
-    its own.
+    """dashboard() reads the last-visited-team cookie to skip the team picker,
+    as it does when the user has one team. The cookie never authorizes
+    anything. A team route reaches team data only through service methods
+    whose access decorators check the caller against that team, and several
+    of those admit members alone, not a site admin outside the team.
     """
 
     def __init__(self, app: ASGIApp) -> None:

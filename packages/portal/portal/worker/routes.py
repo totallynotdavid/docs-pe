@@ -49,7 +49,6 @@ if TYPE_CHECKING:
 
 
 async def provide_worker(request: Request, state: State) -> WorkerIdentity:
-    """Authorize a worker by its identity header and bearer credential."""
     authorization = request.headers.get("authorization", "")
 
     if not authorization.startswith("Bearer "):
@@ -166,8 +165,8 @@ async def worker_claim(
     if credential is None:
         raise HTTPException(status_code=409, detail="credential not available")
 
-    # Keep plaintext configuration out of storage and logs. The audit row below
-    # records each reveal.
+    # The plaintext configuration goes only into the response, never into
+    # storage or logs.
     config = decode_config(protector.reveal(credential.config))
 
     await audit.record(
@@ -199,7 +198,6 @@ async def worker_reveal_credential(
     protector: NamedDependency[EnvelopeProtector],
     audit: NamedDependency[PostgresAuditLog],
 ) -> CredentialLease:
-    """Return the selected proxy configuration to an authenticated worker."""
     credential = await worker_jobs.credential_for_version(data.credential_version_id)
 
     if credential is None:

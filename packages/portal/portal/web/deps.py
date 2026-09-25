@@ -30,7 +30,6 @@ if TYPE_CHECKING:
 
 
 def is_search_only(user: PortalUser, teams: Sequence[Team]) -> bool:
-    """Whether this session has no team or installation management access."""
     if user.is_site_admin:
         return False
 
@@ -119,9 +118,7 @@ async def require_verified_session(
     settings: PortalSettings,
     csrf_token: str,
 ) -> BrowserSession:
-    """The gate every state-changing request goes through.
-
-    Same-origin, then the synchronizer token, then the per-actor cap. The cap
+    """Same-origin, then the synchronizer token, then the per-actor cap. The cap
     comes last because it is keyed by the actor, which only the verified
     session establishes.
 
