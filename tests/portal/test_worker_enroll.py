@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 import asyncpg
 import pytest
@@ -34,9 +35,7 @@ async def _drop_minted_worker_roles(
     connection = await asyncpg.connect(settings.database_dsn)
 
     try:
-        await connection.execute(
-            f'DROP ROLE IF EXISTS "{worker_role_name("poseidon-1")}"'
-        )
+        await connection.execute(f'DROP ROLE IF EXISTS "{worker_role_name("node-1")}"')
     finally:
         await connection.close()
 
@@ -147,13 +146,13 @@ async def test_self_enroll_mints_a_working_direct_db_role(
     """Enrollment returns a DSN for a role limited to worker operations."""
     response = await bootstrapped_client.post(
         "/enroll",
-        json={"worker_id": "poseidon-1", "tailscale_hostname": "poseidon.tailnet.test"},
+        json={"worker_id": "node-1", "tailscale_hostname": "node-1.tailnet.test"},
         headers={"Authorization": f"Bearer {BOOTSTRAP_TOKEN}"},
     )
 
     assert response.status_code == 200
     dsn = response.json()["database_dsn"]
-    role = worker_role_name("poseidon-1")
+    role = worker_role_name("node-1")
     assert f"{role}:" in dsn
     assert dsn != settings.database_dsn
 
@@ -161,7 +160,7 @@ async def test_self_enroll_mints_a_working_direct_db_role(
 
     try:
         claimed = await PostgresJobRepository(worker_pool).claim_many(
-            "poseidon-1", ("osiptel",), 1
+            "node-1", ("osiptel",), 1
         )
         assert claimed == ()
 
@@ -174,12 +173,42 @@ async def test_self_enroll_mints_a_working_direct_db_role(
         await worker_pool.close()
 
 
+async def test_enrolled_dsn_addresses_the_database_as_workers_reach_it(
+    settings: PortalSettings,
+) -> None:
+    """The DSN names the worker-facing address, not the core's own DSN host."""
+    api = create_worker_api(
+        dataclasses.replace(
+            settings,
+            worker_bootstrap_token=BOOTSTRAP_TOKEN,
+            worker_database_address="db.worker.test:6543",
+        )
+    )
+
+    async with AsyncTestClient(
+        app=api, base_url="https://worker-api.tailnet.test"
+    ) as client:
+        response = await client.post(
+            "/enroll",
+            json={"worker_id": "node-1", "tailscale_hostname": "node-1.tailnet.test"},
+            headers={"Authorization": f"Bearer {BOOTSTRAP_TOKEN}"},
+        )
+
+    assert response.status_code == 200
+    enrolled = urlsplit(response.json()["database_dsn"])
+    admin = urlsplit(settings.database_dsn)
+    assert enrolled.hostname == "db.worker.test"
+    assert enrolled.port == 6543
+    assert enrolled.username == worker_role_name("node-1")
+    assert enrolled.path == admin.path
+
+
 async def test_re_enrolling_re_keys_the_direct_db_role_idempotently(
     bootstrapped_client: AsyncTestClient,
 ) -> None:
     """Re-enrollment rotates the worker's Postgres login password."""
     headers = {"Authorization": f"Bearer {BOOTSTRAP_TOKEN}"}
-    body = {"worker_id": "poseidon-1", "tailscale_hostname": "poseidon.tailnet.test"}
+    body = {"worker_id": "node-1", "tailscale_hostname": "node-1.tailnet.test"}
 
     first = await bootstrapped_client.post("/enroll", json=body, headers=headers)
     second = await bootstrapped_client.post("/enroll", json=body, headers=headers)

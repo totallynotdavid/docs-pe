@@ -4,7 +4,7 @@ import os
 
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 
 
 # Production security follows the declared public origin, not the environment
@@ -33,6 +33,21 @@ def _required_bool(name: str) -> bool:
         raise RuntimeError(msg)
 
     return value == "true"
+
+
+def _is_host_and_port(address: str) -> bool:
+    parts = urlsplit(f"//{address}")
+
+    try:
+        # urlsplit parses the port lazily; this raises on a non-numeric or
+        # out-of-range value.
+        _ = parts.port
+    except ValueError:
+        return False
+
+    # No host form contains "@", so this rejects every userinfo shape,
+    # including ":secret@host" whose username parses as empty.
+    return bool(parts.hostname) and parts.netloc == address and "@" not in address
 
 
 def _required_choice(name: str, allowed: frozenset[str]) -> str:
@@ -65,6 +80,7 @@ class PortalSettings:
     worker_api_port: int = DEFAULT_WORKER_API_PORT
     worker_api_workers: int = DEFAULT_WORKER_API_WORKERS
     worker_bootstrap_token: str = ""
+    worker_database_address: str = ""
     object_storage_endpoint: str = ""
     object_storage_bucket: str = ""
     object_storage_access_key: str = ""
@@ -91,6 +107,7 @@ class PortalSettings:
                 _optional("PORTAL_WORKER_API_WORKERS") or DEFAULT_WORKER_API_WORKERS
             ),
             worker_bootstrap_token=_optional("PORTAL_WORKER_BOOTSTRAP_TOKEN"),
+            worker_database_address=_optional("PORTAL_WORKER_DATABASE_ADDRESS"),
             object_storage_endpoint=_optional("PORTAL_OBJECT_STORAGE_ENDPOINT"),
             object_storage_bucket=_optional("PORTAL_OBJECT_STORAGE_BUCKET"),
             object_storage_access_key=_optional("PORTAL_OBJECT_STORAGE_ACCESS_KEY"),
@@ -111,6 +128,12 @@ class PortalSettings:
             msg = "PORTAL_PUBLIC_ORIGIN must include a hostname"
             raise RuntimeError(msg)
 
+        if self.worker_database_address and not _is_host_and_port(
+            self.worker_database_address
+        ):
+            msg = "PORTAL_WORKER_DATABASE_ADDRESS must be host or host:port"
+            raise RuntimeError(msg)
+
         if self.environment == "development":
             return
 
@@ -126,6 +149,10 @@ class PortalSettings:
                 (
                     "PORTAL_WORKER_BOOTSTRAP_TOKEN is required",
                     self.worker_bootstrap_token,
+                ),
+                (
+                    "PORTAL_WORKER_DATABASE_ADDRESS is required",
+                    self.worker_database_address,
                 ),
                 (
                     "PORTAL_OBJECT_STORAGE_ENDPOINT is required",

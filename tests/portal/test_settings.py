@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from portal.settings import PortalSettings
+from portal.worker.api import create_worker_api
 
 
 _REQUIRED_ENV = {
@@ -21,10 +22,11 @@ _PRODUCTION_ENV = {
     "PORTAL_TURNSTILE_SECRET": "0x1111",
     "PORTAL_WORKER_API_HOST": "100.64.0.2",
     "PORTAL_WORKER_BOOTSTRAP_TOKEN": "bootstrap-secret",
-    "PORTAL_OBJECT_STORAGE_ENDPOINT": "http://100.64.0.3:9000",
+    "PORTAL_WORKER_DATABASE_ADDRESS": "core.tailnet.test:5432",
+    "PORTAL_OBJECT_STORAGE_ENDPOINT": "http://garage:3900",
     "PORTAL_OBJECT_STORAGE_BUCKET": "portal-objects",
-    "PORTAL_OBJECT_STORAGE_ACCESS_KEY": "minio-access",
-    "PORTAL_OBJECT_STORAGE_SECRET_KEY": "minio-secret",
+    "PORTAL_OBJECT_STORAGE_ACCESS_KEY": "object-access",
+    "PORTAL_OBJECT_STORAGE_SECRET_KEY": "object-secret",
     "PORTAL_RESEND_API_KEY": "re_0000",
     "PORTAL_MAIL_FROM": "worker@osiptel.test",
 }
@@ -113,6 +115,7 @@ def test_validate_rejects_an_origin_without_hostname() -> None:
         "PORTAL_TURNSTILE_SITE_KEY",
         "PORTAL_TURNSTILE_SECRET",
         "PORTAL_WORKER_BOOTSTRAP_TOKEN",
+        "PORTAL_WORKER_DATABASE_ADDRESS",
         "PORTAL_OBJECT_STORAGE_ENDPOINT",
         "PORTAL_OBJECT_STORAGE_BUCKET",
         "PORTAL_OBJECT_STORAGE_ACCESS_KEY",
@@ -129,6 +132,65 @@ def test_production_refuses_every_development_convenience(
     monkeypatch.delenv(dropped)
 
     with pytest.raises(RuntimeError, match=dropped):
+        PortalSettings.from_environment().validate()
+
+
+def test_worker_api_refuses_to_start_without_the_worker_database_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_environment(monkeypatch, _PRODUCTION_ENV)
+    monkeypatch.delenv("PORTAL_WORKER_DATABASE_ADDRESS")
+
+    with pytest.raises(RuntimeError, match="PORTAL_WORKER_DATABASE_ADDRESS"):
+        create_worker_api()
+
+
+@pytest.mark.parametrize("address", ["core.tailnet.test", "[fd7a::1]:6543"])
+def test_worker_database_address_accepts_a_host_with_or_without_port(
+    monkeypatch: pytest.MonkeyPatch,
+    address: str,
+) -> None:
+    _set_environment(
+        monkeypatch, _PRODUCTION_ENV, PORTAL_WORKER_DATABASE_ADDRESS=address
+    )
+
+    PortalSettings.from_environment().validate()
+
+
+@pytest.mark.parametrize(
+    "address",
+    ["core.tailnet.test:port", "core.tailnet.test/db"],
+)
+def test_worker_database_address_rejects_anything_but_host_and_port(
+    monkeypatch: pytest.MonkeyPatch,
+    address: str,
+) -> None:
+    _set_environment(
+        monkeypatch, _PRODUCTION_ENV, PORTAL_WORKER_DATABASE_ADDRESS=address
+    )
+
+    with pytest.raises(RuntimeError, match="PORTAL_WORKER_DATABASE_ADDRESS"):
+        PortalSettings.from_environment().validate()
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "user@core.tailnet.test",
+        ":secret@core.tailnet.test",
+        "user:secret@core.tailnet.test:5432",
+        "@core.tailnet.test",
+    ],
+)
+def test_worker_database_address_rejects_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+    address: str,
+) -> None:
+    _set_environment(
+        monkeypatch, _PRODUCTION_ENV, PORTAL_WORKER_DATABASE_ADDRESS=address
+    )
+
+    with pytest.raises(RuntimeError, match="PORTAL_WORKER_DATABASE_ADDRESS"):
         PortalSettings.from_environment().validate()
 
 
