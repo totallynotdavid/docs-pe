@@ -108,7 +108,7 @@ class DataImpulseProvider:
         )
 
     async def release(self, session: ProxySession) -> None:
-        # DataImpulse expires sessions by TTL; release is only an observation.
+        # DataImpulse expires sessions by TTL, so release only logs.
         logger.debug(
             "%s %s",
             SESSION_RELEASE_SKIPPED,

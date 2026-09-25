@@ -131,9 +131,8 @@ async def test_a_fault_retries_up_to_max_attempts_with_the_classified_code(
 
 
 async def test_a_transient_failure_then_success_keeps_both_attempts() -> None:
-    """A document that ultimately succeeds must not look like a clean,
-    single-try lookup: the failed attempt that preceded it is real cost
-    (portal_lookup_attempts is exactly where that stops being invisible)."""
+    """A retried success keeps its failed attempt, because that attempt was
+    real cost and portal_lookup_attempts reports it."""
     calls = 0
 
     def lookup(client: httpx.AsyncClient, doc: Doc) -> tuple[Row, ...]:
@@ -195,7 +194,7 @@ async def test_a_ban_error_rotates_the_session_with_a_cooldown(
     assert result.error_code == "ban_signal"
     # A ban rotates the session on every attempt.
     assert len(provider.released) == MAX_ATTEMPTS
-    # The cooldown deadline never shrinks; each failure adds one ban cooldown.
+    # The cooldown deadline never shrinks. Each failure adds one ban cooldown.
     assert state.cooldown_until == pytest.approx(1000.0 + 2.5 * MAX_ATTEMPTS)
 
 

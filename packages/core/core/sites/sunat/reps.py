@@ -17,7 +17,7 @@ class RepRecord:
     fecha_desde: str
 
 
-# SUNAT keeps representative records in <tbody>; <thead> is not data.
+# SUNAT puts representative records in <tbody>. The <thead> rows are headers.
 _TBODY_RE = re.compile(r"<tbody>(?P<body>.*?)</tbody>", re.IGNORECASE | re.DOTALL)
 _ROW_RE = re.compile(r"<tr>(?P<row>.*?)</tr>", re.IGNORECASE | re.DOTALL)
 _CELL_RE = re.compile(r"<td[^>]*>(?P<cell>.*?)</td>", re.IGNORECASE | re.DOTALL)
@@ -30,7 +30,7 @@ def build_reps_body(*, ruc: str) -> dict[str, str]:
         "accion": "getRepLeg",
         "contexto": "ti-it",
         "modo": "1",
-        "desRuc": "",  # echoed back unvalidated; required key, so send it empty
+        "desRuc": "",  # required, but echoed back unvalidated, so sent empty
         "nroRuc": ruc,
     }
 
