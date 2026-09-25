@@ -21,6 +21,7 @@ import msgspec
 import psutil
 
 from core.domain.types import Cell, Doc
+from core.obs.logging import kv
 from core.pipeline.breaker import CircuitBreaker
 from core.pipeline.fetch import fetch_one
 from core.pipeline.session import WorkerConfig, WorkerState, close_session
@@ -644,10 +645,13 @@ async def self_enroll(
                     },
                 )
                 response.raise_for_status()
-            except httpx.TransportError:
+            except httpx.TransportError as exc:
                 if delay > ENROLL_RETRY_MAX_SECONDS:
                     raise
-                logger.warning("worker_enroll_retrying", exc_info=True)
+                logger.warning(
+                    "worker_enroll_retrying %s",
+                    kv(retry_in_seconds=delay, error=f"{type(exc).__name__}: {exc}"),
+                )
                 await asyncio.sleep(delay)
                 delay *= 2
                 continue

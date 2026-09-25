@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 import dataclasses
+import logging
+import socket
 
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 import asyncpg
+import httpx
 import pytest
 
 from litestar.testing import AsyncTestClient
 from portal.domain.errors import PermissionDenied
 from portal.repository.jobs import PostgresJobRepository
 from portal.repository.workers import PostgresWorkerRegistry, worker_role_name
+from portal.worker import agent
 from portal.worker.api import create_worker_api
 
 
@@ -221,3 +225,29 @@ async def test_re_enrolling_re_keys_the_direct_db_role_idempotently(
         second.json()["database_dsn"], min_size=1, max_size=1
     )
     await worker_pool.close()
+
+
+async def test_enrollment_retries_log_one_line_without_a_traceback(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        closed_port = probe.getsockname()[1]
+    monkeypatch.setattr(agent, "ENROLL_RETRY_BASE_SECONDS", 0.01)
+    monkeypatch.setattr(agent, "ENROLL_RETRY_MAX_SECONDS", 0.02)
+
+    with (
+        caplog.at_level(logging.WARNING, logger=agent.__name__),
+        pytest.raises(httpx.ConnectError),
+    ):
+        await agent.self_enroll(
+            f"http://127.0.0.1:{closed_port}", BOOTSTRAP_TOKEN, "node-1", "node-1"
+        )
+
+    retries = [r for r in caplog.records if r.msg.startswith("worker_enroll_retrying")]
+    assert [r.getMessage().split(" error=")[0] for r in retries] == [
+        "worker_enroll_retrying retry_in_seconds=0.01",
+        "worker_enroll_retrying retry_in_seconds=0.02",
+    ]
+    assert all(" error=ConnectError: " in r.getMessage() for r in retries)
+    assert all(r.exc_info is None for r in retries)
