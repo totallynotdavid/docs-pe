@@ -9,6 +9,8 @@ from uuid import UUID, uuid4
 
 import httpx
 
+from portal.notify.mailer import SEND_TIMEOUT_SECONDS
+
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -20,7 +22,13 @@ if TYPE_CHECKING:
 
 DISPATCH_INTERVAL_SECONDS = 15.0
 RETRY_BACKOFF_SECONDS = 300.0
-CLAIM_BATCH_SIZE = 20
+MAX_SENDS_PER_RUN = 20
+
+# httpx applies SEND_TIMEOUT_SECONDS to connect, write, read and pool
+# acquisition separately, so one send can run four times as long. The rest is
+# margin for the recipient lookup and the outcome write. A lease shorter than
+# a live send would let a second dispatcher send the same row.
+CLAIM_LEASE_SECONDS = 6 * SEND_TIMEOUT_SECONDS
 
 _ESTADO_LABELS = {
     "completed": "completada",
@@ -28,21 +36,25 @@ _ESTADO_LABELS = {
     "cancelled": "cancelada",
 }
 
-# Claim rows before the network call so the transaction does not hold a lock
-# while the mail provider responds.
-_CLAIM_PENDING_EMAIL = """
+# Claim a row before the network call so the transaction does not hold a lock
+# while the mail provider responds. The claim is a lease: available_at moves to
+# its expiry, and a 'sending' row whose lease has run out belongs to a
+# dispatcher that died, so it is claimable again. One row per claim keeps the
+# lease covering one send, not the wait behind the rest of a batch.
+_CLAIM_DUE_EMAIL = """
 WITH claimed AS (
     SELECT id
       FROM portal_notification_outbox
-     WHERE state = 'pending'
+     WHERE state IN ('pending', 'sending')
        AND channel = 'email'
        AND available_at <= now()
      ORDER BY available_at, id
      FOR UPDATE SKIP LOCKED
-     LIMIT $1
+     LIMIT 1
 )
 UPDATE portal_notification_outbox AS outbox
-   SET state = 'sending'
+   SET state = 'sending',
+       available_at = now() + make_interval(secs => $1)
   FROM claimed
  WHERE outbox.id = claimed.id
 RETURNING outbox.id, outbox.event_id, outbox.payload
@@ -150,10 +162,12 @@ async def _send_one(
 
 
 async def dispatch_once(pool: Pool, mailer: Mailer) -> None:
-    async with pool.acquire() as connection, connection.transaction():
-        claimed = await connection.fetch(_CLAIM_PENDING_EMAIL, CLAIM_BATCH_SIZE)
+    for _ in range(MAX_SENDS_PER_RUN):
+        row = await pool.fetchrow(_CLAIM_DUE_EMAIL, CLAIM_LEASE_SECONDS)
 
-    for row in claimed:
+        if row is None:
+            return
+
         await _send_one(pool, mailer, row["id"], row["event_id"], row["payload"])
 
 
