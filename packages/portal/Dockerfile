@@ -38,8 +38,9 @@ RUN groupadd --system portal \
 
 COPY --chown=portal:portal --from=builder /app/.venv /app/.venv
 
-RUN mkdir -p /app/.data/objects \
-    && chown portal:portal /app/.data /app/.data/objects
+# A new named volume mounted here copies this directory's owner and mode, which
+# is how the non-root init service can write the master key into it.
+RUN install -d -o portal -g portal -m 700 /app/.data/keys
 
 USER portal
 

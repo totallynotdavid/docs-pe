@@ -10,11 +10,9 @@ from portal.storage.port import ObjectReference
 
 
 class S3ObjectStorage:
-    """Immutable object storage against an S3-compatible endpoint (MinIO).
+    """Immutable object storage against an S3-compatible endpoint.
 
-    Keys are `container/object_key`, matching what ObjectReference already
-    tracks -- FileObjectStorage never used those fields since a single local
-    directory needed no further namespacing.
+    Keys are `container/object_key`, the two fields ObjectReference tracks.
     """
 
     def __init__(
