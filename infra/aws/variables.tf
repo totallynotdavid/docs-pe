@@ -4,8 +4,14 @@ variable "region" {
   default     = "us-east-1"
 }
 
-variable "instance_type" {
-  description = "EC2 instance type of both servers. Dokploy needs 2 GB of RAM."
+variable "core_instance_type" {
+  description = "EC2 instance type of core. Dokploy plus the portal core does not fit in 2 GB; 8 GB works."
+  type        = string
+  default     = "m7i-flex.large"
+}
+
+variable "worker_instance_type" {
+  description = "EC2 instance type of worker, which runs one portal worker."
   type        = string
   default     = "t3.small"
 }

@@ -10,7 +10,7 @@ module "core" {
 
   role               = "core"
   run_id             = var.run_id
-  instance_type      = var.instance_type
+  instance_type      = var.core_instance_type
   root_volume_gb     = var.root_volume_gb
   ubuntu_version     = var.ubuntu_version
   ssh_source_cidr    = var.ssh_source_cidr
@@ -22,7 +22,7 @@ module "worker" {
 
   role               = "worker"
   run_id             = var.run_id
-  instance_type      = var.instance_type
+  instance_type      = var.worker_instance_type
   root_volume_gb     = var.root_volume_gb
   ubuntu_version     = var.ubuntu_version
   ssh_source_cidr    = var.ssh_source_cidr

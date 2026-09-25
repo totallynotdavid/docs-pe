@@ -46,9 +46,12 @@ is where a deployment test goes, and does nothing when the variable is unset.
 `UBUNTU_VERSION` picks 24.04 or 26.04 (default 26.04). On 26.04 Docker's
 repository has no 28.5.0, which Dokploy's installer pins, so `provision`
 installs Docker first there and the installer skips its own step. On 24.04 the
-installer brings its own Docker on `core`. `TF_VAR_instance_type` and
-`TF_VAR_root_volume_gb` change the size of both servers. The defaults are
-`t3.small`, the 2 GB Dokploy needs, and 30 GB, the disk its installer asks for.
+installer brings its own Docker on `core`. `TF_VAR_core_instance_type` and
+`TF_VAR_worker_instance_type` set each server's type, and
+`TF_VAR_root_volume_gb` the disk of both. The defaults are `m7i-flex.large`
+(8 GB) for `core`, which runs Dokploy and the portal core and does not fit in
+2 GB, `t3.small` for `worker`, and 30 GB, the disk Dokploy's installer asks
+for.
 
 ## What is created
 

@@ -47,7 +47,9 @@ environment:
   ADMIN_USER         admin account to create (default: admin)
   TS_TAGS            tags of the key or client (default: tag:vps-test)
   UBUNTU_VERSION     24.04 or 26.04 (default: 26.04)
-  TF_VAR_instance_type, TF_VAR_root_volume_gb   size of both servers (default: t3.small, 30 GB)
+  TF_VAR_core_instance_type     core's instance type (default: m7i-flex.large, 8 GB)
+  TF_VAR_worker_instance_type   worker's instance type (default: t3.small)
+  TF_VAR_root_volume_gb         disk of both servers in GB (default: 30)
 EOF_USAGE
 }
 
@@ -89,6 +91,10 @@ require_inputs() {
 	done
 	if [[ -z ${AWS_PROFILE:-} && (-z ${AWS_ACCESS_KEY_ID:-} || -z ${AWS_SECRET_ACCESS_KEY:-}) ]]; then
 		problems+=("AWS credentials are not set; set AWS_PROFILE, or AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY")
+	fi
+	# Terraform ignores TF_VAR_ for an undeclared variable, so the old name would size nothing.
+	if [[ -n ${TF_VAR_instance_type:-} ]]; then
+		problems+=("TF_VAR_instance_type is no longer read; set TF_VAR_core_instance_type and TF_VAR_worker_instance_type")
 	fi
 	if [[ $ubuntu_version != 24.04 && $ubuntu_version != 26.04 ]]; then
 		problems+=("UBUNTU_VERSION='$ubuntu_version' is not 24.04 or 26.04, the releases vps-setup's Dokploy recipe covers")
