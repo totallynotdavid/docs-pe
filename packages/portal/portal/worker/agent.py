@@ -621,7 +621,7 @@ async def self_enroll(
     tailscale_hostname: str,
 ) -> tuple[str, str]:
     """Mint a worker credential and direct-DB role from the enrollment endpoint."""
-    # Swarm can report a task Running before its overlay route is usable, so
+    # A node can boot before worker-api or its tailnet route is reachable, so
     # retry transient enrollment failures with a real backoff.
     transport = httpx.AsyncHTTPTransport(retries=2)
     delay = ENROLL_RETRY_BASE_SECONDS
@@ -667,7 +667,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--worker-id",
-        default=os.environ.get("PORTAL_WORKER_ID", "poseidon-1"),
+        default=os.environ.get("PORTAL_WORKER_ID", ""),
     )
     parser.add_argument(
         "--bootstrap-token",
@@ -689,7 +689,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--concurrency",
         type=int,
-        default=int(os.environ.get("PORTAL_WORKER_CONCURRENCY", DEFAULT_CONCURRENCY)),
+        default=int(os.environ.get("PORTAL_WORKER_CONCURRENCY") or DEFAULT_CONCURRENCY),
     )
     return parser
 
@@ -699,6 +699,9 @@ def run(argv: Sequence[str]) -> None:
 
     if not args.worker_api_url:
         raise SystemExit("PORTAL_WORKER_API_URL is required.")
+
+    if not args.worker_id:
+        raise SystemExit("PORTAL_WORKER_ID is required.")
 
     if args.bootstrap_token:
         if not args.tailscale_hostname:
