@@ -119,7 +119,7 @@ testpaths = ["tests"]
 
 [dependency-groups]
 dev = [
-  "djlint==1.44.1",
+  "djlint==1.46.2",
   "httpx2>=2.9.1",
   "mypy>=2.3.0",
   "pyinstaller>=6.21.0",
