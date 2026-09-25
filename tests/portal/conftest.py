@@ -57,12 +57,23 @@ if TYPE_CHECKING:
     from litestar import Litestar
 
 
+def _checkout_port(name: str) -> str:
+    """This checkout's port, which mise derives from the checkout path."""
+    try:
+        return os.environ[name]
+    except KeyError:
+        msg = f"{name} is not set. Run through `mise run test`, or `mise x -- uv run pytest`."
+        raise RuntimeError(msg) from None
+
+
 POSTGRES_DSN = (
-    os.environ.get("PORTAL_TEST_DSN") or "postgresql://postgres@127.0.0.1:5432/postgres"
+    os.environ.get("PORTAL_TEST_DSN")
+    or f"postgresql://postgres@127.0.0.1:{_checkout_port('PORTAL_DEV_POSTGRES_PORT')}/postgres"
 )
 
 OBJECT_STORAGE_ENDPOINT = (
-    os.environ.get("PORTAL_TEST_OBJECT_STORAGE_ENDPOINT") or "http://127.0.0.1:9100"
+    os.environ.get("PORTAL_TEST_OBJECT_STORAGE_ENDPOINT")
+    or f"http://127.0.0.1:{_checkout_port('PORTAL_DEV_MINIO_PORT')}"
 )
 OBJECT_STORAGE_BUCKET = "portal-objects"
 OBJECT_STORAGE_ACCESS_KEY = "portal-dev"
