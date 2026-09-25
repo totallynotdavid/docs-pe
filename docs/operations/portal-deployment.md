@@ -224,10 +224,7 @@ is already recorded does not make that file run again. `init` runs it on every
 deploy, before the new `web` and `worker-api` containers start.
 
 The migration directory contains the baseline schema and numbered follow-up
-changes. `portal_lookup_attempts` is part of the baseline
-`001_portal.sql`, so an installation that already recorded `001` will not get
-that table from `portal-admin migrate`. Do not deploy code that requires a new
-table until the database has it.
+changes.
 
 For local development, regenerate the complete schema snapshot with:
 
@@ -348,92 +345,3 @@ and `PORTAL_PROVISION_GEONODE_PASSWORD=` lines. `E2E_JOB_SOURCE` and
 `E2E_JOB_DOCUMENT` choose the lookup; the default is `osiptel` for SUNAT's own
 RUC. The tailnet needs MagicDNS, HTTPS certificates, and Serve enabled, and
 must let the test servers reach each other as root over SSH.
-
-## Migrating from the previous layout
-
-The previous layout ran PostgreSQL, MinIO, and `worker-api` as separate
-Compose applications on the shared `dokploy-network`, published them through
-Tailscale sidecars, ran `web` as a Dokploy application, and kept the master key
-in a host file. Move one installation to the core file once, during a
-maintenance window, on the host that ran it.
-
-1. Create the core application without deploying it: a deploy against empty
-   volumes installs a new master key. Run the deploy command above with
-   `--no-deploy` and without workers, and note the `appName` that `list`
-   prints for `core`. Put the env file on the host as `core.env`, unchanged,
-   save `docker-compose.core.yml` as `core.yml` next to it, and define the
-   image the deploy used, which Compose reads from the shell:
-
-   ```sh
-   export PORTAL_IMAGE=<image>
-   core() { docker compose -p <appName> --env-file core.env -f core.yml "$@"; }
-   ```
-
-2. Stop the workers, the old `web` application, and the old `worker-api` so
-   that nothing writes during the copy.
-
-3. Dump the worker roles and the database from the old PostgreSQL container.
-   The roles filter keeps the worker base role, every scoped worker login with
-   its password hash, and their memberships:
-
-   ```sh
-   docker exec <old postgres container> pg_dumpall -U <old user> --roles-only \
-     | grep -E '^(CREATE|ALTER) ROLE "?portal_worker|^GRANT portal_worker_base TO ' \
-     | sed 's/ GRANTED BY [^;]*;/;/' > roles.sql
-   docker exec <old postgres container> pg_dump -U <old user> -Fc <old database> > portal.dump
-   ```
-
-4. Start the new PostgreSQL and Garage, then restore the roles before the
-   database so that its grants resolve:
-
-   ```sh
-   core up -d --wait postgres garage
-   core exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < roles.sql
-   core exec -T postgres sh -c 'pg_restore --no-owner --exit-on-error -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < portal.dump
-   ```
-
-5. Carry the master key into the new volume:
-
-   ```sh
-   sudo cat <old master-key host path> \
-     | core run --rm --no-deps -T init sh -c 'umask 077 && cat > "$PORTAL_MASTER_KEY_FILE"'
-   ```
-
-6. Copy the objects with an S3-aware copy. rclone runs on both project
-   networks, reading the old store by its container name:
-
-   ```sh
-   docker create --name portal-object-copy --network dokploy-network \
-     -e RCLONE_CONFIG_OLD_TYPE=s3 -e RCLONE_CONFIG_OLD_PROVIDER=Minio \
-     -e RCLONE_CONFIG_OLD_ENDPOINT=http://<old minio container>:9000 \
-     -e RCLONE_CONFIG_OLD_ACCESS_KEY_ID=<old access key> \
-     -e RCLONE_CONFIG_OLD_SECRET_ACCESS_KEY=<old secret key> \
-     -e RCLONE_CONFIG_NEW_TYPE=s3 -e RCLONE_CONFIG_NEW_PROVIDER=Other \
-     -e RCLONE_CONFIG_NEW_ENDPOINT=http://<appName>-garage-1:3900 \
-     -e RCLONE_CONFIG_NEW_REGION=garage \
-     -e RCLONE_CONFIG_NEW_ACCESS_KEY_ID=<GARAGE_DEFAULT_ACCESS_KEY> \
-     -e RCLONE_CONFIG_NEW_SECRET_ACCESS_KEY=<GARAGE_DEFAULT_SECRET_KEY> \
-     --entrypoint sh rclone/rclone:1.75.1 -c \
-     'rclone copy --checksum old:<old bucket> new:<GARAGE_DEFAULT_BUCKET> && rclone check old:<old bucket> new:<GARAGE_DEFAULT_BUCKET>'
-   docker network connect <appName>_default portal-object-copy
-   docker start -a portal-object-copy
-   docker rm portal-object-copy
-   ```
-
-   `rclone check` must report no differences.
-
-7. Run the deploy command without `--no-deploy`. `init` finds the key and
-   applies only migrations the old database had not recorded. Confirm the
-   checks in [Verify a deployment](#verify-a-deployment) that do not need a
-   worker, and that an existing job's result downloads.
-
-8. Remove the old worker applications and deploy again with a `--worker` for
-   each worker server; each worker enrolls against the restored database. On a
-   node outside Dokploy with fixed credentials, replace the host and port in
-   `PORTAL_WORKER_DATABASE_DSN` with `PORTAL_WORKER_DATABASE_ADDRESS`.
-
-9. After a small job succeeds, delete the old `web`, PostgreSQL, object
-   storage, and `worker-api` applications, their Tailscale Services and
-   sidecar devices, and their ACL entries. Keep the old volumes, `roles.sql`,
-   and `portal.dump` until the new deployment has run through a backup cycle,
-   then delete them and the old host key file.

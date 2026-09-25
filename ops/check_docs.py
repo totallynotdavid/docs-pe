@@ -113,7 +113,6 @@ def check_contract_docs() -> list[str]:
             "portal_schema_migrations",
             "mise run portal:schema",
             "PORTAL_WORKER_API_WORKERS",
-            "portal_lookup_attempts",
         ),
         ROOT / "docs/operations/troubleshooting.md": (
             "portal_lookup_attempts",
