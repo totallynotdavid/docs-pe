@@ -83,8 +83,8 @@ PASSWORD = "una-clave-larga-y-segura"
 # Fixed so a test can predict the code the authenticator would show.
 TOTP_SECRET = "JBSWY3DPEHPK3PXP"
 RECOVERY_CODE = "codigo-de-recuperacion"
-WORKER_ID = "poseidon-1"
-WORKER_HOSTNAME = "poseidon-1.tailnet.ts.net"
+WORKER_ID = "worker-1"
+WORKER_HOSTNAME = "worker-1.tailnet.test"
 
 # Stands in for a real envelope where the test never decrypts it.
 UNREADABLE_SECRET = ProtectedSecret(b"cifrado", b"\x00", MASTER_KEY_VERSION)
@@ -319,6 +319,7 @@ def settings(
     # in production.
     return PortalSettings(
         database_dsn=portal_db.dsn,
+        worker_database_address=urlsplit(portal_db.dsn).netloc.rpartition("@")[2],
         public_origin=ORIGIN,
         master_key_file=master_key_file,
         object_storage_endpoint=OBJECT_STORAGE_ENDPOINT,

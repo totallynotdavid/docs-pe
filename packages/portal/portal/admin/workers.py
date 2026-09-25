@@ -46,20 +46,26 @@ def build_parser() -> argparse.ArgumentParser:
 
 async def issue(
     pool: asyncpg.Pool,
+    settings: PortalSettings,
     worker_id: str,
     hostname: str,
-    database_dsn: str,
 ) -> None:
     credential = new_worker_credential()
+    database_password = new_worker_credential()
+    worker_dsn = worker_database_dsn(
+        settings.database_dsn,
+        settings.worker_database_address,
+        worker_id,
+        database_password,
+    )
+
     registry = PostgresWorkerRegistry(pool)
     identity_id = await registry.issue(
         worker_id,
         credential,
         hostname,
     )
-    database_password = new_worker_credential()
     await registry.provision_login_role(worker_id, database_password)
-    worker_dsn = worker_database_dsn(database_dsn, worker_id, database_password)
 
     await PostgresAuditLog(pool).record(
         AuditEvent(
@@ -108,12 +114,7 @@ async def administer(args: argparse.Namespace) -> None:
             await revoke(pool, args.worker_id)
             return
 
-        await issue(
-            pool,
-            args.worker_id,
-            args.tailscale_hostname,
-            settings.database_dsn,
-        )
+        await issue(pool, settings, args.worker_id, args.tailscale_hostname)
     finally:
         await pool.close()
 

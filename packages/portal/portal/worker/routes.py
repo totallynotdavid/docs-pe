@@ -112,19 +112,20 @@ async def worker_enroll(
         raise PermissionDenied(Reason.WORKER_BOOTSTRAP_INVALID)
 
     credential = new_worker_credential()
+    database_password = new_worker_credential()
+    database_dsn = worker_database_dsn(
+        state.settings.database_dsn,
+        state.settings.worker_database_address,
+        data.worker_id,
+        database_password,
+    )
+
     identity_id = await workers.issue(
         data.worker_id,
         credential,
         data.tailscale_hostname,
     )
-
-    database_password = new_worker_credential()
     await workers.provision_login_role(data.worker_id, database_password)
-    database_dsn = worker_database_dsn(
-        state.settings.database_dsn,
-        data.worker_id,
-        database_password,
-    )
 
     await audit.record(
         AuditEvent(

@@ -199,12 +199,23 @@ def worker_role_name(worker_id: str) -> str:
     return role
 
 
-def worker_database_dsn(admin_dsn: str, worker_id: str, password: str) -> str:
-    """Return the portal database DSN for a worker's scoped login role."""
-    parts = urlsplit(admin_dsn)
-    netloc = f"{worker_role_name(worker_id)}:{password}@{parts.hostname}"
+def worker_database_dsn(
+    admin_dsn: str,
+    worker_address: str,
+    worker_id: str,
+    password: str,
+) -> str:
+    """Return the DSN a worker's scoped login role uses to reach the portal database.
 
-    if parts.port:
-        netloc += f":{parts.port}"
+    The database name and options come from the admin DSN. The host and port
+    come from `worker_address`, because the admin DSN names the database as
+    the core's own processes see it, which a worker node cannot resolve.
+    """
+    if not worker_address:
+        msg = "PORTAL_WORKER_DATABASE_ADDRESS is required to issue worker credentials"
+        raise RuntimeError(msg)
+
+    parts = urlsplit(admin_dsn)
+    netloc = f"{worker_role_name(worker_id)}:{password}@{worker_address}"
 
     return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
