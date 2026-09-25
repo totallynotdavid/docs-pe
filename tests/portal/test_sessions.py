@@ -64,9 +64,8 @@ async def test_a_session_ends_at_the_absolute_cap_however_active_it_is(
     user_id = await seed_user(pool)
     token = await sessions.mint(user_id)
 
-    # Age the record past the cap. The sliding TTL is still wide open, which is
-    # the case the cap exists for: constant use must not extend a session
-    # forever.
+    # Only created_at passes the cap. The sliding TTL stays open, because
+    # constant use must not extend a session forever.
     key = f"session:{token_hash(token)}"
     record = json.loads(await store.read(key) or "{}")
     record["created_at"] = (
@@ -117,7 +116,7 @@ async def test_the_login_throttle_locks_the_account_and_the_source_apart(
 ) -> None:
     throttle = LoginThrottle(store)
 
-    for _ in range(LOGIN_ATTEMPT_LIMIT + 1):
+    for _ in range(LOGIN_ATTEMPT_LIMIT):
         await throttle.record_failure("persona@example.test", "203.0.113.7")
 
     assert await throttle.allows("persona@example.test", "198.51.100.1") is False
@@ -125,10 +124,25 @@ async def test_the_login_throttle_locks_the_account_and_the_source_apart(
     assert await throttle.allows("otra@example.test", "198.51.100.1") is True
 
 
+async def test_the_login_throttle_admits_exactly_the_limit_of_failures(
+    store: EphemeralStore,
+) -> None:
+    throttle = LoginThrottle(store)
+
+    for _ in range(LOGIN_ATTEMPT_LIMIT - 1):
+        await throttle.record_failure("persona@example.test", "203.0.113.7")
+
+    assert await throttle.allows("persona@example.test", "203.0.113.7") is True
+
+    await throttle.record_failure("persona@example.test", "203.0.113.7")
+
+    assert await throttle.allows("persona@example.test", "203.0.113.7") is False
+
+
 async def test_a_successful_login_clears_both_counters(store: EphemeralStore) -> None:
     throttle = LoginThrottle(store)
 
-    for _ in range(LOGIN_ATTEMPT_LIMIT + 1):
+    for _ in range(LOGIN_ATTEMPT_LIMIT):
         await throttle.record_failure("persona@example.test", "203.0.113.7")
 
     await throttle.clear("persona@example.test", "203.0.113.7")
@@ -155,14 +169,13 @@ async def test_a_lock_cannot_be_extended_by_attempting_through_it(
 ) -> None:
     throttle = LoginThrottle(store)
 
-    for _ in range(LOGIN_ATTEMPT_LIMIT + 1):
+    for _ in range(LOGIN_ATTEMPT_LIMIT):
         await throttle.record_failure("persona@example.test", "203.0.113.7")
 
     assert await throttle.allows("persona@example.test", "203.0.113.7") is False
 
     locked_at = await store.read("login_fail:account:persona@example.test")
 
-    # Attempts arriving while the lock holds are refused by LoginService before
-    # they reach record_failure, so the window keeps its original deadline and
-    # the account always gets back in.
-    assert locked_at == str(LOGIN_ATTEMPT_LIMIT + 1)
+    # LoginService refuses attempts during the lock before they reach
+    # record_failure, so the window keeps its original deadline.
+    assert locked_at == str(LOGIN_ATTEMPT_LIMIT)

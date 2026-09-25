@@ -20,19 +20,17 @@ MUTATION_LIMIT = 30
 
 
 class LoginThrottle:
-    """Two independent counters: one per account, one per source address.
+    """One counter per account and one per source address.
 
-    They are independent on purpose. Per-account alone lets one host grind
-    every account in the directory; per-source alone lets a botnet grind one
-    account.
+    Per-account alone lets one host grind every account in the directory.
+    Per-source alone lets a botnet grind one account.
 
-    The lock is a fixed window that expires on its own, and attempts made while
-    it holds are refused without being counted. That is the whole reason it can
-    never become permanent: an escalating lockout would let anyone who knows an
-    address keep the owner out indefinitely by attempting a login on a timer.
-    The cost of the fixed window is a steady LOGIN_ATTEMPT_LIMIT guesses per
-    window, which Argon2id, a 12-character minimum, and Turnstile in front of
-    the form already make worthless.
+    The lock is a fixed window that expires on its own. A failure recorded
+    while it holds does not move the deadline, so it can never become
+    permanent. An escalating lockout would let anyone who knows an address keep
+    the owner out indefinitely by attempting a login on a timer. The fixed
+    window costs a steady LOGIN_ATTEMPT_LIMIT guesses per window, which
+    Argon2id, a 12-character minimum, and Turnstile already make worthless.
     """
 
     def __init__(self, store: EphemeralStore) -> None:
@@ -42,7 +40,7 @@ class LoginThrottle:
         for key in _login_keys(email, source):
             counted = await self._store.read(key)
 
-            if counted is not None and int(counted) > LOGIN_ATTEMPT_LIMIT:
+            if counted is not None and int(counted) >= LOGIN_ATTEMPT_LIMIT:
                 return False
 
         return True

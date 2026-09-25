@@ -245,10 +245,10 @@ async def test_repeated_failures_soft_lock_the_account(
     await build_experience(pool, team_repository)
 
     with sync_client(app) as client:
-        for _ in range(LOGIN_ATTEMPT_LIMIT + 1):
+        for _ in range(LOGIN_ATTEMPT_LIMIT):
             login(client, "admin@osiptel.test", "clave-equivocada-larga")
 
-        # The correct password no longer helps while the window is open.
+        # The next attempt is refused even with the correct password.
         assert login(client, "admin@osiptel.test").headers["location"] == (
             "/login?error=1"
         )
