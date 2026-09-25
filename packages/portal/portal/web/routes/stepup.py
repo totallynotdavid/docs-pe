@@ -26,9 +26,13 @@ class StepUpForm:
 
 
 def _safe_next(candidate: str) -> str:
-    """A same-origin relative path only. Letting next_path name a full URL
-    would turn this into an open redirect off a trusted, authenticated
-    origin."""
+    """Returns candidate only if it has no backslash, space, control character
+    or DEL, starts with "/" but not "//", and contains no "://", and "/"
+    otherwise. Browsers drop tabs and newlines and read a backslash as "/", so
+    any of those characters could turn the path into "//host"."""
+    if any(char <= " " or char in {"\\", "\x7f"} for char in candidate):
+        return "/"
+
     if (
         candidate.startswith("/")
         and not candidate.startswith("//")

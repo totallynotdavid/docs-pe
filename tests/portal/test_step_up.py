@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import pyotp
+import pytest
 
 from portal.application.access import STEP_UP_WINDOW
 from portal.application.sessions import SESSION_IDLE
@@ -38,8 +39,7 @@ async def _age_step_up(
     *,
     by: timedelta,
 ) -> None:
-    """Push the session's second-factor proof back in time, as if it had been
-    set at login `by` ago rather than moments ago."""
+    """Backdate the session's second-factor proof by `by`."""
     token = client.cookies[settings.session_cookie]
     key = f"session:{token_hash(token)}"
     record = json.loads(await store.read(key) or "{}")
@@ -123,8 +123,6 @@ async def test_a_stale_second_factor_redirects_to_step_up_and_loses_no_access(
         assert verified.status_code == 303
         assert verified.headers["location"] == "/admin/users"
 
-        # The reverified session's proof is fresh again, so the same action
-        # this admin was denied a moment ago now goes through.
         page = client.get("/admin/users")
         retried = client.post(
             "/admin/users",
@@ -191,22 +189,35 @@ async def test_a_wrong_code_at_step_up_stays_stale(
         assert still_stale.headers["location"] == "/step-up?next_path=/admin/teams"
 
 
+@pytest.mark.parametrize(
+    ("next_path", "location"),
+    [
+        ("https://evil.com", "/"),
+        ("//evil.com", "/"),
+        ("/\\evil.com", "/"),
+        ("/\t/evil.com", "/"),
+        ("/\n/evil.com", "/"),
+        ("/teams/x", "/teams/x"),
+    ],
+)
 async def test_step_up_next_path_cannot_redirect_off_site(
     pool: asyncpg.Pool,
     team_repository: PostgresTeamRepository,
     app: Litestar,
+    next_path: str,
+    location: str,
 ) -> None:
     await build_experience(pool, team_repository)
 
     with sync_client(app) as client:
         assert login(client, "admin@osiptel.test").status_code == 303
 
-        page = client.get("/step-up?next_path=https://evil.example")
+        page = client.get("/step-up")
         verified = client.post(
             "/step-up",
             data={
                 "code": pyotp.TOTP(TOTP_SECRET).now(),
-                "next_path": "https://evil.example",
+                "next_path": next_path,
                 "csrf_token": csrf_token(page.text),
             },
             headers={"Origin": ORIGIN},
@@ -214,4 +225,4 @@ async def test_step_up_next_path_cannot_redirect_off_site(
         )
 
         assert verified.status_code == 303
-        assert verified.headers["location"] == "/"
+        assert verified.headers["location"] == location
