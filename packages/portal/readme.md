@@ -22,7 +22,7 @@ mise run dev
 
 Local development starts PostgreSQL, applies migrations, provisions the first
 administrator and team, and runs the web process. The first administrator
-finishes TOTP or passkey enrollment at `/security/setup`. `mise run reset`
+finishes TOTP or passkey enrollment at `/security`. `mise run reset`
 removes the disposable local database.
 
 Development may omit Turnstile, mail, and worker enrollment settings. See

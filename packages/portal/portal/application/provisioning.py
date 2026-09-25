@@ -166,7 +166,7 @@ class ProvisioningService(AuthorizedService):
         """Create or verify the initial administrator.
 
         Returns (user, needs_setup). The account completes enrollment at
-        /security/setup.
+        /security.
         """
         user = await self._auth.create_account(email, password_hash)
 

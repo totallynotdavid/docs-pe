@@ -383,7 +383,7 @@ async def test_admin_promotion_completes_via_self_service_totp(
 ) -> None:
     """End-to-end: ensure_site_admin leaves the account pending, and it
     reaches is_site_admin only once it completes its own enrollment, the same
-    path a signed-in user reaches through /security/setup."""
+    path a signed-in user reaches through /security."""
     hashed = hash_password(PASSWORD)
     administrator, needs_setup = await provisioning.ensure_site_admin(
         "bootstrap-pending@osiptel.test",

@@ -71,7 +71,7 @@ def _print_setup_status(email: str, *, needs_setup: bool) -> None:
     if needs_setup:
         print(
             f"Second factor: pending. Sign in as {email} and open "
-            "/security/setup to finish enrollment."
+            "/security to finish enrollment."
         )
     else:
         print("Second factor: already enrolled (unchanged)")

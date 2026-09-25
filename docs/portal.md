@@ -6,7 +6,7 @@ Use the portal to share lookup jobs and results with a team. Use
 ## Access and roles
 
 The first administrator and team come from `portal-admin provision`. Finish
-TOTP or passkey setup at `/security/setup`; a site administrator needs a second
+TOTP or passkey setup at `/security`; a site administrator needs a second
 factor before using the portal. Invitations create an account and assign it to
 a team.
 
