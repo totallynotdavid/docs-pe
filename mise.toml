@@ -86,7 +86,8 @@ run = """
 set -euo pipefail
 . scripts/local-servers.sh
 
-# development controls its servers; stop any that db:start or objects:start left.
+# dev runs its own servers in the foreground, so it stops any that db:start or
+# objects:start left running.
 mise x postgres -- pg_ctl -D "$postgres_dir" stop -m fast -w 2>/dev/null || true
 stop_minio
 
@@ -141,8 +142,8 @@ set -euo pipefail
 . scripts/local-servers.sh
 
 if ! postgres_owned; then
-  # This checkout's cluster on another port, such as one left on 5432 before
-  # the ports were derived, is restarted on the derived port.
+  # This checkout's cluster running on another port is restarted on the
+  # derived port.
   if postgres_running; then
     mise x postgres -- pg_ctl -D "$postgres_dir" stop -m fast -w
   fi

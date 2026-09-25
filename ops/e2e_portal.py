@@ -100,9 +100,10 @@ def dokploy_api_key(client: httpx.Client, email: str, password: str) -> str:
     """Create Dokploy's first user, the owner of its organization, and an API
     key scoped to that organization.
 
-    user.createApiKey is Dokploy's internal tRPC route: the better-auth route
+    user.createApiKey is Dokploy's internal tRPC route, so the version is
+    checked before the key is made. The public better-auth route
     /api/auth/api-key/create gives a key without an organization, which every
-    API call rejects. So the version is checked before the key is made."""
+    API call rejects."""
     expect(
         client.post(
             "/api/auth/sign-up/email",
@@ -181,7 +182,7 @@ def portal_client(origin: str, connect: str) -> httpx.Client:
 
 
 def input_values(page: str) -> dict[str, str]:
-    """Each named input's value; a repeated name keeps its last value."""
+    """A repeated input name keeps its last value."""
     inputs = {}
 
     for tag in INPUT_TAG.findall(page):

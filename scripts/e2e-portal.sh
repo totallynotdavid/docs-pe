@@ -1,17 +1,9 @@
 #!/usr/bin/env bash
-# The E2E_AWS_HOOK for scripts/e2e-aws.sh: deploys the working tree's portal
-# with ops/deploy.py into the Dokploy on CORE_HOST, with WORKER_HOST as its one
-# worker, runs one real lookup through it, then removes the worker.
-#
-# Inputs: CORE_HOST, WORKER_HOST and ADMIN_USER, which e2e-aws.sh sets, and
-# E2E_PROXY_ENV, a file of unquoted KEY=value lines that sets
-# PORTAL_PROVISION_GEONODE_USERNAME and PORTAL_PROVISION_GEONODE_PASSWORD.
-# E2E_JOB_SOURCE and E2E_JOB_DOCUMENT choose the lookup.
+# The E2E_AWS_HOOK for scripts/e2e-aws.sh. The steps and inputs are in
+# docs/operations/portal-deployment.md, "End-to-end test".
 #
 # Everything runs in the portal image built on core, so the caller needs only
-# ssh, git and tar. Secrets are generated on the first run against a core and
-# kept outside the repository in $TMPDIR/docs-pe-e2e/<core>, so the hook can
-# run again against the same servers.
+# ssh, git and tar.
 
 # The bash -c programs expand their own arguments on the remote host.
 # shellcheck disable=SC2016
@@ -141,8 +133,8 @@ write_core_env() {
 	EOF
 }
 
-# ops/deploy.py, run from the shipped tree in the portal image on core, where
-# Dokploy answers on loopback.
+# Dokploy answers only on core's loopback, so ops/deploy.py runs on core with
+# host networking.
 deploy_tool() {
 	on "$CORE_HOST" DOKPLOY_API_KEY -- docker run --rm --network host --user 0:0 \
 		-v "$remote_dir/src:/src:ro" -v "$remote_dir/core.env:/run/core.env:ro" -w /src \
@@ -150,9 +142,8 @@ deploy_tool() {
 		"$image" python -m ops.deploy "$@"
 }
 
-# ops/e2e_portal.py in the portal image on worker. Worker is a tailnet peer of
-# core, so its requests reach the portal through `tailscale serve` as a
-# browser's would.
+# The driver runs on worker, a tailnet peer of core, so its requests reach the
+# portal through `tailscale serve` as a browser's would.
 portal_driver() {
 	on "$WORKER_HOST" E2E_ADMIN_EMAIL E2E_ADMIN_PASSWORD E2E_ADMIN_TOTP_SECRET -- \
 		docker run --rm -e E2E_ADMIN_EMAIL -e E2E_ADMIN_PASSWORD -e E2E_ADMIN_TOTP_SECRET \
@@ -160,14 +151,15 @@ portal_driver() {
 		"$image" python /e2e_portal.py "$1" "https://$core_dns" "$core_ip:443" "${@:2}"
 }
 
-# ops/e2e_portal.py inside the running web container, with its settings.
+# The database checks read the portal's settings, so the driver runs inside the
+# web container.
 web_driver() {
 	on "$CORE_HOST" -- bash -c 'docker exec -i "$1" python - "${@:2}" <"$0"' \
 		"$remote_dir/src/ops/e2e_portal.py" "$web" "$@"
 }
 
 # The first run creates the pending administrator and defers the rest until
-# that administrator has a second factor; the next creates the team and
+# that administrator has a second factor. The next run creates the team and
 # checks the proxy credential against GeoNode.
 provision() {
 	on "$CORE_HOST" E2E_ADMIN_PASSWORD PORTAL_PROVISION_GEONODE_USERNAME PORTAL_PROVISION_GEONODE_PASSWORD -- \
@@ -252,8 +244,8 @@ fi
 upload "$CORE_HOST" "$remote_dir/core.env" 600 <"$state/core.env"
 
 step "serve the portal over tailnet HTTPS"
-# Dokploy's Traefik routes the portal's domain on port 80; tailscale serve
-# terminates TLS with the tailnet certificate for core's name. It waits for a
+# Dokploy's Traefik routes the portal's domain on port 80. tailscale serve
+# terminates TLS with the tailnet certificate for core's name, and waits for a
 # console approval when the tailnet has HTTPS or Serve disabled.
 on "$CORE_HOST" -- timeout 120 tailscale serve --bg --https=443 http://127.0.0.1:80 >&2
 

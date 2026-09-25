@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Sourced by the db, objects, dev, and reset tasks in mise.toml, which run under
 # bash and export the PORTAL_DEV_* ports. A checkout owns a server only when
-# its own .data directory says so; whatever else answers on a port is foreign
-# and is never used.
+# its own .data directory says so. Whatever else answers on one of those ports
+# is foreign, and require_free_port exits rather than let a task use it.
 
 postgres_dir=$PWD/.data/postgres
 minio_dir=$PWD/.data/minio
@@ -20,8 +20,6 @@ require_free_port() {
   fi
 }
 
-# postmaster.pid records the port the server was started with, so a cluster of
-# this checkout left on another port does not count.
 # The command line is checked, not only the pid, because a stale
 # postmaster.pid can name a recycled pid that pg_ctl status accepts.
 postgres_running() {
@@ -30,6 +28,8 @@ postgres_running() {
     grep -qF -- " -D $postgres_dir "
 }
 
+# Line 4 of postmaster.pid is the port the server was started with, so a
+# cluster of this checkout left on another port is running but not usable.
 postgres_owned() {
   [ -f "$postgres_dir/postmaster.pid" ] &&
     [ "$(sed -n 4p "$postgres_dir/postmaster.pid")" = "$PORTAL_DEV_POSTGRES_PORT" ] &&

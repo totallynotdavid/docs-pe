@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
-# Disposable test servers on AWS EC2 for a whole-portal test: a `core` and a
-# `worker` that start the way a Contabo server does (root login with a password
-# over SSH), are provisioned with vps-setup, get Docker and Dokploy, and are
-# destroyed afterwards.
+# Disposable AWS test servers for a whole-portal test. infra/aws/readme.md
+# describes the servers and the commands.
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 self=$repo/scripts/e2e-aws.sh
 tf_dir=$repo/infra/aws
 
-# The one pin of vps-setup. bin/provision, known-hosts.sh, the first-boot
-# cloud-init template that Terraform reads, and the sweep all come from this commit.
+# The only pin of vps-setup. ensure_vps_setup checks out this commit but leaves
+# local edits alone in a checkout whose HEAD already matches.
 vps_setup_repo=https://github.com/totallynotdavid/vps-setup.git
 vps_setup_ref=dfca409bd4f5d05c5b5f887b376074a9facea6e8
 vps_dir=$repo/.data/vps-setup
@@ -92,7 +90,7 @@ require_inputs() {
 	if [[ -z ${AWS_PROFILE:-} && (-z ${AWS_ACCESS_KEY_ID:-} || -z ${AWS_SECRET_ACCESS_KEY:-}) ]]; then
 		problems+=("AWS credentials are not set; set AWS_PROFILE, or AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY")
 	fi
-	# Terraform ignores TF_VAR_ for an undeclared variable, so the old name would size nothing.
+	# Terraform ignores TF_VAR_ for an undeclared variable, so TF_VAR_instance_type would size nothing.
 	if [[ -n ${TF_VAR_instance_type:-} ]]; then
 		problems+=("TF_VAR_instance_type is no longer read; set TF_VAR_core_instance_type and TF_VAR_worker_instance_type")
 	fi
@@ -166,7 +164,7 @@ wait_until_ready() {
 			-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
 			"root@$ip" 'cloud-init status --wait' 2>&1) || status=$?
 		case $status in
-		# 2 is cloud-init finished with recoverable errors; the login already worked.
+		# cloud-init exits 2 when it finished with recoverable errors. The login already worked.
 		0 | 2)
 			log "$role cloud-init: ${output//$'\n'/ }"
 			return 0
@@ -205,7 +203,7 @@ tailnet_ssh() {
 
 install_docker() {
 	log "install Docker on $1"
-	# unattended-upgrades can hold the apt locks when the install starts. retry on failure.
+	# unattended-upgrades can hold the apt locks when the install starts.
 	tailnet_ssh "$1" 'sudo bash -s' <<'REMOTE'
 set -euo pipefail
 for _ in 1 2 3; do
@@ -246,7 +244,7 @@ cmd_provision() {
 		with_root_password "$role" "$vps_dir/bin/provision" --key "$TS_TEST_KEY_FILE" "root@$ip" "$name"
 	done
 	# Dokploy's installer pins Docker 28.5.0, which Docker's repository for 26.04 does not carry.
-	# on 26.04, Docker goes first and the installer skips its own step.
+	# There, Docker goes first and the installer skips its own step.
 	if [[ $ubuntu_version != 24.04 ]]; then
 		install_docker "$(node_name core)"
 	fi
@@ -262,7 +260,8 @@ cmd_test() {
 	CORE_HOST=$(node_name core) WORKER_HOST=$(node_name worker) "$E2E_AWS_HOOK"
 }
 
-# Destroying only reads the state, so the required variables take placeholders.
+# Destroy acts on the resources recorded in the state, so the required variables
+# take placeholders.
 cmd_down() {
 	log "destroy"
 	tf init -input=false >&2

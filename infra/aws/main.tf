@@ -2,9 +2,9 @@ provider "aws" {
   region = var.region
 }
 
-# vps-setup's own tests/e2e/aws module cannot be used as it is: it hardcodes a 16 GB
-# root disk, tags nothing beyond purpose and run_id, and names its security group
-# from run_id alone, so a second server in one run would collide.
+# vps-setup's own tests/e2e/aws module hardcodes a 16 GB root disk, tags nothing
+# beyond purpose and run_id, and names its security group from run_id alone, so a
+# second server in one run would collide.
 module "core" {
   source = "./server"
 

@@ -1,4 +1,4 @@
-# The portal core. Deploys as raw Compose text: no repository files and no
+# The portal core deploys as raw Compose text, with no repository files and no
 # build, so every portal service runs the prebuilt ${PORTAL_IMAGE}.
 # docs/operations/portal-topology.md describes the network boundary.
 
