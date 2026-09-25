@@ -12,6 +12,11 @@ dist/
 
 # Generated data
 .data/
+
+# Terraform state holds the generated root passwords
+infra/aws/.terraform/
+infra/aws/*.tfstate
+infra/aws/*.tfstate.*
 logs/
 results/
 
