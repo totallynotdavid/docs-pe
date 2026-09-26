@@ -1,4 +1,4 @@
-{#def team, job_id, items, total_items, page #}
+{#def team, job, items, total_items, page #}
 {% if items %}
   <DataTable>
     <TableHeader>
@@ -46,14 +46,14 @@
 {% if page > 1 or page * 20 < total_items %}
   <Pagination label="Paginación de resultados">
     {% if page > 1 %}
-      <a hx-get="/teams/{{ team.id }}/jobs/{{ job_id }}/items?page={{ page - 1 }}"
+      <a hx-get="/teams/{{ team.id }}/jobs/{{ job.id }}/items?page={{ page - 1 }}"
          hx-target="#job-items">
         <Icon name="chevron-left" :size="14" />
         Anterior
       </a>
     {% endif %}
     {% if page * 20 < total_items %}
-      <a hx-get="/teams/{{ team.id }}/jobs/{{ job_id }}/items?page={{ page + 1 }}"
+      <a hx-get="/teams/{{ team.id }}/jobs/{{ job.id }}/items?page={{ page + 1 }}"
          hx-target="#job-items">
         Siguiente
         <Icon name="chevron-right" :size="14" />

@@ -38,10 +38,13 @@ def render_hx(
     /,
     **context: Any,
 ) -> Response[str]:
-    response = render(fragment if request.htmx else page, **context)
+    # HX-Request-Type is "partial" only when htmx swaps into an element.
+    # History restores ask for "full" and replace <body>, so they need the page.
+    partial = request.headers.get("HX-Request-Type") == "partial"
+    response = render(fragment if partial else page, **context)
 
-    # Prevent caches from serving an HTMX fragment as a full page.
-    response.headers["Vary"] = "HX-Request"
+    # Vary by HX-Request-Type so caches distinguish fragments from pages.
+    response.headers["Vary"] = "HX-Request-Type"
 
     return response
 

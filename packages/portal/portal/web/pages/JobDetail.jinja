@@ -7,7 +7,7 @@
   <TopBar :title="job.filename"
           icon="file"
           :breadcrumb="[{'label': 'Equipos', 'href': '/'}, {'label': team.name, 'href': '/teams/' ~ team.id}]">
-    {% if team.role.value == 'team_leader' or user.is_site_admin %}
+    {% if team.role.value == "team_leader" or user.is_site_admin %}
       <ActionButton variant="secondary"
                     size="sm"
                     :href="'/teams/' ~ team.id ~ '/jobs/' ~ job.id ~ '/download'">
@@ -15,7 +15,7 @@
         Descargar resultados
       </ActionButton>
     {% endif %}
-    {% if team.role.value == 'team_leader' and not is_terminal(job) %}
+    {% if team.role.value == "team_leader" and not is_terminal(job) %}
       <Submission :action="'/teams/' ~ team.id ~ '/jobs/' ~ job.id ~ '/cancel'"
                   :csrf_token="csrf_token">
         <ActionButton variant="destructive" size="sm" type="submit">
@@ -43,7 +43,7 @@
       <PanelBody>
         <div id="job-items">
           <JobItemsFragment :team="team"
-                            :job_id="job.id"
+                            :job="job"
                             :items="items"
                             :total_items="total_items"
                             :page="page" />
