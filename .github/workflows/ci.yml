@@ -22,7 +22,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "26.5.1"
+          node-version: "26.10.0"
           cache: npm
 
       - name: Install pinned browser dependencies
@@ -62,7 +62,7 @@ jobs:
       - name: Start MinIO
         run: mise run --skip-tools objects:start
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
           cache-dependency-glob: |
@@ -70,7 +70,7 @@ jobs:
             packages/cli/uv.lock
             packages/portal/uv.lock
 
-      - run: uv python install 3.14.6
+      - run: uv python install 3.14.7
 
       - run: |
           uv lock --check
