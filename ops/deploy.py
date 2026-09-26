@@ -1,8 +1,8 @@
-"""Deploy a portal (core plus workers) into Dokploy, finding every object by name.
+r"""Deploy a portal (core plus workers) into Dokploy, finding every object by name.
 
 Usage, with DOKPLOY_URL and DOKPLOY_API_KEY in the environment:
 
-    uv run python -m ops.deploy deploy NAME --image REF --env-file PATH \\
+    uv run python -m ops.deploy deploy NAME --image REF --env-file PATH \
         [--worker WORKER=ADDRESS ...] [--no-deploy]
     uv run python -m ops.deploy remove-worker NAME WORKER
     uv run python -m ops.deploy list [NAME]

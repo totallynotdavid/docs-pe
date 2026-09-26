@@ -9,7 +9,7 @@
   <TopBar :title="team.name"
           icon="users"
           :breadcrumb="[{'label': 'Equipos', 'href': '/?switch=1'}]">
-    {% if team.role and team.role.value == 'team_leader' %}
+    {% if team.role and team.role.value == "team_leader" %}
       <ActionButton size="sm" :href="'/teams/' ~ team.id ~ '/jobs/new'">
         <Icon name="plus" />
         Nueva consulta
@@ -40,7 +40,7 @@
         </Checklist>
       </Panel>
     {% endif %}
-    {% if (team.role and team.role.value == 'team_leader') or user.is_site_admin %}
+    {% if (team.role and team.role.value == "team_leader") or user.is_site_admin %}
       <Panel aria-labelledby="jobs-title">
         <PanelHeader title="Tareas recientes"
                      description="El estado se actualiza mientras se procesan."

@@ -44,7 +44,7 @@
                      label="Buscar"
                      sub
                      :active="active == 'team-search'" />
-            {% if (active_team.role and active_team.role.value == 'team_leader') or user.is_site_admin %}
+            {% if (active_team.role and active_team.role.value == "team_leader") or user.is_site_admin %}
               <NavItem :href="'/teams/' ~ active_team.id ~ '/settings/proxy'"
                        label="Proxy"
                        sub

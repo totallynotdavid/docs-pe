@@ -40,10 +40,8 @@ POLL_INTERVAL_SECONDS = 0.05
 
 @pytest.fixture(autouse=True)
 def _stub_the_external_network(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Stub the target site's response and the proxy provider's session, the
-    two services a fetch reaches beyond the test's own Postgres and MinIO.
-    Claiming, credential reveal, retry and breaker handling, publishing and the
-    S3 write run for real."""
+    """Stub the target site and proxy provider. Claiming, credential reveal,
+    retry, breaker handling, publishing, and S3 writes run for real."""
     monkeypatch.setitem(
         site_registry.SITES,
         "osiptel",
@@ -60,7 +58,7 @@ def _stub_the_external_network(monkeypatch: pytest.MonkeyPatch) -> None:
             name="geonode",
             fields=(),
             tuning=ProviderTuning(workers=1, ban_cooldown_s=0.0),
-            normalize=lambda raw: dict(raw),
+            normalize=dict,
             build=lambda raw: FakeProvider(),
         ),
     )
