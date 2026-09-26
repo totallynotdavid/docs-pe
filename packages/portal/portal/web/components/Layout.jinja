@@ -7,7 +7,9 @@
     <title>{{ title }} · {{ PRODUCT_NAME }}</title>
     <link rel="stylesheet" href="{{ tokens_stylesheet_url }}">
     <link rel="stylesheet" href="{{ component_stylesheet_url }}">
-    <meta name="htmx-config" content='{"includeIndicatorStyles": false}'>
+    {# Error responses are full pages, so swapping one into a results panel would nest a second app shell. #}
+    <meta name="htmx-config"
+          content='{"includeIndicatorCSS": false, "noSwap": [204, 304, "4xx", "5xx"]}'>
     <script defer src="/static/htmx.min.js"></script>
     <script defer src="/static/portal.js"></script>
   </head>
