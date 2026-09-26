@@ -25,7 +25,18 @@ if TYPE_CHECKING:
     from portal.repository.jobs import PostgresJobRepository
     from portal.repository.teams import PostgresTeamRepository
 
-HTMX = {"HX-Request": "true"}
+HTMX = {"HX-Request": "true", "HX-Request-Type": "partial"}
+
+# Back and forward navigation re-fetch a pushed URL into <body>. htmx 4.0.0
+# omits HX-Request there, though its docs say every htmx request carries it.
+HISTORY_RESTORES = (
+    {"HX-Request-Type": "full", "HX-History-Restore-Request": "true"},
+    {
+        "HX-Request": "true",
+        "HX-Request-Type": "full",
+        "HX-History-Restore-Request": "true",
+    },
+)
 
 
 async def _publish_result(
@@ -223,20 +234,35 @@ async def test_htmx_urls_serve_pages_and_fragments(
 
     with sync_client(app) as client:
         assert login(client, "lider@osiptel.test").status_code == 303
-        submit_job(client, team_id, credential_id, "10412345678")
+        job_id = submit_job(client, team_id, credential_id, "10412345678")
 
         for url in (
             f"/teams/{team_id}",
             f"/teams/{team_id}/search?q=104",
+            f"/teams/{team_id}/jobs/{job_id}/items",
+            "/notifications",
         ):
-            page = client.get(url)
-            fragment = client.get(url, headers=HTMX)
+            _assert_serves_page_and_fragment(client, url)
 
-            assert page.status_code == 200
-            assert fragment.status_code == 200
-            assert "<!DOCTYPE html>" in page.text
-            assert "<!DOCTYPE html>" not in fragment.text
+    with sync_client(app) as client:
+        assert login(client, "admin@osiptel.test").status_code == 303
+        _assert_serves_page_and_fragment(client, "/admin/search?q=104")
 
-            # A shared cache must distinguish full pages from HTMX fragments.
-            assert page.headers["vary"] == "HX-Request"
-            assert fragment.headers["vary"] == "HX-Request"
+
+def _assert_serves_page_and_fragment(client: TestClient, url: str) -> None:
+    page = client.get(url)
+    fragment = client.get(url, headers=HTMX)
+    restores = [client.get(url, headers=h) for h in HISTORY_RESTORES]
+
+    assert page.status_code == 200, url
+    assert fragment.status_code == 200, url
+    assert "<!DOCTYPE html>" in page.text
+    assert "<!DOCTYPE html>" not in fragment.text
+
+    for restored in restores:
+        assert restored.status_code == 200, url
+        assert "<!DOCTYPE html>" in restored.text
+
+    # A shared cache must distinguish full pages from HTMX fragments.
+    for response in (page, fragment, *restores):
+        assert response.headers["vary"] == "HX-Request-Type"
