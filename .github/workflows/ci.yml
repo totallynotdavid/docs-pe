@@ -52,9 +52,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: jdx/mise-action@v4
+      - uses: jdx/mise-action@v5.1.1
         with:
           install: false
+          minimum_release_age: 0s
+          persist_github_token: true
 
       - name: Install pinned MinIO
         run: mise install minio
