@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
     from datetime import timedelta
 
     from asyncpg import Pool
@@ -140,7 +140,7 @@ class EphemeralStore:
 
 
 @contextlib.asynccontextmanager
-async def sweeping(store: EphemeralStore) -> AsyncIterator[None]:
+async def sweeping(store: EphemeralStore) -> AsyncGenerator[None, None]:
     async def loop() -> None:
         while True:
             await asyncio.sleep(SWEEP_INTERVAL_SECONDS)

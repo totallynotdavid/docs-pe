@@ -17,7 +17,7 @@ from cli.store.payload import decode_rows, encode_rows
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Generator, Iterator
     from pathlib import Path
 
     from core.domain.types import Result, Row
@@ -495,7 +495,7 @@ class OutcomeStore:
             )
 
     @contextmanager
-    def _transaction(self) -> Iterator[None]:
+    def _transaction(self) -> Generator[None, None, None]:
         self._conn.execute("BEGIN IMMEDIATE")
 
         try:

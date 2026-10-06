@@ -13,7 +13,7 @@ from portal.notify.mailer import SEND_TIMEOUT_SECONDS
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
 
     from asyncpg import Pool
 
@@ -172,7 +172,7 @@ async def dispatch_once(pool: Pool, mailer: Mailer) -> None:
 
 
 @contextlib.asynccontextmanager
-async def dispatching(pool: Pool, mailer: Mailer) -> AsyncIterator[None]:
+async def dispatching(pool: Pool, mailer: Mailer) -> AsyncGenerator[None, None]:
     async def loop() -> None:
         while True:
             await asyncio.sleep(DISPATCH_INTERVAL_SECONDS)

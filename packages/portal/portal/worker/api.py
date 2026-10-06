@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -46,7 +46,7 @@ def create_worker_api(settings: PortalSettings | None = None) -> Litestar:
 
 def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
     @asynccontextmanager
-    async def lifespan(app: Litestar) -> AsyncIterator[None]:
+    async def lifespan(app: Litestar) -> AsyncGenerator[None, None]:
         import asyncpg
 
         # Each uvicorn process owns a pool, so keep the per-process pool bounded.

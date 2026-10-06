@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import sys
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -68,7 +68,7 @@ def create_web_app(settings: PortalSettings | None = None) -> Litestar:
 
 def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
     @asynccontextmanager
-    async def lifespan(app: Litestar) -> AsyncIterator[None]:
+    async def lifespan(app: Litestar) -> AsyncGenerator[None, None]:
         import asyncpg
 
         pool = await asyncpg.create_pool(settings.database_dsn)

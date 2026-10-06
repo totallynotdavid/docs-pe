@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Self
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Generator
     from pathlib import Path
 
 
@@ -187,7 +187,7 @@ class ObservationStore:
         return int(row["total"])
 
     @contextmanager
-    def _transaction(self) -> Iterator[None]:
+    def _transaction(self) -> Generator[None, None, None]:
         self._connection.execute("BEGIN IMMEDIATE")
 
         try:

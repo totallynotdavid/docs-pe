@@ -49,7 +49,7 @@ from portal.worker.api import create_worker_api
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator, AsyncIterator
     from pathlib import Path
 
     import httpx
@@ -137,7 +137,7 @@ class PortalDatabase:
 async def empty_database(
     cluster: str,
     label: str,
-) -> AsyncIterator[PortalDatabase]:
+) -> AsyncGenerator[PortalDatabase, None]:
     """A database of its own, created and dropped, with no schema applied."""
     prefix = label[:20].replace("[", "_").replace("]", "")
     database = f"portal_{prefix}_{uuid4().hex}".lower()

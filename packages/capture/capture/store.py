@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Self
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Generator
     from pathlib import Path
 
     from capture.sites.base import Row
@@ -179,7 +179,7 @@ class ObservationStore:
         )
 
     @contextmanager
-    def _transaction(self) -> Iterator[None]:
+    def _transaction(self) -> Generator[None, None, None]:
         self._db.execute("BEGIN IMMEDIATE")
 
         try:
