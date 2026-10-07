@@ -48,7 +48,7 @@ site administrators can download results after the job publishes them. Members
 can view individual published items.
 
 The terminal states are `completed`, `failed`, and `cancelled`. Use the
-[troubleshooting runbook](operations/troubleshooting.md) when a job fails.
+[Troubleshooting](troubleshooting.md) when a job fails.
 
 ## Search and manage a team
 
@@ -71,8 +71,5 @@ A site administrator works from `/admin`:
   passes.
 
 Workers and master keys are administered from the command line. See
-[portal deployment](operations/portal-deployment.md).
-
-For deployment and database operations, see the
-[operator documentation](readme.md#operate-jobs-and-services). For system
-boundaries, see [Architecture](../ARCHITECTURE.md).
+[Portal deployment](portal-deployment.md). For system boundaries, see
+[Architecture](architecture.md).

@@ -117,12 +117,12 @@ def check_contract_docs() -> list[str]:
     errors: list[str] = []
 
     required_text = {
-        ROOT / "docs/operations/portal-deployment.md": (
+        ROOT / "docs/portal-deployment.md": (
             "portal_schema_migrations",
             "mise run portal:schema",
             "PORTAL_WORKER_API_WORKERS",
         ),
-        ROOT / "docs/operations/troubleshooting.md": (
+        ROOT / "docs/troubleshooting.md": (
             "portal_lookup_attempts",
             "fetch_attempt",
         ),

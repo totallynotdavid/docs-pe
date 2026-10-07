@@ -1,6 +1,6 @@
 # The portal core deploys as raw Compose text, with no repository files and no
 # build, so every portal service runs the prebuilt ${PORTAL_IMAGE}.
-# docs/operations/portal-topology.md describes the network boundary.
+# docs/portal-topology.md describes the network boundary.
 
 x-portal-environment: &portal-environment
   PORTAL_ENVIRONMENT: ${PORTAL_ENVIRONMENT:-production}

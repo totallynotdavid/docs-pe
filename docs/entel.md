@@ -1,9 +1,9 @@
 # Entel
 
 Entel's debt lookup is available at `miperfil.entel.pe`. The working
-implementations are in [browser](../../packages/browser/readme.md) and
-[capture](../../packages/capture/readme.md). It is not implemented in
-[fetch](../../packages/cli/readme.md): the accepted request depends on browser
+implementations are in [browser](../packages/browser/readme.md) and
+[capture](../packages/capture/readme.md). It is not implemented in
+[fetch](../packages/cli/readme.md): the accepted request depends on browser
 state that a plain HTTP client does not reproduce.
 
 ## Result contract
@@ -18,14 +18,14 @@ OnlinePayment_Step2/DataActionGetData
 The request body is captured from the live application. The automation changes
 these fields:
 
-| Field | Captured value or per-lookup mutation |
-| --- | --- |
-| `screenData.variables.DocumentType` | Replace with `DNI` or `RUC`. |
-| `screenData.variables.DocumentNumber` | Replace with the identifier being queried. |
-| `screenData.variables.RecaptchaId` | Keep the captured string `"0"`. |
-| `clientVariables.TokenCaptchaV3` | Replace with a fresh token minted in the page. |
-| `viewName` | Keep `OnlinePaymentFlow.OnlinePayment`. |
-| `versionInfo.moduleVersion` | Keep the current value from `moduleversioninfo`. |
+| Field                                 | Captured value or per-lookup mutation            |
+| ------------------------------------- | ------------------------------------------------ |
+| `screenData.variables.DocumentType`   | Replace with `DNI` or `RUC`.                     |
+| `screenData.variables.DocumentNumber` | Replace with the identifier being queried.       |
+| `screenData.variables.RecaptchaId`    | Keep the captured string `"0"`.                  |
+| `clientVariables.TokenCaptchaV3`      | Replace with a fresh token minted in the page.   |
+| `viewName`                            | Keep `OnlinePaymentFlow.OnlinePayment`.          |
+| `versionInfo.moduleVersion`           | Keep the current value from `moduleversioninfo`. |
 
 Keep the complete captured body. Constructing a smaller body or copying a token
 into an HTTP client omits browser state that Entel validates.
@@ -80,5 +80,4 @@ not complete the protocol.
 If a fresh browser still receives rejections, inspect the page sequence, the
 CSRF cookie, and the provider exit before increasing retry counts. This site has
 accepted an established interactive Chrome profile while rejecting an automated
-profile with the same visible request. That is the boundary that keeps Entel in
-`browser` and `capture`.
+profile with the same visible request.

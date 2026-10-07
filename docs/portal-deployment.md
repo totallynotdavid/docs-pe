@@ -9,9 +9,8 @@ host and one worker Compose application on each worker server. `ops/deploy.py`
 creates and updates all of it by name, so the same command installs a new
 deployment, upgrades one, and adds workers.
 
-The Dokploy host runs Dokploy and the portal core together, which do not fit in
-2 GB of memory: on a 2 GB server the host stopped answering SSH after the first
-deploy. 8 GB works.
+The Dokploy host runs Dokploy and the portal core together and needs 8 GB of
+memory.
 
 Deploy in this order:
 
@@ -143,7 +142,7 @@ The domain makes Dokploy's Traefik route the public host to `web` over plain
 HTTP. TLS ends in front of Traefik, at the Cloudflare edge (see
 [Portal topology](portal-topology.md#traffic-boundaries)).
 
-`--no-deploy` creates and updates the objects without deploying anything; the
+`--no-deploy` creates and updates the objects without deploying anything. The
 next run without it deploys every application that has not run.
 
 `list` prints each object of a deployment: project, Compose applications with
@@ -219,25 +218,24 @@ A database backup without the key cannot restore encrypted credentials.
 
 ## Schema changes
 
-`portal-admin migrate` applies each SQL file once and records its filename in
-`portal_schema_migrations`. It is not a schema diff tool. Editing a filename
-that is already recorded does not make that file run again. `init` runs it on
-every deploy, before the new `web` and `worker-api` containers start.
+`portal-admin migrate` applies each numbered SQL file in
+`packages/portal/portal/migrations/` once and records its filename in
+`portal_schema_migrations`. It does not diff a schema. Editing a file that is
+already recorded does not run it again, so a schema change is a new numbered
+file. `init` runs the command on every deploy, before the new `web` and
+`worker-api` containers start.
 
-The migration directory contains the baseline schema and numbered follow-up
-changes.
+Back up PostgreSQL and verify the target tables and grants before deploying an
+image that adds a migration.
 
-For local development, regenerate the complete schema snapshot with:
+To see the schema the migrations produce, run:
 
 ```sh
 mise run portal:schema
 ```
 
-That task applies the local migrations and writes a generated schema snapshot
-under `packages/portal/`, without the migration ledger. For production, use the
-approved database schema-change process or add a new numbered migration when the
-change is incremental. Back up PostgreSQL and verify the target tables and
-grants before deploying the new image.
+The task applies the migrations to the local database and writes a schema-only
+dump, without the migration ledger, to `schema.sql` in `packages/portal`.
 
 ## Worker API capacity
 
@@ -328,12 +326,11 @@ previous image tag available for rollback.
 
 `scripts/e2e-portal.sh` is the hook `scripts/e2e-aws.sh` runs as `E2E_AWS_HOOK`,
 on a core server with Dokploy and a worker server, both on the tailnet. With no
-browser and no console, it:
+browser and no console, the hook:
 
 1. builds the image on core from the working tree and loads it on the worker;
-2. creates Dokploy's first administrator and an API key through Dokploy's
-   internal routes, and refuses any Dokploy but v0.30.7, the version those
-   routes were checked on;
+2. creates Dokploy's first administrator and signs in as that user, so the
+   deploy tool needs no API key;
 3. generates every secret for the run, and runs `ops/deploy.py` twice, the
    second time requiring only `ok` lines;
 4. serves the portal over HTTPS with `tailscale serve` on core, in production

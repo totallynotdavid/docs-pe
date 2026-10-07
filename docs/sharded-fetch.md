@@ -16,7 +16,9 @@ uv run fetch-fleet create \
   --shard south worker-south inputs/south.csv results/south.csv
 ```
 
-Run each shard with its own input and output path. Copy its state database to
+Run each shard on its host with its own input and output path. The manifest
+records the shard's state database, the output path with `.state.sqlite3` in
+place of its extension (`results/north.state.sqlite3` here). Copy that file to
 the host that holds the manifest if that host cannot read it directly.
 
 ```sh
@@ -37,5 +39,5 @@ Status rejects changed inputs, duplicate document ownership, unknown state rows,
 and missing outcomes. Merge also rejects incomplete jobs and existing output,
 then produces one state database and its CSV projections atomically per file.
 
-`fetch-fleet create` rejects GeoNode with more than one shard; see
-[sticky slots](../proxies.md#sticky-slots).
+`fetch-fleet create` rejects GeoNode with more than one shard. See
+[Sticky slots](proxies.md#sticky-slots).

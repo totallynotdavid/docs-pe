@@ -1,48 +1,32 @@
 # Documentation
 
-Choose the path that matches your job. The root [README](../readme.md) is the
-shortest command-line introduction.
+The documents below are listed in reading order. The root [README](../readme.md)
+is the shortest introduction.
 
-## Use the product
+1. [Input format](input-format.md): the identifiers each tool accepts.
+2. [Proxy configuration](proxies.md): providers, credentials, sticky slots, and
+   preflight.
+3. [Sharded fetch](sharded-fetch.md): run one `fetch` job across hosts and merge
+   the results.
+4. [Troubleshooting](troubleshooting.md): read a run's state and tell failure
+   classes apart.
+5. [Portal](portal.md): submit lookups, follow jobs, manage a team, and
+   administer the installation.
+6. [Portal deployment](portal-deployment.md): release a production portal and
+   its workers.
+7. [Portal topology](portal-topology.md): the Compose layout, ports, and network
+   boundary.
+8. [Architecture](architecture.md): packages, boundaries, the code map, and the
+   outcome model.
+9. [Adding a site](adding-a-site.md): discover, implement, and document a new
+   site.
+10. [OSIPTEL](osiptel.md), [SUNAT](sunat.md), [Entel](entel.md), and
+    [Portabilidad](portabilidad.md): each site's wire protocol, gates, and
+    failure modes.
 
-| Task                  | Guide                                      |
-| --------------------- | ------------------------------------------ |
-| Run an HTTP lookup    | [`fetch`](../packages/cli/readme.md)       |
-| Run a browser lookup  | [`browser`](../packages/browser/readme.md) |
-| Discover a request    | [`capture`](../packages/capture/readme.md) |
-| Use the shared portal | [`Portal user guide`](portal.md)           |
-| Check input format    | [`Input format`](input-format.md)          |
-
-## Operate jobs and services
-
-| Task                                                   | Guide                                                                  |
-| ------------------------------------------------------ | ---------------------------------------------------------------------- |
-| Configure proxy providers                              | [`Proxy configuration`](proxies.md)                                    |
-| Diagnose a standalone or portal run                    | [`Troubleshooting`](operations/troubleshooting.md)                     |
-| Deploy the portal                                      | [`Portal deployment`](operations/portal-deployment.md)                 |
-| Understand portal network boundaries                   | [`Portal topology`](operations/portal-topology.md)                     |
-| Apply or change the portal schema                      | [`Schema changes`](operations/portal-deployment.md#schema-changes)     |
-| Add or remove a worker node                            | [`Deploy`](operations/portal-deployment.md#deploy)                     |
-| Test a deployment end to end                           | [`End-to-end test`](operations/portal-deployment.md#end-to-end-test)   |
-| Run a multi-host fetch                                 | [`Sharded fetch`](operations/sharded-fetch.md)                         |
-| Create disposable AWS test servers                     | [`AWS test servers`](../infra/aws/readme.md)                           |
-| Manage members, cancel a job, or check provider health | [`Administer the installation`](portal.md#administer-the-installation) |
-| Read dated measurements                                | [`Historical results`](reports/results.md)                             |
-
-## Change the system
-
-| Task                                  | Guide                                                                                                                                                                                                           |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Understand ownership and runtime flow | [`Architecture`](../ARCHITECTURE.md)                                                                                                                                                                            |
-| Add or change a site                  | [`Adding a site`](adding-a-site.md)                                                                                                                                                                             |
-| Set up and validate a change          | [`Contributing`](../CONTRIBUTING.md)                                                                                                                                                                            |
-| Understand a package                  | [`core`](../packages/core/readme.md), [`fetch`](../packages/cli/readme.md), [`browser`](../packages/browser/readme.md), [`capture`](../packages/capture/readme.md), or [`portal`](../packages/portal/readme.md) |
-
-## Site contracts
-
-| Site                      | Runner              | Contract                                   |
-| ------------------------- | ------------------- | ------------------------------------------ |
-| Entel                     | Browser and capture | [`entel.md`](sites/entel.md)               |
-| OSIPTEL                   | Fetch               | [`osiptel.md`](sites/osiptel.md)           |
-| Portabilidad              | Browser             | [`portabilidad.md`](sites/portabilidad.md) |
-| SUNAT and representatives | Fetch               | [`sunat.md`](sites/sunat.md)               |
+Each package has its own readme: [core](../packages/core/readme.md),
+[fetch](../packages/cli/readme.md), [browser](../packages/browser/readme.md),
+[capture](../packages/capture/readme.md), and
+[portal](../packages/portal/readme.md). The disposable AWS servers for a
+whole-portal test are in [AWS test servers](../infra/aws/readme.md). To change
+the repository, read [Contributing](../.github/CONTRIBUTING.md).

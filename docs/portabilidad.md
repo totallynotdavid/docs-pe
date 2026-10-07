@@ -2,8 +2,8 @@
 
 The number-portability lookup is available at
 `https://consulta.portabilidad.pe/` and is implemented in
-[browser](../../packages/browser/readme.md). It accepts a nine-digit mobile
-number and returns the current carrier and portability history.
+[browser](../packages/browser/readme.md). It accepts a nine-digit mobile number
+and returns the current carrier and portability history.
 
 ## Output
 

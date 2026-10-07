@@ -8,7 +8,7 @@ provisioning, and the tailnet policy. Follow
 ## Traffic boundaries
 
 ```text
-browser -> Cloudflare -> cloudflared -> web
+browser -> Cloudflare (TLS ends) -> Traefik on the Dokploy host -> web
 web, worker-api, init -> postgres, garage     (project network)
 worker node -> worker-api                     (core host, published 8443)
 worker node -> postgres                       (core host, published 5432, scoped role)
@@ -22,13 +22,13 @@ the worker's scoped PostgreSQL role.
 
 `docker-compose.core.yml` is the whole core of a deployment:
 
-| Service | Image | Purpose | Host port |
-| --- | --- | --- | ---: |
-| `postgres` | `postgres:18-alpine` | Portal database | `POSTGRES_PUBLISHED_PORT` (5432) |
-| `garage` | `dxflrs/garage:v2.3.0` | S3 object store, single node | none |
-| `init` | `${PORTAL_IMAGE}` | One shot: master key, then migrations | none |
-| `web` | `${PORTAL_IMAGE}` | Browser application on port 8000 | none |
-| `worker-api` | `${PORTAL_IMAGE}` | Worker API on port 8443 | `WORKER_API_PUBLISHED_PORT` (8443) |
+| Service      | Image                  | Purpose                               |                          Host port |
+| ------------ | ---------------------- | ------------------------------------- | ---------------------------------: |
+| `postgres`   | `postgres:18-alpine`   | Portal database                       |   `POSTGRES_PUBLISHED_PORT` (5432) |
+| `garage`     | `dxflrs/garage:v2.3.0` | S3 object store, single node          |                               none |
+| `init`       | `${PORTAL_IMAGE}`      | One shot: master key, then migrations |                               none |
+| `web`        | `${PORTAL_IMAGE}`      | Browser application on port 8000      |                               none |
+| `worker-api` | `${PORTAL_IMAGE}`      | Worker API on port 8443               | `WORKER_API_PUBLISHED_PORT` (8443) |
 
 The file deploys as raw text (Dokploy's "raw" Compose source). It binds no
 repository file and builds nothing: every portal service runs the prebuilt
@@ -49,8 +49,11 @@ with the Garage key. The operator does not set `PORTAL_DATABASE_DSN` or any
 ### Startup order
 
 `init` starts once PostgreSQL is healthy. It installs master key `v1` if the
-`master-key` volume has none, then runs `portal-admin migrate`. `web` and
-`worker-api` start only after `init` exits successfully and Garage is healthy.
+`master-key` volume has none, prepends the key named by
+`PORTAL_MASTER_KEY_VERSION` when that is set (see
+[key rotation](portal-deployment.md#key-rotation)), then runs
+`portal-admin migrate`. `web` and `worker-api` start only after `init` exits
+successfully and Garage is healthy.
 
 A later `up` runs `init` again. It finds the key, finds no pending migration,
 and changes nothing. The long-running services keep their containers.
@@ -60,11 +63,11 @@ and changes nothing. The long-running services keep their containers.
 All volumes are ordinary named volumes owned by the Compose project, so their
 Docker names carry the project name as a prefix:
 
-| Volume | Contents |
-| --- | --- |
-| `postgres-data` | PostgreSQL cluster |
-| `garage-data` | Garage metadata and object blocks |
-| `master-key` | `master.key`, mounted at `/app/.data/keys` |
+| Volume          | Contents                                   |
+| --------------- | ------------------------------------------ |
+| `postgres-data` | PostgreSQL cluster                         |
+| `garage-data`   | Garage metadata and object blocks          |
+| `master-key`    | `master.key`, mounted at `/app/.data/keys` |
 
 `init` mounts `master-key` read-write. `web` and `worker-api` mount it
 read-only. No other process holds the key.
@@ -104,13 +107,13 @@ tailnet name and `POSTGRES_PUBLISHED_PORT`. The database name and options come
 from the core's own DSN. Production validation refuses to start without the
 setting.
 
-Workers set `PORTAL_WORKER_API_URL` to `http://<core host>:<published worker-api port>`,
-which the deploy tool derives from `PORTAL_WORKER_DATABASE_ADDRESS` and
-`WORKER_API_PUBLISHED_PORT`.
+Workers set `PORTAL_WORKER_API_URL` to
+`http://<core host>:<published worker-api port>`, which the deploy tool derives
+from `PORTAL_WORKER_DATABASE_ADDRESS` and `WORKER_API_PUBLISHED_PORT`.
 
 ## Connection budget
 
 Budget PostgreSQL connections for every web, worker-api, worker, admin, and
 operator process. Each worker also keeps a dedicated connection for
-notifications. Recheck the budget when changing worker concurrency or the
-number of service processes.
+notifications. Recheck the budget when changing worker concurrency or the number
+of service processes.

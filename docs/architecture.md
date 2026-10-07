@@ -13,10 +13,11 @@ fetch  ─┐
 portal ─┴─> core
 ```
 
-`capture`, `browser`, and `core` are independent packages. The arrow in the
-diagram is an import boundary, not a workflow requirement. Capture can inform a
-browser or HTTP implementation, but those packages do not import capture code.
-The standalone executable is named `fetch` and lives in `packages/cli`.
+`capture`, `browser`, and `core` import none of one another. `fetch` and
+`portal` import `core` and nothing else. The arrow in the diagram is an import
+boundary, not a workflow requirement. Capture can inform a browser or HTTP
+implementation, but those packages do not import capture code. The standalone
+executable is named `fetch` and lives in `packages/cli`.
 
 ## Execution modes
 
@@ -28,17 +29,18 @@ site behavior.
 and site behavior that cannot be reduced to an HTTP request.
 
 `core` runs site requests through proxy providers. It owns provider sessions,
-site parsers, fault classification, and retry policy. The [site registry](packages/core/core/sites/registry.py)
-and [provider registry](packages/core/core/proxy/registry.py) are its extension
+site parsers, fault classification, and retry policy. The
+[site registry](../packages/core/core/sites/registry.py) and
+[provider registry](../packages/core/core/proxy/registry.py) are its extension
 points.
 
 `cli` is the standalone `fetch` tool. It owns command parsing, environment
 loading, local SQLite state, CSV exports, and sharded-job tools.
 
-The packages intentionally copy site knowledge between modes instead of sharing
-implementation code. A site can therefore remain in `capture` while its protocol
-is investigated, or remain in `browser` when plain HTTP is not a valid
-implementation. See [Adding a site](docs/adding-a-site.md) for that workflow.
+Site knowledge is copied between modes, not shared as code. A site can remain in
+`capture` while its protocol is investigated, or in `browser` when plain HTTP is
+not a valid implementation. See [Adding a site](adding-a-site.md) for that
+workflow.
 
 The portal has three service processes and one administrative interface. `web`
 serves the browser application, `worker-api` owns credential decryption and
@@ -46,6 +48,20 @@ result publication, and `worker` claims queue work directly through a scoped
 PostgreSQL role. `portal-admin` owns migrations, provisioning, worker identity,
 and key management. Service processes do not run administrative commands during
 startup.
+
+## Code map
+
+| Concern                        | Owner                                                                                                                                       |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| A core site                    | `packages/core/core/sites/<name>/`, registered in `SITES` in [`sites/registry.py`](../packages/core/core/sites/registry.py)                 |
+| A core proxy provider          | `packages/core/core/proxy/<name>.py`, registered in `PROVIDERS` in [`proxy/registry.py`](../packages/core/core/proxy/registry.py)           |
+| Fault-to-retry mapping         | [`domain/policy.py`](../packages/core/core/domain/policy.py), the only owner. A retry rule inside a site escapes circuit-breaker accounting |
+| Document parsing and routing   | [`domain/types.py`](../packages/core/core/domain/types.py): `Doc` and `RucKind`                                                             |
+| Standalone resume state        | [`store/outcomes.py`](../packages/cli/cli/store/outcomes.py)                                                                                |
+| Portal HTTP handling           | `packages/portal/portal/web/routes/`                                                                                                        |
+| Portal authentication and CSRF | [`web/deps.py`](../packages/portal/portal/web/deps.py), never a route                                                                       |
+| Portal SQL                     | `packages/portal/portal/repository/`, one module per concern: `auth.py`, `teams.py`, `credentials.py`, `jobs.py`                            |
+| Tests                          | `tests/`, one subpackage per package                                                                                                        |
 
 ## Standalone fetch lifecycle
 
@@ -75,14 +91,17 @@ document/site pair has one durable row when it has produced an outcome.
 | `not_found` | The site explicitly confirmed that the document is absent.                                          |
 | `failed`    | The latest attempt failed. The row remains retryable until its cumulative attempt limit is reached. |
 
-`MAX_ATTEMPTS` limits attempts in one process. `MAX_TOTAL_ATTEMPTS` limits the
-same pair across relaunches. A circuit-breaker wait is not a healthy contact and
-does not consume the document's attempt budget.
+[`MAX_ATTEMPTS`](../packages/core/core/domain/policy.py) (4) limits attempts in
+one process. `MAX_TOTAL_ATTEMPTS` (12) limits the same pair across relaunches. A
+circuit-breaker wait is not a healthy contact and does not consume the
+document's attempt budget.
 
 CSV files contain projections of successful rows, not a complete progress
-ledger. In particular, a successful lookup that returns no rows has an `ok`
-outcome but contributes no data row to a result CSV. Query SQLite when logs and
-CSV files disagree.
+ledger. A successful lookup that returns no rows has an `ok` outcome but
+contributes no data row to a result CSV. `fetch` writes the CSVs when a run ends
+or is interrupted, so a directory with no CSV mid-run is normal. Read progress
+from SQLite, not from a CSV or a log tail. See
+[Troubleshooting](troubleshooting.md).
 
 Standalone breaker state is stored by site and provider in the outcome database
 and restored when the same output path resumes. The portal stores its fleet
@@ -100,7 +119,7 @@ prevent a late worker from publishing after cancellation or reassignment.
 Each publish carries the complete fetch-attempt history. PostgreSQL records one
 row per attempt in `portal_lookup_attempts`, including attempts from a stale
 publish fence, in the same transaction as the terminal item and entry outcome.
-The terminal tables describe the final result; the attempt table describes the
+The terminal tables describe the final result. The attempt table describes the
 cost and failure history that led to it.
 
 PostgreSQL owns queue leases, cancellation fences, reusable entries, team

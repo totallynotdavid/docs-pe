@@ -1,10 +1,10 @@
 # Proxy configuration
 
-`fetch` and the portal use the core provider schema. `browser` uses the same
-provider names and credentials, but its loader supports only the browser
-settings described in
-[the browser package](../packages/browser/browser/proxy.py). `capture` uses the
-operator's own Chrome profile.
+`fetch` and the portal use the core provider schema. `browser` reads the same
+provider names and credentials with its own loader,
+[`browser/proxy.py`](../packages/browser/browser/proxy.py), and uses only the
+first provider in `PROXY_PROVIDER`. `capture` uses the operator's own Chrome
+profile and no proxy.
 
 ## Configure providers
 
@@ -56,8 +56,9 @@ the respective loaders.
 
 Each provider module owns its field schema. `core.proxy.base` supplies the
 shared field and provider-spec types used by environment loading, stored portal
-credentials, and the portal form. When adding a provider, add its schema and
-registry entry before adding provider-specific documentation.
+credentials, and the portal form. A new provider needs its `ProviderSpec` and a
+registry entry. Add a section here that names every field.
+`uv run ops/check_docs.py` fails when a field is missing or stale.
 
 ## Country and site selection
 
@@ -69,7 +70,7 @@ GEONODE_COUNTRY=PE
 DATAIMPULSE_COUNTRY=pe
 ```
 
-The [OSIPTEL note](sites/osiptel.md) describes the site's blocked-exit signal.
+The [OSIPTEL note](osiptel.md) describes the site's blocked-exit signal.
 
 ## Sticky slots
 
@@ -101,7 +102,7 @@ site. Run a small target-site job before a large one.
 
 ## Diagnose provider failures
 
-Use the [troubleshooting runbook](operations/troubleshooting.md) to distinguish
-provider transport failures, site blocks, and document-level results. The
-standalone outcome database stores breaker state by `(site, provider)`. The
-portal stores fleet breaker state by `(source, provider)` in PostgreSQL.
+Use [Troubleshooting](troubleshooting.md) to distinguish provider transport
+failures, site blocks, and document-level results. The standalone outcome
+database stores breaker state by `(site, provider)`. The portal stores fleet
+breaker state by `(source, provider)` in PostgreSQL.

@@ -1,8 +1,8 @@
 # OSIPTEL
 
 The OSIPTEL lookup is available at `https://checatuslineas.osiptel.gob.pe/` and
-is implemented in [fetch](../../packages/cli/readme.md). It accepts any
-supported DNI or RUC and returns one row per registered phone line.
+is implemented in [fetch](../packages/cli/readme.md). It accepts any supported
+DNI or RUC and returns one row per registered phone line.
 
 ## Request and response
 
@@ -23,8 +23,9 @@ Each returned line contains:
 modalidad, numeroServicio, operador
 ```
 
-The exported result uses the columns `modalidad`, `numero`, and `operador`. The
-`counts` projection groups lines by operator.
+The exported result (`out.osiptel.csv`) has the columns `doc`, `modalidad`,
+`numero`, and `operador`. The `counts` projection (`out.osiptel.counts.csv`) has
+the columns `doc`, `carrier`, `lines`, and `total_lines`.
 
 ## Readiness and WAF
 
@@ -32,9 +33,9 @@ The home page must contain the normal site marker before a lookup starts. Treat
 a block page or CAPTCHA wall as a site ban signal, including HTTP 200 responses.
 
 OSIPTEL requires a Peru exit. Configure it in
-[Proxy configuration](../proxies.md#country-and-site-selection), run the
-[proxy preflight](../proxies.md#preflight), then start a small job before a
-large one.
+[Proxy configuration](proxies.md#country-and-site-selection), run the
+[proxy preflight](proxies.md#preflight), then start a small job before a large
+one.
 
 ## Empty results
 
