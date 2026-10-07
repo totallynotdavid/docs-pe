@@ -19,7 +19,8 @@ def parse_args(argv: list[str] | None = None) -> RunConfig:
     parser.add_argument(
         "--state",
         type=Path,
-        help="state database path (default: <output>.state.sqlite3)",
+        help="state database path (default: the output path with .state.sqlite3 "
+        "in place of its extension)",
     )
     parser.add_argument("--site", required=True, choices=sorted(SITES))
     parser.add_argument(

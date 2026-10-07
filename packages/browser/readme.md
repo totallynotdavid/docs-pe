@@ -19,25 +19,28 @@ response contracts.
 
 ## Sessions and retries
 
-The state database defaults to `<output>.state.sqlite3`. Reuse the same output
-and state paths to resume subjects that have not succeeded.
+The state database defaults to the output path with its extension replaced by
+`.state.sqlite3`, so `results/entel.csv` keeps state in
+`results/entel.state.sqlite3`. Pass `--state` to choose another path. Reuse the
+same output and state paths to resume subjects that have not succeeded.
 
 A structured site rejection causes a fresh token or session attempt according to
 `--reject-retries`, `--reject-restart-threshold`, and `--max-session-restarts`.
 A hard browser error is not converted into a document result. It stops the run
 so the browser failure can be fixed.
 
-Entel has a browser-bound request sequence and must remain in this package. See
-[the Entel note](../../docs/sites/entel.md). Portabilidad does not use
-`--control`; the flag is for sites that need a warm-up identifier.
+Entel has a browser-bound request sequence, so it runs only in this package. See
+[the Entel note](../../docs/entel.md). Portabilidad does not use `--control`;
+the flag is for sites that need a warm-up identifier.
 
 ## Proxy mode
 
-Browser creates one local unauthenticated relay for Chrome and attaches proxy
-credentials outside the browser. A session restart creates a new relay and
-upstream session. Browser uses the first provider in `PROXY_PROVIDER` and does
-not use provider lane counts. See [Proxy configuration](../../docs/proxies.md)
-for credentials and country settings.
+Pass `--no-proxy` to run without a proxy. Otherwise browser creates one local
+unauthenticated relay for Chrome and attaches proxy credentials outside the
+browser. A session restart creates a new relay and upstream session. Browser
+uses the first provider in `PROXY_PROVIDER` and does not use provider lane
+counts. See [Proxy configuration](../../docs/proxies.md) for credentials and
+country settings.
 
 ## Command reference
 

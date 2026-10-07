@@ -16,5 +16,5 @@ parsing, environment loading, SQLite state, CSV exports, or portal storage.
 - Keep fault-to-retry decisions in `core/domain/policy.py`. Site adapters report
   facts; they do not choose retry actions.
 
-Read [Architecture](../../ARCHITECTURE.md) for lifecycle contracts and
+Read [Architecture](../../docs/architecture.md) for lifecycle contracts and
 [Adding a site](../../docs/adding-a-site.md) for the implementation workflow.

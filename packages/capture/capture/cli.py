@@ -35,9 +35,19 @@ def parse_args(argv: list[str] | None = None) -> CaptureConfig:
     )
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
-    parser.add_argument("--state", type=Path)
+    parser.add_argument(
+        "--state",
+        type=Path,
+        help="state database path (default: the output path with .state.sqlite3 "
+        "in place of its extension)",
+    )
     parser.add_argument("--site", default=DEFAULT_SITE, choices=sorted(SITES))
-    parser.add_argument("--browser-script", type=Path)
+    parser.add_argument(
+        "--browser-script",
+        type=Path,
+        help="browser script path (default: the output path with "
+        ".<site>-capture.js in place of its extension)",
+    )
     parser.add_argument(
         "--diagnostics",
         type=Path,

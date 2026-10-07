@@ -14,9 +14,8 @@ uv run capture \
 ```
 
 Capture does not use a proxy. The browser profile supplies the site's cookies,
-reputation, and interactive state. Read
-[the Entel note](../../docs/sites/entel.md) for the reason this distinction
-matters.
+reputation, and interactive state. Read [the Entel note](../../docs/entel.md)
+for the reason this distinction matters.
 
 ## Workflow
 
@@ -28,10 +27,12 @@ matters.
 6. Use the captured request and response to decide whether the site belongs in
    `browser` or `fetch`.
 
-The generated script is written beside the output as
-`<output>.<site>-capture.js`. The default state path is
-`<output>.state.sqlite3`. Add `--diagnostics <path>.jsonl` for redacted request
-and browser timing data.
+The output path with its extension replaced names the other files. For
+`--output results/entel-capture.csv` the generated script is
+`results/entel-capture.entel-capture.js` and the state database is
+`results/entel-capture.state.sqlite3`. `--browser-script` and `--state` choose
+other paths. Add `--diagnostics <path>.jsonl` for redacted request and browser
+timing data.
 
 Capture owns discovery code only. `browser` and `fetch` have independent site
 implementations, so moving a site between packages means carrying over the

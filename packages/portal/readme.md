@@ -9,8 +9,8 @@ and maintainers.
 mise run dev
 ```
 
-See [portal deployment](../../docs/operations/portal-deployment.md) for a
-non-local deployment.
+See [portal deployment](../../docs/portal-deployment.md) for a non-local
+deployment.
 
 ## Local development
 
@@ -80,7 +80,7 @@ Proxy credentials for provisioning use `PORTAL_PROVISION_<PROVIDER>_<FIELD>`
 names generated from the provider schema.
 
 Worker-api capacity and master-key rotation are covered in the
-[portal deployment guide](../../docs/operations/portal-deployment.md).
+[portal deployment guide](../../docs/portal-deployment.md).
 
 Team membership, job cancellation, and breaker state are administered in the web
 application. See the
