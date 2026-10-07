@@ -1,36 +1,36 @@
 # docs-pe
 
-Command-line, browser, and portal tools for looking up public Peruvian identity,
-telephone, taxpayer, and number-portability data.
+docs-pe looks up public Peruvian records for a list of identifiers: the phone
+lines registered to a DNI or RUC (OSIPTEL), taxpayer identity and legal
+representatives (SUNAT), Entel debt, and the current carrier of a mobile number
+(Portabilidad). It runs as command-line tools for one operator, or as a web
+portal where teams share jobs, results, and a fleet of worker nodes.
 
-Inputs, state databases, and CSV exports can contain personal data. Keep them
-private, do not commit them, and use the services only where the collection and
-use are authorized.
-
-Choose the smallest runner that matches the site's protocol. `fetch` handles
-ordinary HTTP at unattended scale, `browser` handles Chrome and browser gates,
-`capture` discovers requests in your own profile, and the portal coordinates
-shared jobs, teams, results, and worker nodes.
+The tools reach each site through a residential proxy provider (GeoNode or
+DataImpulse). You bring the provider account. Inputs, state databases, and CSV
+exports can contain personal data: keep them private, do not commit them, and
+use the services only where the collection and use are authorized.
 
 ## Get started
 
-Install the pinned toolchain and dependencies:
+Install [mise](https://mise.jdx.dev), then the pinned toolchain and
+dependencies:
 
 ```sh
 mise install
 mise run install
 ```
 
-Create a CSV whose first column contains identifiers, copy the environment
-template, and add proxy credentials to `.env`. See the
-[input format](docs/input-format.md) for accepted forms and normalization:
+Put one identifier per row in the first column of a CSV, copy the environment
+template, and fill in the credentials of the providers named by
+`PROXY_PROVIDER`:
 
 ```sh
-printf '%s\n' '12345678' > subjects.csv
+printf '%s\n' '20131312955' > subjects.csv
 cp .env.example .env
 ```
 
-Run a small OSIPTEL lookup:
+Look up the phone lines registered to that RUC:
 
 ```sh
 uv run --env-file .env fetch \
@@ -39,23 +39,38 @@ uv run --env-file .env fetch \
   --sites osiptel
 ```
 
-Inspect a completed or interrupted run from its SQLite state database:
+The run writes `results/out.osiptel.csv` with the columns `doc`, `modalidad`,
+`numero`, and `operador`, and records every outcome in
+`results/out.state.sqlite3`. Check a run, finished or interrupted, with:
 
 ```sh
 uv run fetch-status --output results/out.csv
 ```
 
-See [Documentation](docs/readme.md) for the state model, troubleshooting, output
-files, and other task guides.
+The [input format](docs/input-format.md) lists the accepted identifiers.
 
-## Choose a runner
+## Features
 
-| Tool | Use it when |
-| --- | --- |
-| [`fetch`](packages/cli/readme.md) | The site accepts ordinary HTTP requests and the job needs unattended scale. |
-| [`browser`](packages/browser/readme.md) | The site needs Chrome, JavaScript, or browser reputation. |
-| [`capture`](packages/capture/readme.md) | You need to discover a request with your own Chrome profile. |
-| [`portal`](packages/portal/readme.md) | People need job submission, teams, reusable results, and a worker fleet. |
+| Tool                                    | Use it when                                                                                                                          |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| [`fetch`](packages/cli/readme.md)       | The site accepts ordinary HTTP requests and the job needs unattended scale. Resumes from its state database and shards across hosts. |
+| [`browser`](packages/browser/readme.md) | The site needs Chrome, JavaScript, or browser reputation.                                                                            |
+| [`capture`](packages/capture/readme.md) | You need to discover a request with your own Chrome profile.                                                                         |
+| [`portal`](packages/portal/readme.md)   | People need job submission, teams, reusable results, and a worker fleet.                                                             |
 
-See [Documentation](docs/readme.md) for the full task index. Contributors
-should read [Contributing](CONTRIBUTING.md).
+Supported sites and the tool that runs each:
+
+| Site                                 | Looks up                                                   | Tool                 |
+| ------------------------------------ | ---------------------------------------------------------- | -------------------- |
+| [OSIPTEL](docs/osiptel.md)           | Phone lines per DNI or RUC                                 | `fetch`              |
+| [SUNAT](docs/sunat.md)               | Natural-person identity and legal-entity representatives   | `fetch`              |
+| [Entel](docs/entel.md)               | Debt per DNI or RUC                                        | `browser`, `capture` |
+| [Portabilidad](docs/portabilidad.md) | Current carrier and portability history of a mobile number | `browser`            |
+
+## Learn more
+
+- [Documentation](docs/readme.md): the manual, from input format to portal
+  deployment.
+- [Architecture](docs/architecture.md): packages, boundaries, and the outcome
+  model.
+- [Contributing](.github/CONTRIBUTING.md): set up, check, and submit a change.
