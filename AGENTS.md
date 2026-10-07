@@ -38,19 +38,18 @@ Each package readme covers its own domain:
   rejection retry
 - `packages/capture/readme.md`: reverse-engineer sites using your own Chrome
 - `packages/portal/readme.md`: job queue, web UI, provisioning
-- `packages/portal/operations.md`: SQL runbook for manual portal intervention
 
 `docs/` covers cross-cutting concerns. Package readmes link into it; don't
 restate its content in a package readme:
 
 - `docs/proxies.md`: provider tuning and behavior
 - `docs/operations/troubleshooting.md`: runbook, log interpretation
-- `docs/sites/*.md`: per-site wire protocol, gates, failure modes (entel, osiptel,
-  sunat, portabilidad)
+- `docs/sites/*.md`: per-site wire protocol, gates, failure modes (entel,
+  osiptel, sunat, portabilidad)
 - `docs/adding-a-site.md`: capture → browser → core workflow
 - `docs/reports/results.md`: historical job measurements
-- `docs/operations/portal-deployment.md`: deploying with `ops/deploy.py`,
-  adding and removing workers, master key, the end-to-end test
+- `docs/operations/portal-deployment.md`: deploying with `ops/deploy.py`, adding
+  and removing workers, master key, the end-to-end test
 - `docs/operations/portal-topology.md`: Compose layout, cloudflared edge,
   published ports, tailnet
 

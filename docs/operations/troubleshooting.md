@@ -103,15 +103,17 @@ Join `portal_lookup_attempts.job_item_id` to `portal_job_items.id` and then to
 `portal_jobs` when investigating one job. Do not interpret a failed attempt as
 the final item state without checking the terminal row.
 
-Run these queries through the [portal SQL runbook](../../packages/portal/operations.md)
-with the portal database connection.
+These queries only read. Run them against the portal database with
+`psql "$PORTAL_DATABASE_DSN"`. To stop a job, cancel it from its page instead of
+editing rows.
 
 ## Session rotation
 
 Inspect `session_id` and `proxy_id` in the outcome row or exported error row.
 The fetch session budget is site-specific and can be lowered with
 `--session-budget`. Browser rejection retries and session restarts are
-independent settings. Read the relevant package `readme.md` before changing either.
+independent settings. Read the relevant package `readme.md` before changing
+either.
 
 If restarting a session does not change the rejection class, check the provider
 and site gate before increasing retry counts. Retries cannot repair invalid
