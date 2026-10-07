@@ -64,6 +64,7 @@ def reject(message: str) -> NoReturn:
 @dataclass
 class FakeDokploy:
     api_key: str = "test-key"
+    session_cookie: str = "better-auth.session_token=test-session"
     organization_id: str = "org"
     docker_hosts: set[str] = field(default_factory=set)
     failing_composes: set[str] = field(default_factory=set)
@@ -87,6 +88,10 @@ class FakeDokploy:
 
     _ids: itertools.count[int] = field(default_factory=itertools.count)
 
+    @property
+    def credentials(self) -> dict[str, str]:
+        return {"x-api-key": self.api_key}
+
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self.handle)
 
@@ -94,7 +99,10 @@ class FakeDokploy:
         return [call for call in self.calls if call.startswith("POST ")]
 
     def handle(self, request: httpx.Request) -> httpx.Response:
-        if request.headers.get("x-api-key") != self.api_key:
+        if (
+            request.headers.get("x-api-key") != self.api_key
+            and request.headers.get("cookie") != self.session_cookie
+        ):
             return httpx.Response(401, json={"message": "Unauthorized"})
 
         procedure = request.url.path.removeprefix("/api/")

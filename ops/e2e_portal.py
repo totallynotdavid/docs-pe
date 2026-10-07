@@ -3,7 +3,7 @@
 Secrets arrive in the environment, never as arguments. Each command prints
 only the value the hook keeps, and logs to stderr.
 
-    dokploy-key                    DOKPLOY_URL, E2E_DOKPLOY_EMAIL, E2E_DOKPLOY_PASSWORD
+    dokploy-session                DOKPLOY_URL, E2E_DOKPLOY_EMAIL, E2E_DOKPLOY_PASSWORD
     enrol-totp ORIGIN CONNECT      E2E_ADMIN_EMAIL, E2E_ADMIN_PASSWORD
     submit ORIGIN CONNECT SOURCE DOCUMENT
                                    the same, and E2E_ADMIN_TOTP_SECRET
@@ -40,8 +40,6 @@ import pyotp
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-
-DOKPLOY_VERSION = "v0.30.7"
 
 # Cloudflare's test secret accepts this token, which its always-pass test site
 # key hands a browser.
@@ -96,14 +94,13 @@ def expect(response: httpx.Response, step: str, status: int = 200) -> httpx.Resp
     return response
 
 
-def dokploy_api_key(client: httpx.Client, email: str, password: str) -> str:
-    """Create Dokploy's first user, the owner of its organization, and an API
-    key scoped to that organization.
+def dokploy_session(client: httpx.Client, email: str, password: str) -> str:
+    """Sign up Dokploy's first user, the owner of its organization, and return
+    the Cookie header value of the session that sign-up opens.
 
-    user.createApiKey is Dokploy's internal tRPC route, so the version is
-    checked before the key is made. The public better-auth route
-    /api/auth/api-key/create gives a key without an organization, which every
-    API call rejects."""
+    ops/deploy.py authenticates with that session like the dashboard does. An
+    API key would need Dokploy's internal user.createApiKey route, because a key
+    from the public better-auth route is rate limited to 10 requests a day."""
     expect(
         client.post(
             "/api/auth/sign-up/email",
@@ -117,38 +114,11 @@ def dokploy_api_key(client: httpx.Client, email: str, password: str) -> str:
         "sign up",
     )
 
-    version = trpc_result(
-        expect(client.get("/api/trpc/settings.getDokployVersion"), "Dokploy version")
-    )
-    if version != DOKPLOY_VERSION:
-        msg = f"Dokploy is {version}; this test knows only {DOKPLOY_VERSION}"
-        raise E2EError(msg)
+    # The call ops/deploy.py makes first, so a session Dokploy does not accept
+    # fails here.
+    expect(client.get("/api/project.all"), "Dokploy session")
 
-    organizations = expect(
-        client.get("/api/auth/organization/list"), "organizations"
-    ).json()
-    if len(organizations) != 1:
-        msg = f"expected one organization after sign-up, found {len(organizations)}"
-        raise E2EError(msg)
-
-    created = expect(
-        client.post(
-            "/api/trpc/user.createApiKey",
-            json={
-                "json": {
-                    "name": "e2e",
-                    "metadata": {"organizationId": organizations[0]["id"]},
-                    "rateLimitEnabled": False,
-                }
-            },
-        ),
-        "API key",
-    )
-    return str(trpc_result(created)["key"])
-
-
-def trpc_result(response: httpx.Response) -> Any:
-    return response.json()["result"]["data"]["json"]
+    return "; ".join(f"{cookie.name}={cookie.value}" for cookie in client.cookies.jar)
 
 
 class ConnectTo(httpx.BaseTransport):
@@ -450,7 +420,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
-    commands.add_parser("dokploy-key")
+    commands.add_parser("dokploy-session")
 
     for name in ("enrol-totp", "submit"):
         command = commands.add_parser(name)
@@ -472,10 +442,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run(args: argparse.Namespace) -> str | None:
-    if args.command == "dokploy-key":
+    if args.command == "dokploy-session":
         url = env("DOKPLOY_URL").rstrip("/")
         with httpx.Client(base_url=url, headers={"Origin": url}, timeout=60) as client:
-            return dokploy_api_key(
+            return dokploy_session(
                 client, env("E2E_DOKPLOY_EMAIL"), env("E2E_DOKPLOY_PASSWORD")
             )
 

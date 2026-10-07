@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The E2E_AWS_HOOK for scripts/e2e-aws.sh. The steps and inputs are in
-# docs/operations/portal-deployment.md, "End-to-end test".
+# docs/portal-deployment.md, "End-to-end test".
 #
 # Everything runs in the portal image built on core, so the caller needs only
 # ssh, git and tar.
@@ -136,9 +136,9 @@ write_core_env() {
 # Dokploy answers only on core's loopback, so ops/deploy.py runs on core with
 # host networking.
 deploy_tool() {
-	on "$CORE_HOST" DOKPLOY_API_KEY -- docker run --rm --network host --user 0:0 \
+	on "$CORE_HOST" DOKPLOY_SESSION_COOKIE -- docker run --rm --network host --user 0:0 \
 		-v "$remote_dir/src:/src:ro" -v "$remote_dir/core.env:/run/core.env:ro" -w /src \
-		-e "DOKPLOY_URL=$dokploy_url" -e DOKPLOY_API_KEY \
+		-e "DOKPLOY_URL=$dokploy_url" -e DOKPLOY_SESSION_COOKIE \
 		"$image" python -m ops.deploy "$@"
 }
 
@@ -219,20 +219,20 @@ on "$CORE_HOST" -- bash -c '
 # The portal image runs as a non-root user, which must read the driver.
 upload "$WORKER_HOST" "$remote_dir/e2e_portal.py" 644 <"$repo/ops/e2e_portal.py"
 
-step "create Dokploy's administrator and API key"
-if [[ -z ${DOKPLOY_API_KEY:-} ]]; then
+step "create Dokploy's administrator and sign in"
+if [[ -z ${DOKPLOY_SESSION_COOKIE:-} ]]; then
 	# Dokploy accepts only one sign-up, so the credentials are kept only once
-	# the key exists. A failure here needs fresh servers.
+	# the session exists. A failure here needs fresh servers.
 	E2E_DOKPLOY_EMAIL=e2e-$(hex 4)@example.com
 	E2E_DOKPLOY_PASSWORD=$(hex 24)
-	key=$(on "$CORE_HOST" E2E_DOKPLOY_EMAIL E2E_DOKPLOY_PASSWORD -- \
+	cookie=$(on "$CORE_HOST" E2E_DOKPLOY_EMAIL E2E_DOKPLOY_PASSWORD -- \
 		docker run --rm --network host -e "DOKPLOY_URL=$dokploy_url" \
 		-e E2E_DOKPLOY_EMAIL -e E2E_DOKPLOY_PASSWORD \
 		-v "$remote_dir/src/ops/e2e_portal.py:/e2e_portal.py:ro" \
-		"$image" python /e2e_portal.py dokploy-key)
+		"$image" python /e2e_portal.py dokploy-session)
 	remember E2E_DOKPLOY_EMAIL "$E2E_DOKPLOY_EMAIL"
 	remember E2E_DOKPLOY_PASSWORD "$E2E_DOKPLOY_PASSWORD"
-	remember DOKPLOY_API_KEY "$key"
+	remember DOKPLOY_SESSION_COOKIE "$cookie"
 fi
 
 step "write the deployment's secrets"

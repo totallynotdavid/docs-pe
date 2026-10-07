@@ -47,7 +47,7 @@ def fake() -> FakeDokploy:
 
 @pytest.fixture
 def deployer(fake: FakeDokploy) -> Deployer:
-    api = Dokploy("http://dokploy.test", fake.api_key, transport=fake.transport())
+    api = Dokploy("http://dokploy.test", fake.credentials, transport=fake.transport())
     return Deployer(api, log=lambda _: None, poll_seconds=0)
 
 
@@ -134,7 +134,7 @@ def test_a_staged_deployment_starts_on_the_next_run(
 
 
 def test_output_shows_the_key_to_install_then_only_ok(fake: FakeDokploy) -> None:
-    api = Dokploy("http://dokploy.test", fake.api_key, transport=fake.transport())
+    api = Dokploy("http://dokploy.test", fake.credentials, transport=fake.transport())
     lines: list[str] = []
     deployer = Deployer(api, log=lines.append, poll_seconds=0)
 
@@ -365,9 +365,27 @@ def test_worker_and_env_parsing() -> None:
 def test_cli_needs_dokploy_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DOKPLOY_URL", raising=False)
     monkeypatch.delenv("DOKPLOY_API_KEY", raising=False)
+    monkeypatch.delenv("DOKPLOY_SESSION_COOKIE", raising=False)
 
     with pytest.raises(SystemExit, match="DOKPLOY_URL"):
         main(["list"])
+
+
+def test_cli_authenticates_with_a_session_cookie(
+    fake: FakeDokploy, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DOKPLOY_URL", "http://dokploy.test")
+    monkeypatch.delenv("DOKPLOY_API_KEY", raising=False)
+    monkeypatch.setenv("DOKPLOY_SESSION_COOKIE", fake.session_cookie)
+
+    main(["list"], transport=fake.transport())
+
+    assert fake.calls
+
+    monkeypatch.setenv("DOKPLOY_SESSION_COOKIE", "better-auth.session_token=other")
+
+    with pytest.raises(SystemExit, match="HTTP 401"):
+        main(["list"], transport=fake.transport())
 
 
 REGISTRY = Registry("registry.example", "reader", "token-1")
@@ -375,7 +393,7 @@ REGISTRY = Registry("registry.example", "reader", "token-1")
 
 @pytest.fixture
 def private_deployer(fake: FakeDokploy) -> Deployer:
-    api = Dokploy("http://dokploy.test", fake.api_key, transport=fake.transport())
+    api = Dokploy("http://dokploy.test", fake.credentials, transport=fake.transport())
     return Deployer(api, log=lambda _: None, poll_seconds=0, registry=REGISTRY)
 
 
@@ -432,7 +450,7 @@ def test_a_new_token_reaches_the_entries_on_the_next_deploy(
     fake: FakeDokploy, private_deployer: Deployer
 ) -> None:
     private_deployer.deploy(spec())
-    api = Dokploy("http://dokploy.test", fake.api_key, transport=fake.transport())
+    api = Dokploy("http://dokploy.test", fake.credentials, transport=fake.transport())
     renewed = Deployer(
         api,
         log=lambda _: None,

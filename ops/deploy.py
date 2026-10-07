@@ -1,6 +1,7 @@
 r"""Deploy a portal (core plus workers) into Dokploy, finding every object by name.
 
-Usage, with DOKPLOY_URL and DOKPLOY_API_KEY in the environment:
+Usage, with DOKPLOY_URL and DOKPLOY_API_KEY in the environment (or
+DOKPLOY_SESSION_COOKIE, a Cookie header value, in place of the key):
 
     uv run python -m ops.deploy deploy NAME --image REF --env-file PATH \
         [--worker WORKER=ADDRESS ...] [--no-deploy]
@@ -11,8 +12,7 @@ Usage, with DOKPLOY_URL and DOKPLOY_API_KEY in the environment:
     uv run python -m ops.deploy list [NAME]
 
 REGISTRY_USERNAME and REGISTRY_PASSWORD, when set, log every server that pulls
-the image into its registry. docs/operations/portal-deployment.md describes the
-inputs.
+the image into its registry. docs/portal-deployment.md describes the inputs.
 """
 
 from __future__ import annotations
@@ -75,12 +75,12 @@ class Dokploy:
     def __init__(
         self,
         url: str,
-        api_key: str,
+        credentials: Mapping[str, str],
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self._client = httpx.Client(
             base_url=f"{url.rstrip('/')}/api/",
-            headers={"x-api-key": api_key},
+            headers=credentials,
             # server.validate and server.setup hold the request open while
             # they run a script on the remote server over SSH.
             timeout=httpx.Timeout(30, read=600),
@@ -846,20 +846,37 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def dokploy_credentials(environ: Mapping[str, str]) -> dict[str, str]:
+    """The API key header, else the Cookie header of a signed-in session. The
+    session lets the end-to-end test deploy without an API key, whose creation
+    has no stable public route."""
+    if api_key := environ.get("DOKPLOY_API_KEY"):
+        return {"x-api-key": api_key}
+
+    if cookie := environ.get("DOKPLOY_SESSION_COOKIE"):
+        return {"cookie": cookie}
+
+    return {}
+
+
 def main(
     argv: Sequence[str] | None = None, *, transport: httpx.BaseTransport | None = None
 ) -> None:
     args = build_parser().parse_args(argv)
 
     url = os.environ.get("DOKPLOY_URL")
-    api_key = os.environ.get("DOKPLOY_API_KEY")
-    if not url or not api_key:
-        sys.exit("DOKPLOY_URL and DOKPLOY_API_KEY must be set.")
+    credentials = dokploy_credentials(os.environ)
+    if not url or not credentials:
+        sys.exit(
+            "DOKPLOY_URL and DOKPLOY_API_KEY (or DOKPLOY_SESSION_COOKIE) must be set."
+        )
 
     registry = (
         Registry.for_image(args.image, os.environ) if args.command == "deploy" else None
     )
-    deployer = Deployer(Dokploy(url, api_key, transport=transport), registry=registry)
+    deployer = Deployer(
+        Dokploy(url, credentials, transport=transport), registry=registry
+    )
 
     try:
         if args.command == "deploy":
