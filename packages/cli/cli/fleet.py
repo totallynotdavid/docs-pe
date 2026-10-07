@@ -251,7 +251,12 @@ def _validate_manifest(manifest: JobManifest) -> None:
         msg = f"manifest lists unknown provider(s): {','.join(unknown_providers)}"
         raise ValueError(msg)
     if "geonode" in manifest.providers and len(manifest.shards) > 1:
-        msg = "GeoNode cannot run across standalone shards without a shared slot allocator"
+        msg = (
+            "GeoNode cannot run across several standalone shards: each process "
+            "numbers its sticky ports from 1, so shards on different hosts "
+            "would share ports. Use one shard, a provider without sticky "
+            "ports such as dataimpulse, or submit the job to the portal."
+        )
         raise ValueError(msg)
     if not manifest.shards:
         msg = "manifest must list at least one shard"
