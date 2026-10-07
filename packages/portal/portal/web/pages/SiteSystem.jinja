@@ -98,5 +98,65 @@
                     description="Los servidores aparecen aquí en cuanto se registran con su token de arranque." />
       {% endif %}
     </Panel>
+    <Panel>
+      <PanelHeader title="Proveedores por sitio"
+                   description="Un par bloqueado no se asigna a ningún servidor hasta que termina su espera." />
+      {% if health.breakers %}
+        <DataTable>
+          <TableHeader>
+            <TableRow>
+              <TableHead>
+                Sitio
+              </TableHead>
+              <TableHead>
+                Proveedor
+              </TableHead>
+              <TableHead align="right">
+                Fallos seguidos
+              </TableHead>
+              <TableHead align="right">
+                Nivel
+              </TableHead>
+              <TableHead align="right">
+                Estado
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {% for breaker in health.breakers %}
+              <TableRow>
+                <TableCell>
+                  {{ breaker.source }}
+                </TableCell>
+                <TableCell>
+                  {{ breaker.provider }}
+                </TableCell>
+                <TableCell align="right">
+                  {{ breaker.consecutive_failures }}
+                </TableCell>
+                <TableCell align="right">
+                  {{ breaker.level }}
+                </TableCell>
+                <TableCell align="right">
+                  {% if breaker.is_open %}
+                    <Status value="offline">
+                      Bloqueado hasta {{ breaker.open_until.strftime("%H:%M:%S") }} UTC
+                    </Status>
+                  {% else %}
+                    <Status value="online">
+                      Disponible
+                    </Status>
+                  {% endif %}
+                </TableCell>
+              </TableRow>
+            {% endfor %}
+          </TableBody>
+        </DataTable>
+      {% else %}
+        <EmptyState icon="package"
+                    title="Sin fallos registrados"
+                    description="Un par sitio y proveedor aparece aquí cuando un servidor informa su primer resultado." />
+      {% endif %}
+    </Panel>
   </MainContent>
 </Layout>

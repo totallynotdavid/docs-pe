@@ -49,6 +49,7 @@ if TYPE_CHECKING:
         SubmissionReview,
         TeamSearchActivity,
     )
+    from portal.repository.breakers import PostgresCircuitBreakers
     from portal.repository.credentials import PostgresCredentialRepository
     from portal.repository.entries import PostgresEntryRepository
     from portal.repository.jobs import PostgresJobRepository
@@ -70,6 +71,7 @@ class PortalService(AuthorizedService):
         entries: PostgresEntryRepository,
         search_log: PostgresSearchLogRepository,
         workers: PostgresWorkerRegistry,
+        breakers: PostgresCircuitBreakers,
     ) -> None:
         self._teams = teams
         self._credentials = credentials
@@ -77,6 +79,7 @@ class PortalService(AuthorizedService):
         self._entries = entries
         self._search_log = search_log
         self._workers = workers
+        self._breakers = breakers
 
     @team_leader(
         actor_id=lambda a: a["command"].actor_id,
@@ -90,7 +93,7 @@ class PortalService(AuthorizedService):
 
         return await self._admit(command)
 
-    @team_leader()
+    @site_admin_or_leader()
     async def cancel(
         self,
         actor_id: UUID,
@@ -151,7 +154,7 @@ class PortalService(AuthorizedService):
             page_size=page_size,
         )
 
-    @team_reader()
+    @site_admin_or_reader()
     async def job(
         self,
         actor_id: UUID,
@@ -165,7 +168,7 @@ class PortalService(AuthorizedService):
 
         return job
 
-    @team_reader()
+    @site_admin_or_reader()
     async def job_items(
         self,
         actor_id: UUID,
@@ -210,7 +213,7 @@ class PortalService(AuthorizedService):
             for item in items
         )
 
-    @team_reader()
+    @site_admin_or_reader()
     async def job_progress_counts(
         self,
         actor_id: UUID,
@@ -219,7 +222,7 @@ class PortalService(AuthorizedService):
     ) -> JobItemCounts:
         return await self._jobs.item_counts(job_id, team_id)
 
-    @team_reader()
+    @site_admin_or_reader()
     async def job_events_after(
         self,
         actor_id: UUID,
@@ -397,6 +400,7 @@ class PortalService(AuthorizedService):
         return SystemHealth(
             queue=await self._jobs.queue_health(),
             workers=await self._workers.all_workers_with_status(),
+            breakers=await self._breakers.states(),
         )
 
     @public

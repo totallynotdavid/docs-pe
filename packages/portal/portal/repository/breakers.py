@@ -8,6 +8,8 @@ from core.pipeline.breaker import (
     DEFAULT_THRESHOLD,
 )
 
+from portal.domain.models import BreakerState
+
 
 if TYPE_CHECKING:
     from asyncpg import Pool
@@ -62,3 +64,15 @@ class PostgresCircuitBreakers:
                 DEFAULT_BASE_COOLDOWN_S,
                 DEFAULT_MAX_COOLDOWN_S,
             )
+
+    async def states(self) -> tuple[BreakerState, ...]:
+        async with self._pool.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT source, provider, consecutive_failures, level, open_until,
+                       coalesce(open_until > now(), false) AS is_open
+                  FROM portal_circuit_breakers
+                 ORDER BY source, provider
+                """
+            )
+        return tuple(BreakerState(**dict(row)) for row in rows)

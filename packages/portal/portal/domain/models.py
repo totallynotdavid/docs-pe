@@ -457,6 +457,19 @@ class QueueHealth:
 
 
 @dataclass(frozen=True)
+class BreakerState:
+    """`is_open` uses the database clock used when workers claim work."""
+
+    source: str
+    provider: str
+    consecutive_failures: int
+    level: int
+    open_until: datetime | None
+    is_open: bool
+
+
+@dataclass(frozen=True)
 class SystemHealth:
     queue: QueueHealth
     workers: tuple[WorkerStatus, ...]
+    breakers: tuple[BreakerState, ...]

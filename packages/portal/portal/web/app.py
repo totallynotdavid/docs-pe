@@ -25,6 +25,7 @@ from portal.notify.dispatch import dispatching
 from portal.notify.mailer import open_mailer
 from portal.repository.audit import PostgresAuditLog
 from portal.repository.auth import PostgresAuthRepository
+from portal.repository.breakers import PostgresCircuitBreakers
 from portal.repository.credentials import PostgresCredentialRepository
 from portal.repository.entries import PostgresEntryRepository
 from portal.repository.jobs import PostgresJobRepository
@@ -103,6 +104,7 @@ def _build(settings: PortalSettings, keyring: MasterKeyring) -> Litestar:
             PostgresEntryRepository(pool),
             PostgresSearchLogRepository(pool),
             PostgresWorkerRegistry(pool),
+            PostgresCircuitBreakers(pool),
         )
         app.state.provisioning = ProvisioningService(
             auth_repo,
