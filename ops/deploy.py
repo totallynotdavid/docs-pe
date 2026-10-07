@@ -5,9 +5,14 @@ Usage, with DOKPLOY_URL and DOKPLOY_API_KEY in the environment:
     uv run python -m ops.deploy deploy NAME --image REF --env-file PATH \
         [--worker WORKER=ADDRESS ...] [--no-deploy]
     uv run python -m ops.deploy remove-worker NAME WORKER
+    uv run python -m ops.deploy rotate-key NAME VERSION
+    uv run python -m ops.deploy worker issue NAME WORKER [--tailscale-hostname HOST]
+    uv run python -m ops.deploy worker revoke NAME WORKER
     uv run python -m ops.deploy list [NAME]
 
-docs/operations/portal-deployment.md describes the inputs.
+REGISTRY_USERNAME and REGISTRY_PASSWORD, when set, log every server that pulls
+the image into its registry. docs/operations/portal-deployment.md describes the
+inputs.
 """
 
 from __future__ import annotations
@@ -15,6 +20,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import subprocess
 import sys
 import time
 
@@ -27,7 +33,7 @@ import httpx
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Sequence
+    from collections.abc import Callable, Iterable, Mapping, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,6 +54,12 @@ WORKER_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,23}$")
 ENV_LINE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
 
 FINISHED = frozenset({"done", "error", "cancelled"})
+
+# The init service rotates the master key before web and worker-api start.
+# Compose recreates all three services when this value changes.
+KEY_VERSION_VARIABLE = "PORTAL_MASTER_KEY_VERSION"
+KEY_VERSION = re.compile(r"^[A-Za-z0-9._-]+$")
+REWRAP_SCHEDULE = "rewrap"
 
 Row = dict[str, Any]
 
@@ -115,6 +127,28 @@ class Worker:
 
 
 @dataclass(frozen=True)
+class Registry:
+    """Credentials for the registry that serves the image."""
+
+    url: str
+    username: str
+    password: str
+
+    @classmethod
+    def for_image(cls, image: str, environ: Mapping[str, str]) -> Registry | None:
+        """Return credentials only for registry-hosted images with both values."""
+        first, separator, _ = image.partition("/")
+        is_host = first == "localhost" or "." in first or ":" in first
+        username = environ.get("REGISTRY_USERNAME")
+        password = environ.get("REGISTRY_PASSWORD")
+
+        if not separator or not is_host or not username or not password:
+            return None
+
+        return cls(first, username, password)
+
+
+@dataclass(frozen=True)
 class Spec:
     name: str
     image: str
@@ -128,6 +162,10 @@ class Spec:
 
         if "PORTAL_IMAGE" in self.env:
             msg = "the env file sets PORTAL_IMAGE; pass the image with --image instead"
+            raise DeployError(msg)
+
+        if KEY_VERSION_VARIABLE in self.env:
+            msg = f"the env file sets {KEY_VERSION_VARIABLE}; `rotate-key` owns it"
             raise DeployError(msg)
 
         required = ["PORTAL_PUBLIC_ORIGIN"]
@@ -233,11 +271,13 @@ class Deployer:
         log: Callable[[str], None] = print,
         poll_seconds: float = 5.0,
         timeout_seconds: float = 1800.0,
+        registry: Registry | None = None,
     ) -> None:
         self._api = api
         self._log = log
         self._poll_seconds = poll_seconds
         self._timeout_seconds = timeout_seconds
+        self._registry = registry
 
     def deploy(self, spec: Spec, *, start: bool = True) -> None:
         """Create or update every object, then deploy what changed or never
@@ -245,16 +285,22 @@ class Deployer:
         start True deploys every compose that has not run."""
         environment = self._ensure_environment(spec.name)
 
+        core_env = spec.core_env()
+        if version := self._key_version(environment):
+            core_env += render_env({KEY_VERSION_VARIABLE: version})
+
         core_id, changed = self._compose(
             environment,
             CORE,
             app_name=f"{spec.name}-{CORE}",
             compose_file=CORE_COMPOSE.read_text(encoding="utf-8"),
-            env=spec.core_env(),
+            env=core_env,
         )
         changed |= self._web_domain(core_id, spec.public_host)
         if start:
-            self._deploy_if_needed(core_id, CORE, changed=changed)
+            self._deploy_if_needed(
+                core_id, CORE, changed=changed, registry_name=spec.name
+            )
 
         if not spec.workers:
             return
@@ -275,21 +321,55 @@ class Deployer:
                 server_id=server_id,
             )
             if start:
-                self._deploy_if_needed(compose_id, name, changed=changed)
+                self._deploy_if_needed(
+                    compose_id,
+                    name,
+                    changed=changed,
+                    registry_name=server_name(spec.name, worker.name),
+                    server_id=server_id,
+                )
+
+    def rotate_key(self, deployment: str, version: str) -> None:
+        """Activate `version` and rewrap stored secrets under the new key.
+
+        The core restarts first, so every process loads the new key before any
+        row is rewrapped. A rerun finishes an interrupted rotation.
+        """
+        if not KEY_VERSION.fullmatch(version):
+            msg = f"key version {version!r} must match {KEY_VERSION.pattern}"
+            raise DeployError(msg)
+
+        environment = self._existing_environment(deployment)
+        core = self._core(environment, deployment)
+        current = self._api.query("compose.one", composeId=core["composeId"])
+        env = parse_env(current.get("env") or "")
+        changed = env.get(KEY_VERSION_VARIABLE) != version
+
+        if changed:
+            self._api.mutate(
+                "compose.update",
+                composeId=core["composeId"],
+                env=render_env({**env, KEY_VERSION_VARIABLE: version}),
+            )
+            self._log(f"update  compose {CORE}: master key {version}")
+
+        self._deploy_if_needed(core["composeId"], CORE, changed=changed)
+        self._run_schedule(
+            core["composeId"],
+            REWRAP_SCHEDULE,
+            "portal-admin key rewrap",
+            verb="rewrap",
+            target="master key",
+            once=False,
+        )
 
     def remove_worker(self, deployment: str, worker: str) -> None:
-        environment = self._environment(deployment)
-        if environment is None:
-            msg = f"no Dokploy project named {deployment!r}"
-            raise DeployError(msg)
-
-        core = by_name(environment["compose"], CORE)
-        if core is None:
-            msg = f"{deployment} has no {CORE} compose to revoke the worker in"
-            raise DeployError(msg)
+        environment = self._existing_environment(deployment)
+        core = self._core(environment, deployment)
 
         compose = by_name(environment["compose"], compose_name(worker))
         server = by_name(self._api.query("server.all"), server_name(deployment, worker))
+        entry = self._registry_entry(server_name(deployment, worker))
         schedule = by_name(
             self._api.query(
                 "schedule.list", id=core["composeId"], scheduleType="compose"
@@ -297,7 +377,7 @@ class Deployer:
             revoke_schedule_name(worker),
         )
 
-        if compose is None and server is None and schedule is None:
+        if compose is None and server is None and schedule is None and entry is None:
             self._log(f"ok      {worker} is not deployed")
             return
 
@@ -307,7 +387,14 @@ class Deployer:
             self._api.mutate("compose.stop", composeId=compose["composeId"])
             self._log(f"stop    compose {compose['name']}")
 
-        self._revoke(core["composeId"], worker, schedule)
+        self._run_schedule(
+            core["composeId"],
+            revoke_schedule_name(worker),
+            f"portal-admin worker revoke --worker-id {worker}",
+            verb="revoke",
+            target=worker,
+            once=True,
+        )
 
         if compose is not None:
             self._api.mutate(
@@ -318,6 +405,10 @@ class Deployer:
         if server is not None:
             self._api.mutate("server.remove", serverId=server["serverId"])
             self._log(f"delete  server {server['name']}")
+
+        if entry is not None:
+            self._api.mutate("registry.remove", registryId=entry["registryId"])
+            self._log(f"delete  registry {entry['registryName']}")
 
         schedule = by_name(
             self._api.query(
@@ -493,12 +584,23 @@ class Deployer:
 
         return server_id
 
-    def _deploy_if_needed(self, compose_id: str, name: str, *, changed: bool) -> None:
+    def _deploy_if_needed(
+        self,
+        compose_id: str,
+        name: str,
+        *,
+        changed: bool,
+        registry_name: str | None = None,
+        server_id: str | None = None,
+    ) -> None:
         deployments = self._api.query("deployment.allByCompose", composeId=compose_id)
 
         if not changed and deployments and deployments[0]["status"] == "done":
             self._log(f"ok      compose {name}")
             return
+
+        if registry_name is not None:
+            self._login(registry_name, server_id)
 
         seen = {row["deploymentId"] for row in deployments}
         self._api.mutate("compose.deploy", composeId=compose_id)
@@ -513,15 +615,30 @@ class Deployer:
             msg = f"compose {name}: deployment ended {status}; see its log in Dokploy"
             raise DeployError(msg)
 
-    def _revoke(self, core_id: str, worker: str, schedule: Row | None) -> None:
-        """Run `portal-admin worker revoke` in worker-api as a Dokploy schedule.
+    def _run_schedule(
+        self,
+        core_id: str,
+        name: str,
+        command: str,
+        *,
+        verb: str,
+        target: str,
+        once: bool,
+    ) -> None:
+        """Run `command` in worker-api and retain the schedule run record.
 
-        The schedule outlives a failed removal, and its finished run records
-        that the revoke happened: revoking twice is an error in the portal."""
+        With `once`, a finished run means the command already happened. The
+        portal treats a second revoke as an error.
+        """
+        schedule = by_name(
+            self._api.query("schedule.list", id=core_id, scheduleType="compose"),
+            name,
+        )
+
         if schedule is None:
             schedule = self._api.mutate(
                 "schedule.create",
-                name=revoke_schedule_name(worker),
+                name=name,
                 # Never due: the schedule is disabled and only run manually.
                 cronExpression="0 0 1 1 *",
                 enabled=False,
@@ -529,24 +646,98 @@ class Deployer:
                 composeId=core_id,
                 serviceName=WORKER_API_SERVICE,
                 shellType="sh",
-                command=f"portal-admin worker revoke --worker-id {worker}",
+                command=command,
             )
 
         runs = self._api.query(
             "deployment.allByType", id=schedule["scheduleId"], type="schedule"
         )
-        if any(run["status"] == "done" for run in runs):
-            self._log(f"ok      revoke {worker}")
+        if once and any(run["status"] == "done" for run in runs):
+            self._log(f"ok      {verb} {target}")
             return
 
         result = self._api.mutate(
             "schedule.runManually", scheduleId=schedule["scheduleId"]
         )
         if result["status"] != "done":
-            msg = f"revoke {worker}: the schedule run ended {result['status']}"
+            msg = f"{verb} {target}: the schedule run ended {result['status']}"
             raise DeployError(msg)
 
-        self._log(f"revoke  {worker}")
+        self._log(f"{verb:<8}{target}")
+
+    def _login(self, name: str, server_id: str | None) -> None:
+        """Log the image-pulling server into the registry through Dokploy.
+
+        Dokploy runs `docker login` whenever it creates or updates an entry, so
+        updating an unchanged entry repeats the login.
+        """
+        registry = self._registry
+        if registry is None:
+            return
+
+        wanted = {
+            "registryName": name,
+            "registryType": "cloud",
+            "registryUrl": registry.url,
+            "username": registry.username,
+            "password": registry.password,
+            **({"serverId": server_id} if server_id else {}),
+        }
+        entry = self._registry_entry(name)
+
+        if entry is None:
+            self._api.mutate("registry.create", **wanted)
+            self._log(f"create  registry {name}")
+        else:
+            self._api.mutate(
+                "registry.update", registryId=entry["registryId"], **wanted
+            )
+            self._log(f"login   registry {name}")
+
+    def _registry_entry(self, name: str) -> Row | None:
+        return next(
+            (
+                row
+                for row in self._api.query("registry.all")
+                if row["registryName"] == name
+            ),
+            None,
+        )
+
+    def _existing_environment(self, deployment: str) -> Row:
+        environment = self._environment(deployment)
+
+        if environment is None:
+            msg = f"no Dokploy project named {deployment!r}"
+            raise DeployError(msg)
+
+        return environment
+
+    def _core(self, environment: Row, deployment: str) -> Row:
+        core = by_name(environment["compose"], CORE)
+
+        if core is None:
+            msg = f"{deployment} has no {CORE} compose"
+            raise DeployError(msg)
+
+        return core
+
+    def _key_version(self, environment: Row) -> str | None:
+        """The master key version `rotate-key` last set, kept across deploys."""
+        core = by_name(environment["compose"], CORE)
+
+        if core is None:
+            return None
+
+        current = self._api.query("compose.one", composeId=core["composeId"])
+        return parse_env(current.get("env") or "").get(KEY_VERSION_VARIABLE)
+
+    def core_app_name(self, deployment: str) -> str:
+        """The Compose project name of the core, which labels its containers."""
+        core = self._core(self._existing_environment(deployment), deployment)
+        return str(
+            self._api.query("compose.one", composeId=core["composeId"])["appName"]
+        )
 
     def _await(self, fetch: Callable[[], list[Row]], seen: set[str], label: str) -> str:
         # The queue records a deployment only when a worker picks the job up.
@@ -560,6 +751,46 @@ class Deployer:
 
         msg = f"{label}: no finished deployment after {self._timeout_seconds:.0f} s"
         raise DeployError(msg)
+
+
+def admin_exec(app_name: str, arguments: Sequence[str]) -> int:
+    """Run `portal-admin` in the core's worker-api container and return its
+    exit status. The container is found by the Compose labels of `app_name`,
+    on the host the Docker CLI talks to: the local one, or DOCKER_HOST's.
+
+    This runs through Docker rather than a Dokploy schedule because `worker
+    issue` prints credentials once, and Dokploy would keep that output in its
+    deployment logs."""
+    filters = (
+        f"label=com.docker.compose.project={app_name}",
+        f"label=com.docker.compose.service={WORKER_API_SERVICE}",
+    )
+    command = ["docker", "ps", "--quiet"]
+    for item in filters:
+        command += ["--filter", item]
+
+    try:
+        found = subprocess.run(command, capture_output=True, text=True, check=False)
+    except FileNotFoundError as error:
+        msg = "docker is not installed on this host"
+        raise DeployError(msg) from error
+
+    if found.returncode != 0:
+        msg = f"docker ps failed: {found.stderr.strip()}"
+        raise DeployError(msg)
+
+    containers = found.stdout.split()
+    if len(containers) != 1:
+        msg = (
+            f"expected one running {WORKER_API_SERVICE} container in Compose "
+            f"project {app_name}, found {len(containers)}. Run this on the "
+            "Dokploy host, or point DOCKER_HOST at it."
+        )
+        raise DeployError(msg)
+
+    return subprocess.run(
+        ["docker", "exec", containers[0], "portal-admin", *arguments], check=False
+    ).returncode
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -589,13 +820,35 @@ def build_parser() -> argparse.ArgumentParser:
     remove.add_argument("name")
     remove.add_argument("worker")
 
+    rotate = commands.add_parser(
+        "rotate-key", help="activate a new master key and rewrap stored secrets"
+    )
+    rotate.add_argument("name")
+    rotate.add_argument("version", help="the new key's version, such as v2")
+
+    worker = commands.add_parser(
+        "worker", help="issue or revoke a worker's fixed credentials"
+    )
+    actions = worker.add_subparsers(dest="action", required=True)
+    issue = actions.add_parser("issue", help="issue credentials, shown once")
+    issue.add_argument(
+        "--tailscale-hostname",
+        help="the node's tailnet name (default: the worker name)",
+    )
+    actions.add_parser("revoke", help="revoke a worker's credentials")
+    for action in actions.choices.values():
+        action.add_argument("name")
+        action.add_argument("worker")
+
     listing = commands.add_parser("list", help="print the objects of deployments")
     listing.add_argument("name", nargs="?")
 
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> None:
+def main(
+    argv: Sequence[str] | None = None, *, transport: httpx.BaseTransport | None = None
+) -> None:
     args = build_parser().parse_args(argv)
 
     url = os.environ.get("DOKPLOY_URL")
@@ -603,7 +856,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     if not url or not api_key:
         sys.exit("DOKPLOY_URL and DOKPLOY_API_KEY must be set.")
 
-    deployer = Deployer(Dokploy(url, api_key))
+    registry = (
+        Registry.for_image(args.image, os.environ) if args.command == "deploy" else None
+    )
+    deployer = Deployer(Dokploy(url, api_key, transport=transport), registry=registry)
 
     try:
         if args.command == "deploy":
@@ -616,6 +872,16 @@ def main(argv: Sequence[str] | None = None) -> None:
             deployer.deploy(spec, start=not args.no_deploy)
         elif args.command == "remove-worker":
             deployer.remove_worker(args.name, args.worker)
+        elif args.command == "rotate-key":
+            deployer.rotate_key(args.name, args.version)
+        elif args.command == "worker":
+            admin = ["worker", args.action, "--worker-id", args.worker]
+            if args.action == "issue":
+                admin += [
+                    "--tailscale-hostname",
+                    args.tailscale_hostname or args.worker,
+                ]
+            sys.exit(admin_exec(deployer.core_app_name(args.name), admin))
         else:
             print("\n".join(deployer.describe(args.name)))
     except (DeployError, httpx.HTTPError) as error:

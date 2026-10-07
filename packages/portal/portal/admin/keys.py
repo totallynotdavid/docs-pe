@@ -63,13 +63,19 @@ def _rotate(path: Path, version: str) -> None:
 
     current = path.read_text(encoding="utf-8")
     MasterKeyring.from_lines(current.splitlines(), source=str(path))
-    existing_versions = {
+    versions = [
         line.split(maxsplit=1)[0]
         for line in current.splitlines()
         if line.strip() and not line.lstrip().startswith("#")
-    }
+    ]
 
-    if version in existing_versions:
+    # A deploy can request the active version repeatedly because this case is a
+    # no-op.
+    if versions[0] == version:
+        print(f"Master key {version} is already active at {path}")
+        return
+
+    if version in versions:
         raise RuntimeError(f"key version already exists: {version}")
 
     _atomic_write(path, f"{_generated_line(version)}\n{current}", replace=True)

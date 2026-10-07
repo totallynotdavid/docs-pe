@@ -8,6 +8,9 @@ x-portal-environment: &portal-environment
   PORTAL_TLS_TERMINATED_UPSTREAM: ${PORTAL_TLS_TERMINATED_UPSTREAM:-true}
   PORTAL_DATABASE_DSN: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
   PORTAL_MASTER_KEY_FILE: /app/.data/keys/master.key
+  # `ops.deploy rotate-key` sets this value. Compose recreates every portal
+  # service when the value changes, so each service loads the rotated key file.
+  PORTAL_MASTER_KEY_VERSION: ${PORTAL_MASTER_KEY_VERSION:-}
   PORTAL_OBJECT_STORAGE_ENDPOINT: http://garage:3900
   PORTAL_OBJECT_STORAGE_REGION: garage
   PORTAL_OBJECT_STORAGE_BUCKET: ${GARAGE_DEFAULT_BUCKET:?}
@@ -71,6 +74,10 @@ services:
       - |
         if [ ! -e "$$PORTAL_MASTER_KEY_FILE" ]; then
           portal-admin key install --path "$$PORTAL_MASTER_KEY_FILE" --version v1
+        fi
+        if [ -n "$$PORTAL_MASTER_KEY_VERSION" ]; then
+          portal-admin key rotate --path "$$PORTAL_MASTER_KEY_FILE" \
+            --version "$$PORTAL_MASTER_KEY_VERSION"
         fi
         portal-admin migrate
     volumes:
