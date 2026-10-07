@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from cli.fleet import JobManifest, Shard, load_manifest, merge, status, write_manifest
+from cli.fleet import main as fleet_main
 from cli.store.outcomes import OutcomeRecord, OutcomeStore, state_path_for_output
 from core.domain.types import Status
 
@@ -100,3 +101,66 @@ def test_merge_rejects_retryable_failures(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="retryable failure"):
         merge(manifest, tmp_path / "merged.csv")
+
+
+def test_fleet_create_rejects_geonode_across_shards_and_writes_nothing(
+    tmp_path: Path,
+) -> None:
+    inputs = []
+    for index in (1, 2):
+        path = tmp_path / f"input-{index}.csv"
+        path.write_text("10100000001\n", encoding="utf-8")
+        inputs.append(path)
+    manifest = tmp_path / "job.json"
+
+    with pytest.raises(SystemExit, match="sticky ports"):
+        fleet_main(
+            [
+                "create",
+                "--manifest",
+                str(manifest),
+                "--revision",
+                "abc123",
+                "--sites",
+                "sunat",
+                "--providers",
+                "geonode",
+                "--shard",
+                "a",
+                "host-a",
+                str(inputs[0]),
+                str(tmp_path / "a.csv"),
+                "--shard",
+                "b",
+                "host-b",
+                str(inputs[1]),
+                str(tmp_path / "b.csv"),
+            ]
+        )
+
+    assert not manifest.exists()
+
+
+def test_geonode_is_allowed_on_a_single_shard(tmp_path: Path) -> None:
+    manifest = replace(_manifest(tmp_path, "10100000001"), providers=("geonode",))
+
+    write_manifest(tmp_path / "job.json", manifest)
+
+    assert load_manifest(tmp_path / "job.json") == manifest
+
+
+def test_a_hand_written_geonode_manifest_with_two_shards_does_not_load(
+    tmp_path: Path,
+) -> None:
+    manifest = replace(
+        _manifest(tmp_path, "10100000001", "10100000002"), providers=("dataimpulse",)
+    )
+    path = tmp_path / "job.json"
+    write_manifest(path, manifest)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("dataimpulse", "geonode"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="sticky ports"):
+        load_manifest(path)
