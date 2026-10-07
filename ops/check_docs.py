@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 
 from pathlib import Path
@@ -20,11 +21,18 @@ PROVIDER_ENV_FIELD = re.compile(r"\b([A-Z][A-Z0-9]+)_([A-Z][A-Z0-9_]*)\b")
 HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*#*\s*$")
 
 
-def markdown_files() -> list[Path]:
-    ignored = {".git", ".venv", "node_modules"}
-    return sorted(
-        path for path in ROOT.rglob("*.md") if not ignored.intersection(path.parts)
-    )
+def markdown_files(root: Path = ROOT) -> list[Path]:
+    """Return tracked and unignored Markdown files without scanning generated trees."""
+    listing = subprocess.run(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z", "*.md"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    paths = (root / name for name in listing.split("\0") if name)
+    # Git lists deleted tracked paths, so keep only files that still exist.
+    return sorted(path for path in paths if path.is_file())
 
 
 def heading_anchors(path: Path) -> set[str]:
