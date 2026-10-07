@@ -2,8 +2,9 @@
 
 `fetch` and the portal use the core provider schema. `browser` uses the same
 provider names and credentials, but its loader supports only the browser
-settings described in [the browser package](../packages/browser/browser/proxy.py).
-`capture` uses the operator's own Chrome profile.
+settings described in
+[the browser package](../packages/browser/browser/proxy.py). `capture` uses the
+operator's own Chrome profile.
 
 ## Configure providers
 
@@ -72,19 +73,17 @@ The [OSIPTEL note](sites/osiptel.md) describes the site's blocked-exit signal.
 
 ## Sticky slots
 
-GeoNode maps sticky sessions to a finite port range. A standalone fetch process
-assigns unique slots only inside that process. `fetch-fleet` rejects a
-multi-shard GeoNode job until it has a shared slot allocator. Run one standalone
-GeoNode job at a time.
+GeoNode maps sticky sessions to a finite port range, one port per slot. A
+standalone fetch process numbers its slots from 1, so two processes on different
+hosts would use the same ports. `fetch-fleet` therefore rejects a GeoNode
+manifest with more than one shard. Use one GeoNode shard, DataImpulse (its
+sessions carry a random suffix and need no port), or the portal.
 
 Portal workers use the `portal_proxy_slots` table to coordinate GeoNode slots
 across the fleet. A lane claims a slot while it works a provider credential,
 renews the lease through the worker heartbeat, and releases it when it changes
 provider, becomes idle, or shuts down. An unrenewed lease expires, so a crashed
 worker does not reserve a slot forever.
-
-This coordination applies to portal workers, not to standalone fetch processes.
-Inspect current leases in [Portal operations](../packages/portal/operations.md).
 
 ## Preflight
 

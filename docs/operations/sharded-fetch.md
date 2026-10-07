@@ -37,5 +37,5 @@ Status rejects changed inputs, duplicate document ownership, unknown state rows,
 and missing outcomes. Merge also rejects incomplete jobs and existing output,
 then produces one state database and its CSV projections atomically per file.
 
-GeoNode is not supported across multiple standalone shards. Use one standalone
-GeoNode job, or choose a provider that does not require shared sticky slots.
+`fetch-fleet create` rejects GeoNode with more than one shard; see
+[sticky slots](../proxies.md#sticky-slots).
