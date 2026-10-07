@@ -16,10 +16,10 @@ deploy. 8 GB works.
 Deploy in this order:
 
 1. Let CI publish the portal image.
-2. Give Dokploy access to the registry, once per server.
+2. Create a registry token.
 3. Write the deployment's env file.
-4. Run `ops/deploy.py`. The `init` service installs the master key and applies
-   migrations.
+4. Run `ops/deploy.py` with the token. It signs every server in to the registry,
+   and the `init` service installs the master key and applies migrations.
 5. Provision the first administrator and back up the master key.
 6. Verify a small job.
 
@@ -40,29 +40,29 @@ The task tags `PORTAL_IMAGE`, or `portal:local` when that is unset.
 
 ### Registry access
 
-Dokploy deploys Compose applications with the Docker login of the host that
-runs them, and a Dokploy registry entry runs `docker login` on one host: the
-Dokploy host, or the server the entry names. Each server that pulls a private
-image needs its own entry.
+Dokploy deploys Compose applications with the Docker login of the host that runs
+them. Create a GitHub personal access token (classic) with only the
+`read:packages` scope, and give it to the deploy tool with the GitHub user that
+owns it:
 
-Create a GitHub personal access token (classic) with only the `read:packages`
-scope. In Dokploy, open Settings, Registry, and add a registry with:
+```sh
+export REGISTRY_USERNAME=<github user>
+export REGISTRY_PASSWORD=<token>
+```
 
-- Registry Name: `ghcr`, or `ghcr <server>` for a worker server's entry;
-- Username: the GitHub user that owns the token;
-- Password: the token;
-- Registry URL: `ghcr.io`, with Image Prefix left empty;
-- Server: none for the Dokploy host, or the worker's server.
-
-The deploy tool creates a worker's server, so a new worker's first deployment
-stops at the image pull. Add the entry for its server, named
-`<deployment>/<worker>`, and run the deploy again.
+The registry host comes from `--image`. Before it deploys an application, the
+tool creates or updates a Dokploy registry entry for that host and has Dokploy
+sign the application's server in: the Dokploy host for `core`, each worker's own
+server for its application. The entries are named `<deployment>` and
+`<deployment>/<worker>`, so a new worker's first deployment pulls its image with
+no manual step, and a rerun after a failed deploy signs in again. An image
+without a registry host, such as `portal:local`, is pulled without a login, and
+so is every image when the two variables are unset.
 
 ## Env file
 
-The deployment's settings live in one env file outside the repository. The
-tool stores it as the core application's environment, which Compose
-interpolates:
+The deployment's settings live in one env file outside the repository. The tool
+stores it as the core application's environment, which Compose interpolates:
 
 ```env
 PORTAL_PUBLIC_ORIGIN=https://<public host>
@@ -119,19 +119,20 @@ uv run python -m ops.deploy deploy <deployment> \
 tool finds or creates, by name:
 
 - the project `<deployment>` and its production environment;
-- the Compose application `core`, from the text of `docker-compose.core.yml`
-  and the env file, with a domain for `PORTAL_PUBLIC_ORIGIN`'s host on service
+- the Compose application `core`, from the text of `docker-compose.core.yml` and
+  the env file, with a domain for `PORTAL_PUBLIC_ORIGIN`'s host on service
   `web`, port 8000;
 - for workers, an SSH key named `<deployment>` that Dokploy generates;
-- for each worker, the server `<deployment>/<worker>`, reached as root over
-  SSH at the given address, and the Compose application `worker-<worker>`, from
-  `docker-compose.worker.yml`.
+- for each worker, the server `<deployment>/<worker>`, reached as root over SSH
+  at the given address, and the Compose application `worker-<worker>`, from
+  `docker-compose.worker.yml`;
+- with registry credentials, the registry entries described under
+  [Registry access](#registry-access).
 
-It then deploys each application whose file, environment, or domain changed,
-or whose last deployment did not finish, and waits for each deployment. Each
-line of output names one object and what happened to it. A second run with the
-same inputs prints only `ok` lines. An upgrade is the same command with the new
-tag.
+It then deploys each application whose file, environment, or domain changed, or
+whose last deployment did not finish, and waits for each deployment. Each line
+of output names one object and what happened to it. A second run with the same
+inputs prints only `ok` lines. An upgrade is the same command with the new tag.
 
 A worker's environment comes from the core's: the worker API URL uses the host
 of `PORTAL_WORKER_DATABASE_ADDRESS` and `WORKER_API_PUBLISHED_PORT`, the worker
@@ -156,8 +157,8 @@ uv run python -m ops.deploy list <deployment>
 
 A worker server needs Docker and root SSH from the Dokploy host at the address
 given to `--worker`. The tool does not run Dokploy's server setup, which would
-install Traefik, Swarm, and builders a worker never uses. It checks that
-Docker answers and stops otherwise.
+install Traefik, Swarm, and builders a worker never uses. It checks that Docker
+answers and stops otherwise.
 
 The first run that has workers creates the deployment's SSH key and prints its
 public key. Add that key to root's `authorized_keys` on each worker server. A
@@ -173,8 +174,8 @@ and worker API ports (see [Portal topology](portal-topology.md)).
 uv run python -m ops.deploy remove-worker <deployment> <worker>
 ```
 
-The tool stops the worker's application, revokes the worker in the portal,
-then deletes the application and its server. The revoke runs
+The tool stops the worker's application, revokes the worker in the portal, then
+deletes the application, its server, and its registry entry. The revoke runs
 `portal-admin worker revoke` in `worker-api` as a Dokploy schedule, so the
 worker's API credential and PostgreSQL login stop working before its server is
 gone. A removal that fails partway resumes when run again. Stop naming the
@@ -182,11 +183,11 @@ worker in `--worker` on later deploys; a deploy that names it enrolls it again.
 
 ## Initial installation
 
-The first deploy runs `init`, which creates master key `v1` in the
-`master-key` volume and applies every migration. After it exits, `web` and
-`worker-api` start. Dokploy uses the application's `appName`, shown by `list`,
-as the Compose project name, so containers are named `<appName>-<service>-1`
-and volumes `<appName>_<volume>`.
+The first deploy runs `init`, which creates master key `v1` in the `master-key`
+volume and applies every migration. After it exits, `web` and `worker-api`
+start. Dokploy uses the application's `appName`, shown by `list`, as the Compose
+project name, so containers are named `<appName>-<service>-1` and volumes
+`<appName>_<volume>`.
 
 Provision the first administrator inside `web`, which already has the portal
 environment:
@@ -219,9 +220,9 @@ A database backup without the key cannot restore encrypted credentials.
 ## Schema changes
 
 `portal-admin migrate` applies each SQL file once and records its filename in
-`portal_schema_migrations`. It is not a schema diff tool. Editing a filename that
-is already recorded does not make that file run again. `init` runs it on every
-deploy, before the new `web` and `worker-api` containers start.
+`portal_schema_migrations`. It is not a schema diff tool. Editing a filename
+that is already recorded does not make that file run again. `init` runs it on
+every deploy, before the new `web` and `worker-api` containers start.
 
 The migration directory contains the baseline schema and numbered follow-up
 changes.
@@ -234,8 +235,8 @@ mise run portal:schema
 
 That task applies the local migrations and writes a generated schema snapshot
 under `packages/portal/`, without the migration ledger. For production, use the
-approved database schema-change process or add a new numbered migration when
-the change is incremental. Back up PostgreSQL and verify the target tables and
+approved database schema-change process or add a new numbered migration when the
+change is incremental. Back up PostgreSQL and verify the target tables and
 grants before deploying the new image.
 
 ## Worker API capacity
@@ -252,53 +253,65 @@ nodes.
 
 ## Workers outside Dokploy
 
-A worker enrolls when it starts. Enrollment returns its API credential and a
-DSN for its scoped PostgreSQL login, addressed through
+A worker enrolls when it starts. Enrollment returns its API credential and a DSN
+for its scoped PostgreSQL login, addressed through
 `PORTAL_WORKER_DATABASE_ADDRESS`.
 
 A node that runs the agent without the bootstrap token uses fixed credentials
 issued by:
 
 ```sh
-docker exec <appName>-worker-api-1 portal-admin worker issue \
-  --worker-id <worker-id> \
+uv run python -m ops.deploy worker issue <deployment> <worker-id> \
   --tailscale-hostname <node tailnet name>
 ```
 
-The command shows both credentials once. Set them as
-`PORTAL_WORKER_CREDENTIAL` and `PORTAL_WORKER_DATABASE_DSN` in the node's
-worker environment and leave `PORTAL_WORKER_BOOTSTRAP_TOKEN` unset. The agent
-refuses to start when neither the token nor both credentials are present.
-Revoke both credentials when decommissioning the node:
+The tool asks Dokploy for the deployment's core application and finds its
+`worker-api` container with `docker`, so run it on the Dokploy host or set
+`DOCKER_HOST=ssh://root@<dokploy host>`. It stops when it finds no container or
+more than one. The tailnet name defaults to the worker ID. The credentials go
+straight to your terminal and are never sent through Dokploy, whose logs keep
+command output.
+
+The command shows both credentials once. Set them as `PORTAL_WORKER_CREDENTIAL`
+and `PORTAL_WORKER_DATABASE_DSN` in the node's worker environment and leave
+`PORTAL_WORKER_BOOTSTRAP_TOKEN` unset. The agent refuses to start when neither
+the token nor both credentials are present. Revoke both credentials when
+decommissioning the node:
 
 ```sh
-docker exec <appName>-worker-api-1 portal-admin worker revoke \
-  --worker-id <worker-id>
+uv run python -m ops.deploy worker revoke <deployment> <worker-id>
 ```
 
 ## Key rotation
 
-The master-key file stores versioned keys, newest first. Keep the old key until
-all encrypted rows have been rewrapped. `web` and `worker-api` mount the key
-read-only, so rotate it through the volume:
+The master-key file stores versioned keys, newest first. Rotation adds a new
+active key, restarts the processes onto it, and rewraps every stored secret with
+it:
 
 ```sh
-docker run --rm -v <appName>_master-key:/app/.data/keys <image> \
-  portal-admin key rotate --path /app/.data/keys/master.key --version v2
-docker restart <appName>-web-1 <appName>-worker-api-1
-docker exec <appName>-worker-api-1 portal-admin key rewrap
+uv run python -m ops.deploy rotate-key <deployment> v2
 ```
 
-Back up the new file. Remove an old key only after rewrap has completed and the
-running processes use the new file.
+The tool records the version on the core application and redeploys it. `init`
+then prepends the new key to the key file, and `web` and `worker-api` restart
+with it. The tool finally runs `portal-admin key rewrap` in `worker-api` as a
+Dokploy schedule and waits for it. The version names a key, so use one that the
+file has never held; the key itself never leaves the host.
+
+Rerun the command after any failure: it changes nothing that already holds and
+rewraps again, and rewrapping is idempotent. The env file must not set
+`PORTAL_MASTER_KEY_VERSION`; later deploys keep the recorded version.
+
+Back up the new file as under [Initial installation](#initial-installation).
+Remove an old key line only after the command has finished.
 
 ## Verify a deployment
 
 Check the public origin through Cloudflare, then check the private path from a
 worker node. Confirm that:
 
-- `init` exited with status 0, and `web`, `worker-api`, `postgres`, and
-  `garage` are healthy;
+- `init` exited with status 0, and `web`, `worker-api`, `postgres`, and `garage`
+  are healthy;
 - the login page loads and Turnstile verification works;
 - the first administrator can enroll a second factor;
 - the initial team has an active proxy credential;
@@ -308,14 +321,14 @@ worker node. Confirm that:
   network or from a tailnet device outside this deployment's worker grant; and
 - cancellation prevents a late worker publish.
 
-Use [Portal operations](../../packages/portal/operations.md) for database
-checks. Keep the previous image tag available for rollback.
+[Troubleshooting](troubleshooting.md) has read-only database queries. Keep the
+previous image tag available for rollback.
 
 ## End-to-end test
 
-`scripts/e2e-portal.sh` is the hook `scripts/e2e-aws.sh` runs as
-`E2E_AWS_HOOK`, on a core server with Dokploy and a worker server, both on the
-tailnet. With no browser and no console, it:
+`scripts/e2e-portal.sh` is the hook `scripts/e2e-aws.sh` runs as `E2E_AWS_HOOK`,
+on a core server with Dokploy and a worker server, both on the tailnet. With no
+browser and no console, it:
 
 1. builds the image on core from the working tree and loads it on the worker;
 2. creates Dokploy's first administrator and an API key through Dokploy's
@@ -343,5 +356,5 @@ E2E_PROXY_ENV=<file> E2E_AWS_HOOK=scripts/e2e-portal.sh scripts/e2e-aws.sh all
 `E2E_PROXY_ENV` names a file with unquoted `PORTAL_PROVISION_GEONODE_USERNAME=`
 and `PORTAL_PROVISION_GEONODE_PASSWORD=` lines. `E2E_JOB_SOURCE` and
 `E2E_JOB_DOCUMENT` choose the lookup; the default is `osiptel` for SUNAT's own
-RUC. The tailnet needs MagicDNS, HTTPS certificates, and Serve enabled, and
-must let the test servers reach each other as root over SSH.
+RUC. The tailnet needs MagicDNS, HTTPS certificates, and Serve enabled, and must
+let the test servers reach each other as root over SSH.
