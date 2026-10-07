@@ -35,3 +35,25 @@ def test_key_rotate_prepends_a_new_key_and_restricts_permissions(tmp_path) -> No
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert MasterKeyring.from_file(path).active_version == "v2"
     assert len(path.read_text(encoding="utf-8").splitlines()) == 2
+
+
+def test_key_rotate_to_the_active_version_changes_nothing(tmp_path) -> None:
+    path = tmp_path / "master.key"
+    main(["key", "install", "--path", str(path), "--version", "v1"])
+    main(["key", "rotate", "--path", str(path), "--version", "v2"])
+    before = path.read_text(encoding="utf-8")
+
+    main(["key", "rotate", "--path", str(path), "--version", "v2"])
+
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_key_rotate_rejects_a_retired_version(tmp_path) -> None:
+    path = tmp_path / "master.key"
+    main(["key", "install", "--path", str(path), "--version", "v1"])
+    main(["key", "rotate", "--path", str(path), "--version", "v2"])
+
+    with pytest.raises(SystemExit, match="key version already exists: v1"):
+        main(["key", "rotate", "--path", str(path), "--version", "v1"])
+
+    assert MasterKeyring.from_file(path).active_version == "v2"

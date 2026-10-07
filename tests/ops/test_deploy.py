@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import stat
+
+from typing import TYPE_CHECKING
+
 import pytest
 
 from ops.deploy import (
@@ -8,12 +12,18 @@ from ops.deploy import (
     Deployer,
     DeployError,
     Dokploy,
+    Registry,
     Spec,
     Worker,
+    admin_exec,
     main,
     parse_env,
 )
 from tests.ops.fake_dokploy import FakeDokploy
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 ENV = {
@@ -358,3 +368,311 @@ def test_cli_needs_dokploy_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(SystemExit, match="DOKPLOY_URL"):
         main(["list"])
+
+
+REGISTRY = Registry("registry.example", "reader", "token-1")
+
+
+@pytest.fixture
+def private_deployer(fake: FakeDokploy) -> Deployer:
+    api = Dokploy("http://dokploy.test", fake.api_key, transport=fake.transport())
+    return Deployer(api, log=lambda _: None, poll_seconds=0, registry=REGISTRY)
+
+
+def test_one_deploy_logs_every_server_into_the_registry(
+    fake: FakeDokploy, private_deployer: Deployer
+) -> None:
+    private_deployer.deploy(spec())
+
+    assert [entry["registryName"] for entry in fake.registries] == [
+        "acme",
+        "acme/node-a",
+        "acme/node-b",
+    ]
+    assert fake.logins == [
+        (None, "registry.example", "reader"),
+        (fake.servers[0]["serverId"], "registry.example", "reader"),
+        (fake.servers[1]["serverId"], "registry.example", "reader"),
+    ]
+    assert all(row["status"] == "done" for row in fake.deployments), (
+        "every compose deployed after its login"
+    )
+
+
+def test_a_converged_deployment_logs_in_nothing(
+    fake: FakeDokploy, private_deployer: Deployer
+) -> None:
+    private_deployer.deploy(spec())
+    fake.calls.clear()
+    fake.logins.clear()
+
+    private_deployer.deploy(spec())
+
+    assert fake.mutations() == []
+    assert fake.logins == []
+
+
+def test_a_retried_deployment_logs_in_again_on_its_own_server(
+    fake: FakeDokploy, private_deployer: Deployer
+) -> None:
+    fake.failing_composes.add("worker-node-b")
+    with pytest.raises(DeployError, match="worker-node-b: deployment ended error"):
+        private_deployer.deploy(spec())
+
+    fake.failing_composes.clear()
+    fake.calls.clear()
+    fake.logins.clear()
+    private_deployer.deploy(spec())
+
+    assert fake.mutations() == ["POST registry.update", "POST compose.deploy"]
+    assert fake.logins == [(fake.servers[1]["serverId"], "registry.example", "reader")]
+
+
+def test_a_new_token_reaches_the_entries_on_the_next_deploy(
+    fake: FakeDokploy, private_deployer: Deployer
+) -> None:
+    private_deployer.deploy(spec())
+    api = Dokploy("http://dokploy.test", fake.api_key, transport=fake.transport())
+    renewed = Deployer(
+        api,
+        log=lambda _: None,
+        poll_seconds=0,
+        registry=Registry("registry.example", "reader", "token-2"),
+    )
+
+    renewed.deploy(spec(image="registry.example/portal:2"))
+
+    assert {entry["password"] for entry in fake.registries} == {"token-2"}
+    assert len(fake.registries) == 3
+
+
+def test_a_login_failure_stops_before_the_deploy(
+    fake: FakeDokploy, private_deployer: Deployer
+) -> None:
+    fake.refused_passwords.add(REGISTRY.password)
+
+    with pytest.raises(DeployError, match="docker login was refused"):
+        private_deployer.deploy(spec())
+
+    assert fake.deployments == []
+
+
+@pytest.mark.parametrize(
+    ("image", "environ", "expected"),
+    [
+        (
+            "ghcr.io/acme/app/portal:abc",
+            {"REGISTRY_USERNAME": "u", "REGISTRY_PASSWORD": "p"},
+            Registry("ghcr.io", "u", "p"),
+        ),
+        (
+            "localhost:5000/portal:abc",
+            {"REGISTRY_USERNAME": "u", "REGISTRY_PASSWORD": "p"},
+            Registry("localhost:5000", "u", "p"),
+        ),
+        ("ghcr.io/acme/portal:abc", {}, None),
+        ("ghcr.io/acme/portal:abc", {"REGISTRY_USERNAME": "u"}, None),
+        ("acme/portal:abc", {"REGISTRY_USERNAME": "u", "REGISTRY_PASSWORD": "p"}, None),
+        ("portal:local", {"REGISTRY_USERNAME": "u", "REGISTRY_PASSWORD": "p"}, None),
+    ],
+)
+def test_registry_comes_from_the_image_host_and_the_environment(
+    image: str, environ: dict[str, str], expected: Registry | None
+) -> None:
+    assert Registry.for_image(image, environ) == expected
+
+
+def test_remove_worker_deletes_its_registry_entry(
+    fake: FakeDokploy, private_deployer: Deployer
+) -> None:
+    private_deployer.deploy(spec())
+
+    private_deployer.remove_worker("acme", "node-a")
+
+    assert [entry["registryName"] for entry in fake.registries] == [
+        "acme",
+        "acme/node-b",
+    ]
+
+
+def test_rotate_key_restarts_the_core_then_rewraps(
+    fake: FakeDokploy, deployer: Deployer
+) -> None:
+    deployer.deploy(spec())
+    fake.calls.clear()
+    deployed = len(fake.deployments)
+
+    deployer.rotate_key("acme", "v2")
+
+    assert (
+        parse_env(str(compose(fake, "core")["env"]))["PORTAL_MASTER_KEY_VERSION"]
+        == "v2"
+    )
+    mutations = fake.mutations()
+    assert mutations.index("POST compose.update") < mutations.index(
+        "POST compose.deploy"
+    )
+    assert mutations.index("POST compose.deploy") < mutations.index(
+        "POST schedule.runManually"
+    )
+    assert mutations.count("POST compose.deploy") == 1
+    assert len(fake.deployments) == deployed + 2
+    assert fake.commands_run == ["worker-api: portal-admin key rewrap"]
+
+
+def test_rotate_key_rerun_rewraps_again_without_redeploying(
+    fake: FakeDokploy, deployer: Deployer
+) -> None:
+    deployer.deploy(spec())
+    deployer.rotate_key("acme", "v2")
+    fake.calls.clear()
+
+    deployer.rotate_key("acme", "v2")
+
+    assert fake.mutations() == ["POST schedule.runManually"]
+    assert fake.commands_run == ["worker-api: portal-admin key rewrap"] * 2
+
+
+def test_a_failed_core_deploy_stops_before_the_rewrap(
+    fake: FakeDokploy, deployer: Deployer
+) -> None:
+    deployer.deploy(spec())
+    fake.failing_composes.add("core")
+
+    with pytest.raises(DeployError, match="core: deployment ended error"):
+        deployer.rotate_key("acme", "v2")
+
+    assert fake.commands_run == []
+
+    fake.failing_composes.clear()
+    deployer.rotate_key("acme", "v2")
+
+    assert fake.commands_run == ["worker-api: portal-admin key rewrap"]
+
+
+def test_a_later_deploy_keeps_the_rotated_key_version(
+    fake: FakeDokploy, deployer: Deployer
+) -> None:
+    deployer.deploy(spec())
+    deployer.rotate_key("acme", "v2")
+    fake.calls.clear()
+
+    deployer.deploy(spec())
+
+    assert fake.mutations() == []
+
+
+def test_rotate_key_needs_a_core_and_a_plain_version(
+    fake: FakeDokploy, deployer: Deployer
+) -> None:
+    with pytest.raises(DeployError, match="no Dokploy project"):
+        deployer.rotate_key("acme", "v2")
+
+    deployer.deploy(spec(), start=False)
+    with pytest.raises(DeployError, match="must match"):
+        deployer.rotate_key("acme", "v 2")
+
+
+def test_the_env_file_cannot_set_the_key_version() -> None:
+    with pytest.raises(DeployError, match="rotate-key"):
+        spec(PORTAL_MASTER_KEY_VERSION="v2")
+
+
+@pytest.fixture
+def docker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A `docker` on PATH that logs its arguments. `ps` lists STUB_CONTAINERS
+    and `exec` exits with STUB_EXEC_STATUS."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log = tmp_path / "docker.log"
+    script = bin_dir / "docker"
+    script.write_text(
+        "#!/bin/sh\n"
+        'echo "$@" >> "$STUB_LOG"\n'
+        'if [ "$1" = ps ]; then for id in $STUB_CONTAINERS; do echo "$id"; done; fi\n'
+        'if [ "$1" = exec ]; then exit "${STUB_EXEC_STATUS:-0}"; fi\n',
+        encoding="utf-8",
+    )
+    script.chmod(script.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
+    monkeypatch.setenv("STUB_LOG", str(log))
+    monkeypatch.setenv("STUB_CONTAINERS", "c1")
+    return log
+
+
+def ps_command(app_name: str) -> str:
+    return (
+        f"ps --quiet --filter label=com.docker.compose.project={app_name} "
+        "--filter label=com.docker.compose.service=worker-api"
+    )
+
+
+def test_admin_exec_finds_the_container_by_its_compose_labels(docker: Path) -> None:
+    status = admin_exec("acme-core-abc123", ["worker", "revoke", "--worker-id", "n"])
+
+    assert status == 0
+    assert docker.read_text(encoding="utf-8").splitlines() == [
+        ps_command("acme-core-abc123"),
+        "exec c1 portal-admin worker revoke --worker-id n",
+    ]
+
+
+def test_admin_exec_returns_the_command_status(
+    docker: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("STUB_EXEC_STATUS", "3")
+
+    assert admin_exec("acme-core-abc123", ["worker", "revoke"]) == 3
+
+
+@pytest.mark.parametrize(("containers", "found"), [("", 0), ("c1 c2", 2)])
+def test_admin_exec_needs_exactly_one_container(
+    docker: Path, monkeypatch: pytest.MonkeyPatch, containers: str, found: int
+) -> None:
+    monkeypatch.setenv("STUB_CONTAINERS", containers)
+
+    with pytest.raises(DeployError, match=rf"found {found}"):
+        admin_exec("acme-core-abc123", ["worker", "revoke"])
+
+    assert "exec" not in docker.read_text(encoding="utf-8")
+
+
+def test_worker_issue_resolves_the_core_container_itself(
+    fake: FakeDokploy,
+    deployer: Deployer,
+    docker: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deployer.deploy(spec())
+    monkeypatch.setenv("DOKPLOY_URL", "http://dokploy.test")
+    monkeypatch.setenv("DOKPLOY_API_KEY", fake.api_key)
+    app_name = str(compose(fake, "core")["appName"])
+
+    with pytest.raises(SystemExit) as stopped:
+        main(["worker", "issue", "acme", "node-c"], transport=fake.transport())
+
+    assert stopped.value.code == 0
+    assert docker.read_text(encoding="utf-8").splitlines() == [
+        ps_command(app_name),
+        "exec c1 portal-admin worker issue --worker-id node-c --tailscale-hostname node-c",
+    ]
+
+
+def test_worker_revoke_passes_the_failure_status_through(
+    fake: FakeDokploy,
+    deployer: Deployer,
+    docker: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deployer.deploy(spec())
+    monkeypatch.setenv("DOKPLOY_URL", "http://dokploy.test")
+    monkeypatch.setenv("DOKPLOY_API_KEY", fake.api_key)
+    monkeypatch.setenv("STUB_EXEC_STATUS", "1")
+
+    with pytest.raises(SystemExit) as stopped:
+        main(["worker", "revoke", "acme", "node-a"], transport=fake.transport())
+
+    assert stopped.value.code == 1
+    assert docker.read_text(encoding="utf-8").splitlines()[-1] == (
+        "exec c1 portal-admin worker revoke --worker-id node-a"
+    )

@@ -45,6 +45,11 @@ REQUIRED: dict[str, tuple[str, ...]] = {
     "schedule.create": ("name", "cronExpression", "command"),
     "schedule.runManually": ("scheduleId",),
     "schedule.delete": ("scheduleId",),
+    "registry.create": (
+        "registryName", "username", "password", "registryUrl", "registryType",
+    ),
+    "registry.update": ("registryId",),
+    "registry.remove": ("registryId",),
 }  # fmt: skip
 
 
@@ -71,6 +76,11 @@ class FakeDokploy:
     ssh_keys: list[Row] = field(default_factory=list)
     servers: list[Row] = field(default_factory=list)
     schedules: list[Row] = field(default_factory=list)
+    registries: list[Row] = field(default_factory=list)
+    # Each `docker login` Dokploy ran: (serverId or None for the Dokploy
+    # host, registry URL, username).
+    logins: list[tuple[str | None, str, str]] = field(default_factory=list)
+    refused_passwords: set[str] = field(default_factory=set)
     queued: list[str] = field(default_factory=list)
     calls: list[str] = field(default_factory=list)
     commands_run: list[str] = field(default_factory=list)
@@ -350,3 +360,44 @@ class FakeDokploy:
             row for row in self.schedules if row["scheduleId"] != data["scheduleId"]
         ]
         return True
+
+    def registry_all(self, _: Row) -> list[Row]:
+        return self.registries
+
+    def registry_create(self, data: Row) -> Row:
+        if data["registryType"] != "cloud":
+            reject("registryType")
+        # Dokploy stores no server on the entry: the serverId only picks the
+        # host the login runs on.
+        entry = {
+            "registryId": self._id("registry"),
+            **{key: value for key, value in data.items() if key != "serverId"},
+        }
+        self.registries.append(entry)
+        self._login(data)
+        return entry
+
+    def registry_update(self, data: Row) -> bool:
+        entry = next(
+            row for row in self.registries if row["registryId"] == data["registryId"]
+        )
+        entry.update({key: value for key, value in data.items() if key != "serverId"})
+        self._login({**entry, **data})
+        return True
+
+    def registry_remove(self, data: Row) -> Row:
+        entry = next(
+            row for row in self.registries if row["registryId"] == data["registryId"]
+        )
+        self.registries.remove(entry)
+        return entry
+
+    def _login(self, data: Row) -> None:
+        server_id = data.get("serverId")
+        if server_id is not None and not any(
+            server["serverId"] == server_id for server in self.servers
+        ):
+            reject("no such server")
+        if data["password"] in self.refused_passwords:
+            reject("docker login was refused")
+        self.logins.append((server_id, data["registryUrl"], data["username"]))
