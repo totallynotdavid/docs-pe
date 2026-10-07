@@ -544,3 +544,103 @@ async def test_team_member_cannot_download_job_results(
         )
 
     assert download.status_code == 403
+
+
+def _cancel(client: TestClient, team_id: UUID, job_id: UUID) -> httpx.Response:
+    return client.post(
+        f"/teams/{team_id}/jobs/{job_id}/cancel",
+        data={"csrf_token": session_csrf(client)},
+        headers={"Origin": ORIGIN},
+        follow_redirects=False,
+    )
+
+
+async def test_site_admin_can_cancel_a_job_without_membership(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    app: Litestar,
+) -> None:
+    people = await build_experience(pool, team_repository)
+
+    with sync_client(app) as leader_client:
+        assert login(leader_client, "lider@osiptel.test").status_code == 303
+        job_id = submit_job(
+            leader_client,
+            people.team_id,
+            people.credential_id,
+            "10412345678",
+        )
+
+    with sync_client(app) as admin_client:
+        assert login(admin_client, "admin@osiptel.test").status_code == 303
+        detail = admin_client.get(f"/teams/{people.team_id}/jobs/{job_id}")
+        cancelled = _cancel(admin_client, people.team_id, job_id)
+        after = admin_client.get(f"/teams/{people.team_id}/jobs/{job_id}")
+
+    assert detail.status_code == 200
+    assert "Cancelar consulta" in detail.text
+    assert cancelled.status_code == 303
+    assert after.status_code == 200
+    assert "Cancelado" in after.text
+    assert "Cancelar consulta" not in after.text
+
+
+async def test_cancelling_a_running_job_advances_its_lease_fence(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    app: Litestar,
+) -> None:
+    people = await build_experience(pool, team_repository)
+
+    with sync_client(app) as leader_client:
+        assert login(leader_client, "lider@osiptel.test").status_code == 303
+        job_id = submit_job(
+            leader_client,
+            people.team_id,
+            people.credential_id,
+            "10412345678",
+        )
+
+    await pool.execute(
+        "UPDATE portal_jobs SET state = 'running', started_at = now() WHERE id = $1",
+        job_id,
+    )
+    fence = await pool.fetchval(
+        "SELECT lease_fence FROM portal_jobs WHERE id = $1", job_id
+    )
+
+    with sync_client(app) as admin_client:
+        assert login(admin_client, "admin@osiptel.test").status_code == 303
+        assert _cancel(admin_client, people.team_id, job_id).status_code == 303
+
+    row = await pool.fetchrow(
+        "SELECT state, lease_fence FROM portal_jobs WHERE id = $1", job_id
+    )
+    assert row is not None
+    assert row["state"] == "cancelled"
+    assert row["lease_fence"] == fence + 1
+
+
+async def test_team_member_cannot_cancel_a_job(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    app: Litestar,
+) -> None:
+    people = await build_experience(pool, team_repository)
+
+    with sync_client(app) as leader_client:
+        assert login(leader_client, "lider@osiptel.test").status_code == 303
+        job_id = submit_job(
+            leader_client,
+            people.team_id,
+            people.credential_id,
+            "10412345678",
+        )
+
+    with sync_client(app) as member_client:
+        assert login(member_client, "miembro@osiptel.test").status_code == 303
+        cancelled = _cancel(member_client, people.team_id, job_id)
+
+    assert cancelled.status_code == 403
+    state = await pool.fetchval("SELECT state FROM portal_jobs WHERE id = $1", job_id)
+    assert state != "cancelled"

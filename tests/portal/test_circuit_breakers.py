@@ -5,9 +5,14 @@ from typing import TYPE_CHECKING
 from core.pipeline.breaker import DEFAULT_THRESHOLD
 from portal.repository.breakers import PostgresCircuitBreakers
 
+from tests.portal.conftest import build_experience, login, sync_client
+
 
 if TYPE_CHECKING:
     import asyncpg
+
+    from litestar import Litestar
+    from portal.repository.teams import PostgresTeamRepository
 
 
 async def _row(pool: asyncpg.Pool) -> asyncpg.Record:
@@ -120,3 +125,43 @@ async def test_different_source_provider_pairs_are_independent(
     assert sunat_row is not None
     assert sunat_row["consecutive_failures"] == 1
     assert sunat_row["open_until"] is None
+
+
+async def test_states_report_which_pairs_are_open(pool: asyncpg.Pool) -> None:
+    breakers = PostgresCircuitBreakers(pool)
+    for _ in range(DEFAULT_THRESHOLD):
+        await breakers.record_outcome(
+            source="osiptel", provider="geonode", healthy_contact=False
+        )
+    await breakers.record_outcome(
+        source="sunat", provider="geonode", healthy_contact=False
+    )
+
+    osiptel, sunat = await breakers.states()
+
+    assert (osiptel.source, osiptel.provider) == ("osiptel", "geonode")
+    assert osiptel.is_open
+    assert osiptel.open_until is not None
+    assert (sunat.source, sunat.consecutive_failures) == ("sunat", 1)
+    assert not sunat.is_open
+
+
+async def test_system_page_shows_an_open_pair_to_a_site_admin(
+    pool: asyncpg.Pool,
+    team_repository: PostgresTeamRepository,
+    app: Litestar,
+) -> None:
+    await build_experience(pool, team_repository)
+    breakers = PostgresCircuitBreakers(pool)
+    for _ in range(DEFAULT_THRESHOLD):
+        await breakers.record_outcome(
+            source="osiptel", provider="geonode", healthy_contact=False
+        )
+
+    with sync_client(app) as client:
+        assert login(client, "admin@osiptel.test").status_code == 303
+        page = client.get("/admin/system")
+
+    assert page.status_code == 200
+    assert "geonode" in page.text
+    assert "Bloqueado hasta" in page.text

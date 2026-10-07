@@ -36,6 +36,7 @@ from portal.migrations import apply_migrations
 from portal.notify.mailer import ConsoleMailer
 from portal.repository.audit import PostgresAuditLog
 from portal.repository.auth import PostgresAuthRepository
+from portal.repository.breakers import PostgresCircuitBreakers
 from portal.repository.credentials import PostgresCredentialRepository
 from portal.repository.entries import PostgresEntryRepository
 from portal.repository.jobs import PostgresJobRepository
@@ -235,6 +236,11 @@ def worker_registry(portal_db: PortalDatabase) -> PostgresWorkerRegistry:
 
 
 @pytest.fixture
+def circuit_breakers(portal_db: PortalDatabase) -> PostgresCircuitBreakers:
+    return PostgresCircuitBreakers(portal_db.pool)
+
+
+@pytest.fixture
 def service(
     team_repository: PostgresTeamRepository,
     credential_repository: PostgresCredentialRepository,
@@ -242,6 +248,7 @@ def service(
     entry_repository: PostgresEntryRepository,
     search_log_repository: PostgresSearchLogRepository,
     worker_registry: PostgresWorkerRegistry,
+    circuit_breakers: PostgresCircuitBreakers,
 ) -> PortalService:
     return PortalService(
         team_repository,
@@ -250,6 +257,7 @@ def service(
         entry_repository,
         search_log_repository,
         worker_registry,
+        circuit_breakers,
     )
 
 
