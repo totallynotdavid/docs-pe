@@ -64,7 +64,7 @@ jobs:
       - name: Start MinIO
         run: mise run --skip-tools objects:start
 
-      - uses: astral-sh/setup-uv@v10.2.0
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           enable-cache: true
           cache-dependency-glob: |
