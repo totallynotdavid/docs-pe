@@ -9,7 +9,7 @@ description = "Web portal and worker for managing fetch jobs."
 requires-python = ">=3.11"
 dependencies = [
   "aioboto3>=15.0.0",
-  "asyncpg>=0.31.0",
+  "asyncpg>=0.32.0",
   "cryptography>=50.0.2",
   "core",
   "httpx>=0.28.1",
