@@ -25,7 +25,7 @@ the worker's scoped PostgreSQL role.
 | Service      | Image                  | Purpose                               |                          Host port |
 | ------------ | ---------------------- | ------------------------------------- | ---------------------------------: |
 | `postgres`   | `postgres:18-alpine`   | Portal database                       |   `POSTGRES_PUBLISHED_PORT` (5432) |
-| `garage`     | `dxflrs/garage:v2.3.0` | S3 object store, single node          |                               none |
+| `garage`     | `dxflrs/garage:v2.4.1` | S3 object store, single node          |                               none |
 | `init`       | `${PORTAL_IMAGE}`      | One shot: master key, then migrations |                               none |
 | `web`        | `${PORTAL_IMAGE}`      | Browser application on port 8000      |                               none |
 | `worker-api` | `${PORTAL_IMAGE}`      | Worker API on port 8443               | `WORKER_API_PUBLISHED_PORT` (8443) |

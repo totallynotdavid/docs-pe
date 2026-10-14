@@ -1,6 +1,6 @@
-# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+# syntax=docker/dockerfile:1.28.0@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b
 
-FROM python:3.14.6-slim-bookworm@sha256:86f975aca15cf04a40b399eebede9aea7c82eae084d1f1a0a6ef6bcaae871a30 AS builder
+FROM python:3.15.0-slim-trixie@sha256:ea4f1f290e071bf7d28199cfb3e09f5dbad31b50e9c32fd58f2f2d7be915f3ae AS builder
 
 WORKDIR /app
 
@@ -8,7 +8,7 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/app/.venv
 
-RUN pip install --no-cache-dir --disable-pip-version-check uv==0.12.6
+RUN pip install --no-cache-dir --disable-pip-version-check uv==0.13.0
 
 COPY packages/core/pyproject.toml packages/core/pyproject.toml
 COPY packages/portal/pyproject.toml packages/portal/pyproject.toml
@@ -24,7 +24,7 @@ COPY packages/portal packages/portal
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --project packages/portal --locked --no-dev --no-editable
 
-FROM python:3.14.6-slim-bookworm@sha256:86f975aca15cf04a40b399eebede9aea7c82eae084d1f1a0a6ef6bcaae871a30
+FROM python:3.15.0-slim-trixie@sha256:ea4f1f290e071bf7d28199cfb3e09f5dbad31b50e9c32fd58f2f2d7be915f3ae
 
 WORKDIR /app
 
