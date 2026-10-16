@@ -38,48 +38,25 @@ def test_sites_are_lowercased_split_and_ordered(tmp_path: Path) -> None:
     assert [site.name for site in cfg.sites] == ["sunat", "osiptel"]
 
 
-def test_a_missing_input_file_is_rejected(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    args = _args(tmp_path)
-    args[args.index("--input") + 1] = str(tmp_path / "does-not-exist.csv")
-    with pytest.raises(SystemExit):
-        parse_args(args)
-    assert "--input file not found" in capsys.readouterr().err
-
-
-def test_an_unknown_site_is_rejected(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    with pytest.raises(SystemExit):
-        parse_args(_args(tmp_path, **{"--sites": "nope"}))
-    err = capsys.readouterr().err
-    assert "--sites" in err
-    assert "unknown site" in err
-
-
 @pytest.mark.parametrize(
-    ("flag", "value", "message"),
+    ("overrides", "message"),
     [
-        ("--session-budget", "0", "--session-budget must be >= 1"),
-        ("--ban-cooldown-s", "-1", "--ban-cooldown-s must be >= 0"),
+        ({"--input": "does-not-exist.csv"}, "--input file not found"),
+        ({"--sites": "nope"}, "unknown site"),
+        ({"--session-budget": "0"}, "--session-budget must be >= 1"),
+        ({"--ban-cooldown-s": "-1"}, "--ban-cooldown-s must be >= 0"),
+        (
+            {"--wait-min-s": "5", "--wait-max-s": "1"},
+            "--wait-max-s must be >= --wait-min-s",
+        ),
     ],
 )
-def test_out_of_range_overrides_are_rejected(
+def test_an_invalid_invocation_is_rejected(
     tmp_path: Path,
-    flag: str,
-    value: str,
+    overrides: dict[str, str],
     message: str,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     with pytest.raises(SystemExit):
-        parse_args(_args(tmp_path, **{flag: value}))
+        parse_args(_args(tmp_path, **overrides))
     assert message in capsys.readouterr().err
-
-
-def test_wait_max_below_wait_min_is_rejected(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    with pytest.raises(SystemExit):
-        parse_args(_args(tmp_path, **{"--wait-min-s": "5", "--wait-max-s": "1"}))
-    assert "--wait-max-s must be >= --wait-min-s" in capsys.readouterr().err

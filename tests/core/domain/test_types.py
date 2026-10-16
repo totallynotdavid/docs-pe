@@ -5,23 +5,20 @@ import pytest
 from core.domain.types import Doc, DocKind, RucKind
 
 
-def test_accepts_eleven_digit_ruc() -> None:
-    assert str(Doc("20100000001")) == "20100000001"
-
-
-def test_accepts_eight_digit_dni() -> None:
-    assert str(Doc("42953322")) == "42953322"
-
-
-def test_strips_surrounding_whitespace() -> None:
-    assert str(Doc("  20100000001  ")) == "20100000001"
-
-
-def test_pads_a_seven_digit_dni_to_the_canonical_width() -> None:
-    doc = Doc("2953322")
-
-    assert str(doc) == "02953322"
-    assert doc.kind is DocKind.DNI
+@pytest.mark.parametrize(
+    ("value", "canonical"),
+    [
+        ("20100000001", "20100000001"),
+        ("42953322", "42953322"),
+        ("  20100000001  ", "20100000001"),
+        ("2953322", "02953322"),
+    ],
+)
+def test_a_document_is_stored_in_its_canonical_form(
+    value: str,
+    canonical: str,
+) -> None:
+    assert str(Doc(value)) == canonical
 
 
 @pytest.mark.parametrize(
@@ -47,6 +44,7 @@ def test_rejects_anything_that_is_not_a_dni_or_ruc(value: str) -> None:
         ("20100000001", DocKind.RUC),
         ("10100000001", DocKind.RUC),
         ("42953322", DocKind.DNI),
+        ("2953322", DocKind.DNI),
     ],
 )
 def test_kind_is_derived_from_the_shape(value: str, kind: DocKind) -> None:

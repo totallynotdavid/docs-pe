@@ -49,56 +49,32 @@ def _config() -> GeoNodeConfig:
     )
 
 
-def test_missing_username_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GEONODE_COUNTRY", "PE")
-
-    with pytest.raises(ProxyConfigurationError, match="username is required"):
-        _load()
-
-
-def test_missing_country_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    # OSIPTEL blocks foreign exits, so a country is required.
-    monkeypatch.setenv("GEONODE_USERNAME", "user")
-    monkeypatch.setenv("GEONODE_PASSWORD", "pass")
-    monkeypatch.setenv("GEONODE_COUNTRY", "")
-
-    with pytest.raises(ProxyConfigurationError, match="country is required"):
-        _load()
-
-
-def test_malformed_country_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    _set_minimal_valid_env(monkeypatch)
-    monkeypatch.setenv("GEONODE_COUNTRY", "peru")
-
-    with pytest.raises(ProxyConfigurationError, match="two-letter country code"):
-        _load()
-
-
-def test_unknown_gateway_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    _set_minimal_valid_env(monkeypatch)
-    monkeypatch.setenv("GEONODE_GATEWAY", "de")
-
-    with pytest.raises(ProxyConfigurationError, match="gateway must be one of"):
-        _load()
-
-
-def test_invalid_proxy_type_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    _set_minimal_valid_env(monkeypatch)
-    monkeypatch.setenv("GEONODE_PROXY_TYPE", "bogus")
-
-    with pytest.raises(ProxyConfigurationError, match="proxy_type must be one of"):
-        _load()
-
-
-@pytest.mark.parametrize("lifetime", ["2", "1441"])
-def test_lifetime_out_of_range_raises(
+@pytest.mark.parametrize(
+    ("name", "value", "message"),
+    [
+        ("GEONODE_USERNAME", None, "username is required"),
+        # OSIPTEL requires a country-specific proxy exit.
+        ("GEONODE_COUNTRY", "", "country is required"),
+        ("GEONODE_COUNTRY", "peru", "two-letter country code"),
+        ("GEONODE_GATEWAY", "de", "gateway must be one of"),
+        ("GEONODE_PROXY_TYPE", "bogus", "proxy_type must be one of"),
+        ("GEONODE_LIFETIME_MINUTES", "2", "lifetime_minutes must be"),
+        ("GEONODE_LIFETIME_MINUTES", "1441", "lifetime_minutes must be"),
+    ],
+)
+def test_an_invalid_setting_is_rejected(
     monkeypatch: pytest.MonkeyPatch,
-    lifetime: str,
+    name: str,
+    value: str | None,
+    message: str,
 ) -> None:
     _set_minimal_valid_env(monkeypatch)
-    monkeypatch.setenv("GEONODE_LIFETIME_MINUTES", lifetime)
+    if value is None:
+        monkeypatch.delenv(name)
+    else:
+        monkeypatch.setenv(name, value)
 
-    with pytest.raises(ProxyConfigurationError, match="lifetime_minutes must be"):
+    with pytest.raises(ProxyConfigurationError, match=message):
         _load()
 
 

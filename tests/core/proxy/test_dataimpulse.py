@@ -40,27 +40,27 @@ def _config() -> DataImpulseConfig:
     )
 
 
-def test_missing_username_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DATAIMPULSE_COUNTRY", "pe")
-
-    with pytest.raises(ProxyConfigurationError, match="username is required"):
-        _load()
-
-
-def test_empty_country_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DATAIMPULSE_USERNAME", "user")
-    monkeypatch.setenv("DATAIMPULSE_PASSWORD", "pass")
-    monkeypatch.setenv("DATAIMPULSE_COUNTRY", "")
-
-    with pytest.raises(ProxyConfigurationError, match="country is required"):
-        _load()
-
-
-def test_session_minutes_below_one_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("name", "value", "message"),
+    [
+        ("DATAIMPULSE_USERNAME", None, "username is required"),
+        ("DATAIMPULSE_COUNTRY", "", "country is required"),
+        ("DATAIMPULSE_SESSION_MINUTES", "0", "session_minutes must be"),
+    ],
+)
+def test_an_invalid_setting_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    value: str | None,
+    message: str,
+) -> None:
     _set_minimal_valid_env(monkeypatch)
-    monkeypatch.setenv("DATAIMPULSE_SESSION_MINUTES", "0")
+    if value is None:
+        monkeypatch.delenv(name)
+    else:
+        monkeypatch.setenv(name, value)
 
-    with pytest.raises(ProxyConfigurationError, match="session_minutes must be"):
+    with pytest.raises(ProxyConfigurationError, match=message):
         _load()
 
 

@@ -22,19 +22,14 @@ def _upload(name: str, content: bytes) -> UploadFile:
     return UploadFile(content_type="text/csv", filename=name, file_data=content)
 
 
-def test_responses_use_same_origin_content_security_policy(app: Litestar) -> None:
-    with TestClient(app) as client:
-        policy = client.get("/login").headers["content-security-policy"]
-
-    assert "default-src 'self'" in policy
-    assert "unsafe-inline" not in policy
-    assert "unsafe-eval" not in policy
-
-
-def test_responses_deny_powerful_browser_features(app: Litestar) -> None:
+def test_responses_restrict_what_the_browser_may_load_and_use(app: Litestar) -> None:
     with TestClient(app) as client:
         headers = client.get("/login").headers
 
+    policy = headers["content-security-policy"]
+    assert "default-src 'self'" in policy
+    assert "unsafe-inline" not in policy
+    assert "unsafe-eval" not in policy
     assert headers["permissions-policy"] == (
         "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
     )

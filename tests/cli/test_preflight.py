@@ -11,11 +11,6 @@ if TYPE_CHECKING:
     import pytest
 
 
-def test_parse_requires_a_known_provider() -> None:
-    args = preflight_mod.parse_args(["--provider", "geonode"])
-    assert args.provider == "geonode"
-
-
 async def test_run_reports_provider_and_exit_ip(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

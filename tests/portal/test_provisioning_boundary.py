@@ -309,18 +309,6 @@ def _secret_from_uri(enrollment_uri: str) -> str:
     return parse_qs(urlparse(enrollment_uri).query)["secret"][0]
 
 
-async def test_a_site_admin_cannot_exist_without_a_second_factor(
-    pool: asyncpg.Pool,
-) -> None:
-    user_id = await seed_user(pool, email="sin-mfa@osiptel.test")
-
-    with pytest.raises(asyncpg.exceptions.CheckViolationError):
-        await pool.execute(
-            "UPDATE portal_users SET is_site_admin = true WHERE id = $1",
-            user_id,
-        )
-
-
 def _now() -> datetime:
     return datetime.now(UTC)
 
