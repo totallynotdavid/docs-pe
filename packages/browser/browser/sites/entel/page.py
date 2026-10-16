@@ -239,16 +239,6 @@ class EntelPage:
         msg = f"Entel lookup timed out for document {subject}"
         raise BrowserError(msg)
 
-    def check_health(self) -> bool:
-        try:
-            self.lookup(self._control)
-        except RejectedError:
-            return True
-        except BrowserError:
-            return False
-
-        return True
-
     def _wait_for_template(self, *, timeout_s: float = 45.0) -> None:
         # OutSystems performs intermediate round trips before issuing Step2, so
         # this wait must account for proxy latency.
