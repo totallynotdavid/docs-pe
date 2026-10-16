@@ -96,10 +96,6 @@ class SourceValidationError(PortalError):
     pass
 
 
-class FencedWrite(PortalError):
-    pass
-
-
 class ProvisioningError(PortalError):
     pass
 

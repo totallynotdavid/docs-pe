@@ -13,6 +13,7 @@ from tests.portal.conftest import (
     publish_claimed,
     seed_site_admin,
     seed_team,
+    submit,
     submit_command,
 )
 
@@ -36,11 +37,11 @@ async def test_two_teams_confirming_the_same_document_share_one_entry_row(
     team_a = await seed_team(pool)
     team_b = await seed_team(pool)
 
-    await service.submit(
-        submit_command(team_a, await create_input(pool, team_a.team_id))
+    await submit(
+        service, submit_command(team_a, await create_input(pool, team_a.team_id))
     )
-    await service.submit(
-        submit_command(team_b, await create_input(pool, team_b.team_id))
+    await submit(
+        service, submit_command(team_b, await create_input(pool, team_b.team_id))
     )
 
     claim_a = await job_repository.claim("trabajador", ("osiptel",))
@@ -70,8 +71,8 @@ async def test_team_search_never_surfaces_another_teams_entry(
     team_a = await seed_team(pool)
     team_b = await seed_team(pool)
 
-    await service.submit(
-        submit_command(team_a, await create_input(pool, team_a.team_id))
+    await submit(
+        service, submit_command(team_a, await create_input(pool, team_a.team_id))
     )
     claimed = await job_repository.claim("trabajador", ("osiptel",))
     assert claimed is not None
@@ -96,7 +97,7 @@ async def test_global_search_finds_an_entry_regardless_of_which_team_confirmed_i
     team = await seed_team(pool)
     admin_id = await seed_site_admin(pool, "admin@osiptel.test")
 
-    await service.submit(submit_command(team, await create_input(pool, team.team_id)))
+    await submit(service, submit_command(team, await create_input(pool, team.team_id)))
     claimed = await job_repository.claim("trabajador", ("osiptel",))
     assert claimed is not None
     assert await publish_claimed(pool, job_repository, claimed)
@@ -114,7 +115,7 @@ async def test_reuse_offers_back_a_fresh_answer_but_not_a_stale_one(
 ) -> None:
     team = await seed_team(pool)
 
-    await service.submit(submit_command(team, await create_input(pool, team.team_id)))
+    await submit(service, submit_command(team, await create_input(pool, team.team_id)))
     claimed = await job_repository.claim("trabajador", ("osiptel",))
     assert claimed is not None
     assert await publish_claimed(pool, job_repository, claimed)
@@ -144,7 +145,7 @@ async def test_a_failed_entry_is_never_offered_as_reusable(
 ) -> None:
     team = await seed_team(pool)
 
-    await service.submit(submit_command(team, await create_input(pool, team.team_id)))
+    await submit(service, submit_command(team, await create_input(pool, team.team_id)))
     claimed = await job_repository.claim("trabajador", ("osiptel",))
     assert claimed is not None
     assert await publish_claimed(
@@ -169,8 +170,8 @@ async def test_reuse_eligibility_never_crosses_the_team_boundary(
     team_a = await seed_team(pool)
     team_b = await seed_team(pool)
 
-    await service.submit(
-        submit_command(team_a, await create_input(pool, team_a.team_id))
+    await submit(
+        service, submit_command(team_a, await create_input(pool, team_a.team_id))
     )
     claimed = await job_repository.claim("trabajador", ("osiptel",))
     assert claimed is not None
@@ -212,8 +213,8 @@ async def test_entry_lookup_is_team_scoped_but_global_entry_requires_access(
     team_b = await seed_team(pool)
     admin_id = await seed_site_admin(pool, "admin@osiptel.test")
 
-    await service.submit(
-        submit_command(team_a, await create_input(pool, team_a.team_id))
+    await submit(
+        service, submit_command(team_a, await create_input(pool, team_a.team_id))
     )
     claimed = await job_repository.claim("trabajador", ("osiptel",))
     assert claimed is not None

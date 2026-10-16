@@ -339,7 +339,6 @@ class PostgresJobRepository:
         plan: SubmissionPlan,
         reusable: dict[tuple[str, str], UUID],
     ) -> Job:
-        """Create a job with reusable items already published."""
         job_id = uuid4()
         to_fetch = [
             item for item in plan.items if (item.document, item.source) not in reusable
@@ -623,22 +622,6 @@ class PostgresJobRepository:
             for row in rows
         )
 
-    async def published_jobs(self, team_id: UUID) -> tuple[Job, ...]:
-        async with self._pool.acquire() as connection:
-            rows = await connection.fetch(
-                """
-                SELECT DISTINCT job.*
-                  FROM portal_jobs AS job
-                  JOIN portal_job_items AS item ON item.job_id = job.id
-                 WHERE job.team_id = $1
-                   AND item.state = 'published'
-                 ORDER BY job.queue_sequence
-                """,
-                team_id,
-            )
-
-        return tuple(self._job(row) for row in rows)
-
     async def queue_health(self) -> QueueHealth:
         async with self._pool.acquire() as connection:
             active = int(await connection.fetchval(_ACTIVE_COUNT))
@@ -771,7 +754,6 @@ class PostgresJobRepository:
         page: int,
         page_size: int,
     ) -> tuple[tuple[JobItem, ...], int]:
-        """Return a page of non-excluded items and the total count."""
         offset = (page - 1) * page_size
 
         async with self._pool.acquire() as connection:
@@ -814,7 +796,6 @@ class PostgresJobRepository:
         job_id: UUID,
         team_id: UUID,
     ) -> tuple[JobItem, ...]:
-        """Return every non-excluded item for a full results export."""
         async with self._pool.acquire() as connection:
             rows = await connection.fetch(
                 """
@@ -833,7 +814,6 @@ class PostgresJobRepository:
         return tuple(self._job_item(row) for row in rows)
 
     async def item_counts(self, job_id: UUID, team_id: UUID) -> JobItemCounts:
-        """Count non-excluded item states without loading item details."""
 
         rows = await self._pool.fetch(
             """
@@ -953,7 +933,6 @@ class PostgresJobRepository:
         affinity_source: str | None = None,
         affinity_credential_version_id: UUID | None = None,
     ) -> tuple[ClaimedWork, ...]:
-        """Claim up to `limit` pending items, preferring the current affinity."""
         if limit < 1:
             return ()
 
@@ -1188,7 +1167,6 @@ class PostgresJobRepository:
             )
 
     async def _sweep_expired_locked(self, connection: Connection) -> None:
-        """Recover expired leases and promote jobs that become terminal."""
 
         rows = await connection.fetch(
             _SWEEP_EXPIRED,
@@ -1292,7 +1270,7 @@ class PostgresJobRepository:
             None,
         )
 
-        await connection.executemany(
+        await connection.execute(
             """
             INSERT INTO portal_notification_outbox (
                 id,
@@ -1303,25 +1281,19 @@ class PostgresJobRepository:
             VALUES (
                 $1,
                 $2,
-                $3,
+                'email',
                 jsonb_build_object(
                     'job_id',
-                    $4::text,
+                    $3::text,
                     'estado',
-                    $5::text
+                    $4::text
                 )
             )
             """,
-            [
-                (
-                    uuid4(),
-                    event_id,
-                    channel,
-                    str(job_id),
-                    state.value,
-                )
-                for channel in ("in_app", "email", "kapso_whatsapp")
-            ],
+            uuid4(),
+            event_id,
+            str(job_id),
+            state.value,
         )
 
     @staticmethod

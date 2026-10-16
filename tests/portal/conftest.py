@@ -27,6 +27,7 @@ from portal.domain.models import (
     AttemptRecord,
     ClaimedWork,
     InputLine,
+    Job,
     ProtectedSecret,
     SubmitJob,
     TeamRole,
@@ -477,6 +478,19 @@ def submit_command(
         filename="entrada.csv",
         sources=sources,
         lines=(InputLine(1, value),),
+    )
+
+
+async def submit(service: PortalService, command: SubmitJob) -> Job:
+    return await service.confirm_submission(
+        actor_id=command.actor_id,
+        team_id=command.team_id,
+        credential_version_id=command.credential_version_id,
+        filename=command.filename,
+        input_object_id=command.input_object_id,
+        lines=command.lines,
+        sources=command.sources,
+        reuse=command.reuse,
     )
 
 

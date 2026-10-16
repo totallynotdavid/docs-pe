@@ -725,9 +725,7 @@ CREATE TABLE portal_notification_outbox (
     event_id uuid NOT NULL
         REFERENCES portal_job_events(id)
         ON DELETE CASCADE,
-    channel text NOT NULL CHECK (
-        channel IN ('in_app', 'email', 'kapso_whatsapp')
-    ),
+    channel text NOT NULL CHECK (channel = 'email'),
     payload jsonb NOT NULL,
     state text NOT NULL DEFAULT 'pending' CHECK (
         state IN ('pending', 'sending', 'sent', 'failed')

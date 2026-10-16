@@ -26,6 +26,7 @@ from tests.portal.conftest import (
     object_reference,
     seed_site_admin,
     seed_team,
+    submit,
     submit_command,
 )
 
@@ -73,7 +74,7 @@ async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results
         for number in range(10)
     ]
 
-    jobs = await asyncio.gather(*(service.submit(command) for command in commands))
+    jobs = await asyncio.gather(*(submit(service, command) for command in commands))
     running_jobs = [job for job in jobs if job.state is JobState.RUNNING]
     queued_jobs = sorted(
         (job for job in jobs if job.state is JobState.QUEUED),
@@ -166,7 +167,7 @@ async def test_postgresql_gate_limits_concurrent_processes_and_preserves_results
     )
 
     assert partial_cancelled.state is JobState.CANCELLED
-    assert await pool.fetchval("SELECT count(*) FROM portal_notification_outbox") == 6
+    assert await pool.fetchval("SELECT count(*) FROM portal_notification_outbox") == 2
 
 
 async def test_an_expired_lease_returns_its_item_to_the_queue(
@@ -252,8 +253,8 @@ async def test_claim_prefers_a_lane_s_held_session_over_plain_fifo(
     earlier_input = await object_reference(pool, team_earlier.team_id, "e.csv")
     later_input = await object_reference(pool, team_later.team_id, "l.csv")
 
-    earlier_job = await service.submit(submit_command(team_earlier, earlier_input))
-    later_job = await service.submit(submit_command(team_later, later_input))
+    earlier_job = await submit(service, submit_command(team_earlier, earlier_input))
+    later_job = await submit(service, submit_command(team_later, later_input))
 
     assert earlier_job.queue_sequence < later_job.queue_sequence
 
@@ -276,7 +277,8 @@ async def test_claim_many_returns_every_requested_item_from_one_affinity_group(
 ) -> None:
     team = await seed_team(pool)
 
-    job = await service.submit(
+    job = await submit(
+        service,
         SubmitJob(
             actor_id=team.actor_id,
             team_id=team.team_id,
@@ -285,7 +287,7 @@ async def test_claim_many_returns_every_requested_item_from_one_affinity_group(
             filename="entrada.csv",
             sources=("osiptel",),
             lines=tuple(InputLine(i, f"1041234567{i - 1}") for i in range(1, 5)),
-        )
+        ),
     )
     assert job.state is JobState.RUNNING
 
@@ -313,8 +315,8 @@ async def test_claim_falls_back_to_fifo_without_a_matching_affinity(
     earlier_input = await object_reference(pool, team_earlier.team_id, "e.csv")
     later_input = await object_reference(pool, team_later.team_id, "l.csv")
 
-    earlier_job = await service.submit(submit_command(team_earlier, earlier_input))
-    await service.submit(submit_command(team_later, later_input))
+    earlier_job = await submit(service, submit_command(team_earlier, earlier_input))
+    await submit(service, submit_command(team_later, later_input))
 
     claimed = await job_repository.claim("trabajador", ("osiptel",))
 
@@ -601,7 +603,8 @@ async def _submit_one(
 ) -> Job:
     actor_id, team_id, credential_id = await seed_team(pool, config=config)
 
-    return await service.submit(
+    return await submit(
+        service,
         SubmitJob(
             actor_id=actor_id,
             team_id=team_id,
@@ -614,7 +617,7 @@ async def _submit_one(
             filename="entrada.csv",
             sources=("osiptel",),
             lines=(InputLine(1, "10412345678"),),
-        )
+        ),
     )
 
 

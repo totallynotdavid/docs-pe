@@ -12,7 +12,7 @@ from portal.domain.errors import (
     Reason,
     SourceValidationError,
 )
-from portal.domain.models import CredentialState, DeliveryChannel, JobState, TeamRole
+from portal.domain.models import CredentialState, JobState, TeamRole
 
 from tests.portal.conftest import (
     UNREADABLE_SECRET,
@@ -21,6 +21,7 @@ from tests.portal.conftest import (
     seed_site_admin,
     seed_team,
     seed_user,
+    submit,
     submit_command,
 )
 
@@ -54,7 +55,7 @@ async def test_team_member_cannot_submit_a_process(
     )
 
     with pytest.raises(PermissionDenied) as raised:
-        await service.submit(command)
+        await submit(service, command)
 
     assert raised.value.reason is Reason.LEADER_REQUIRED
     assert await pool.fetchval("SELECT count(*) FROM portal_jobs") == 0
@@ -73,42 +74,9 @@ async def test_credential_cannot_cross_team_boundary(
     )
 
     with pytest.raises(PermissionDenied) as raised:
-        await service.submit(command)
+        await submit(service, command)
 
     assert raised.value.reason is Reason.CREDENTIAL_WRONG_TEAM
-
-
-async def test_members_only_search_their_team_published_results(
-    pool: asyncpg.Pool,
-    team_repository: PostgresTeamRepository,
-    job_repository: PostgresJobRepository,
-    service: PortalService,
-) -> None:
-    team_a = await seed_team(pool)
-    team_b = await seed_team(pool)
-    member_a = await seed_user(pool)
-
-    await team_repository.add_member(
-        team_a.team_id,
-        member_a,
-        TeamRole.TEAM_MEMBER,
-    )
-
-    job_a = await service.submit(
-        submit_command(team_a, await create_input(pool, team_a.team_id))
-    )
-    job_b = await service.submit(
-        submit_command(team_b, await create_input(pool, team_b.team_id))
-    )
-
-    for _job in (job_a, job_b):
-        claimed = await job_repository.claim("trabajador", ("osiptel",))
-        assert claimed is not None
-        assert await publish_claimed(pool, job_repository, claimed)
-
-    results = await service.published_results(member_a, team_a.team_id)
-
-    assert [job.id for job in results] == [job_a.id]
 
 
 async def test_only_stable_fetch_sources_are_allowed(
@@ -124,24 +92,25 @@ async def test_only_stable_fetch_sources_are_allowed(
     )
 
     with pytest.raises(SourceValidationError) as raised:
-        await service.submit(command)
+        await submit(service, command)
 
     assert raised.value.reason is Reason.SOURCE_NOT_ENABLED
     assert raised.value.params["invalid"] == "portabilidad"
 
 
-async def test_all_excluded_input_is_terminal_and_creates_outbox_intents(
+async def test_all_excluded_input_is_terminal_and_queues_an_email(
     pool: asyncpg.Pool,
     service: PortalService,
 ) -> None:
     team = await seed_team(pool)
 
-    job = await service.submit(
+    job = await submit(
+        service,
         submit_command(
             team,
             await create_input(pool, team.team_id),
             value="inválido",
-        )
+        ),
     )
 
     assert job.state is JobState.COMPLETED
@@ -158,9 +127,9 @@ async def test_all_excluded_input_is_terminal_and_creates_outbox_intents(
 
     assert [row["event_type"] for row in events] == ["job.completed"]
 
-    rows = await pool.fetch(
+    channels = await pool.fetch(
         """
-        SELECT DISTINCT outbox.channel
+        SELECT outbox.channel
           FROM portal_notification_outbox AS outbox
           JOIN portal_job_events AS event ON event.id = outbox.event_id
          WHERE event.job_id = $1
@@ -168,9 +137,7 @@ async def test_all_excluded_input_is_terminal_and_creates_outbox_intents(
         job.id,
     )
 
-    assert {row["channel"] for row in rows} == {
-        channel.value for channel in DeliveryChannel
-    }
+    assert [row["channel"] for row in channels] == ["email"]
 
 
 async def test_renaming_a_credential_updates_its_label(
@@ -317,7 +284,7 @@ async def test_searching_logs_the_query_and_result_count_for_the_team(
     member_id = await seed_user(pool)
     await team_repository.add_member(team.team_id, member_id, TeamRole.TEAM_MEMBER)
 
-    await service.submit(submit_command(team, await create_input(pool, team.team_id)))
+    await submit(service, submit_command(team, await create_input(pool, team.team_id)))
     claimed = await job_repository.claim("trabajador", ("osiptel",))
     assert claimed is not None
     assert await publish_claimed(pool, job_repository, claimed)
@@ -360,12 +327,13 @@ async def test_a_site_admins_activity_feed_covers_every_team_not_just_their_own(
     team = await seed_team(pool)
     admin_id = await seed_site_admin(pool, "admin@osiptel.test")
 
-    job = await service.submit(
+    job = await submit(
+        service,
         submit_command(
             team,
             await create_input(pool, team.team_id),
             value="inválido",
-        )
+        ),
     )
     assert job.state is JobState.COMPLETED
 

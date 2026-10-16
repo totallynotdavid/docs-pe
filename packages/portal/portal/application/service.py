@@ -81,18 +81,6 @@ class PortalService(AuthorizedService):
         self._workers = workers
         self._breakers = breakers
 
-    @team_leader(
-        actor_id=lambda a: a["command"].actor_id,
-        team_id=lambda a: a["command"].team_id,
-    )
-    async def submit(self, command: SubmitJob) -> Job:
-        await self._require_active_credential(
-            command.credential_version_id,
-            command.team_id,
-        )
-
-        return await self._admit(command)
-
     @site_admin_or_leader()
     async def cancel(
         self,
@@ -106,14 +94,6 @@ class PortalService(AuthorizedService):
             raise NotFound(Reason.JOB_NOT_FOUND)
 
         return job
-
-    @team_reader()
-    async def published_results(
-        self,
-        actor_id: UUID,
-        team_id: UUID,
-    ) -> tuple[Job, ...]:
-        return await self._jobs.published_jobs(team_id)
 
     @public
     async def teams(self, actor_id: UUID) -> tuple[Team, ...]:

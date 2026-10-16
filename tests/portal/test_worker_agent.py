@@ -20,6 +20,7 @@ from tests.portal.conftest import (
     enroll_worker,
     object_reference,
     seed_team,
+    submit,
     submit_command,
 )
 
@@ -77,13 +78,14 @@ async def test_worker_agent_claims_executes_and_publishes_the_happy_path(
         config=protector.protect(encode_config({"password": "no-importa"})),
     )
 
-    job = await service.submit(
+    job = await submit(
+        service,
         submit_command(
             team,
             await object_reference(pool, team.team_id, "entradas/1.csv"),
             value="10412345678",
             sources=("osiptel",),
-        )
+        ),
     )
     assert job.state is JobState.RUNNING
 

@@ -8,7 +8,7 @@ import pytest
 from portal.notify.dispatch import CLAIM_LEASE_SECONDS, dispatch_once
 from portal.notify.mailer import SEND_TIMEOUT_SECONDS
 
-from tests.portal.conftest import object_reference, seed_team, submit_command
+from tests.portal.conftest import object_reference, seed_team, submit, submit_command
 
 
 if TYPE_CHECKING:
@@ -45,12 +45,13 @@ async def _queue_email(pool: asyncpg.Pool, service: PortalService) -> None:
     team = await seed_team(pool)
     key = f"entradas/{uuid4().hex}.csv"
 
-    await service.submit(
+    await submit(
+        service,
         submit_command(
             team,
             await object_reference(pool, team.team_id, key),
             value="inválido",
-        )
+        ),
     )
 
 

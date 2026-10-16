@@ -38,17 +38,9 @@ class ItemState(StrEnum):
     CANCELLED = "cancelled"
 
 
-class DeliveryChannel(StrEnum):
-    IN_APP = "in_app"
-    EMAIL = "email"
-    KAPSO_WHATSAPP = "kapso_whatsapp"
-
-
-ACTIVE_JOB_STATES = frozenset({JobState.RUNNING, JobState.CANCELLING})
 TERMINAL_JOB_STATES = frozenset(
     {JobState.COMPLETED, JobState.FAILED, JobState.CANCELLED}
 )
-PUBLISHED_ITEM_STATES = frozenset({ItemState.PUBLISHED})
 
 TERMINAL_JOB_EVENTS = (
     "job.completed",
@@ -277,10 +269,6 @@ class SubmissionReview:
     exclusions: tuple[ExcludedInput, ...]
     reusable: tuple[PlannedItem, ...]
 
-    @property
-    def to_fetch_count(self) -> int:
-        return len(self.items) - len(self.reusable)
-
 
 @dataclass(frozen=True)
 class SubmitJob:
@@ -367,8 +355,6 @@ class ClaimedWork:
 
 @dataclass(frozen=True)
 class AttemptRecord:
-    """One try inside a lookup's retry loop, kept for portal_lookup_attempts."""
-
     fetch_attempt: int
     outcome: str
     elapsed_ms: int
@@ -396,14 +382,6 @@ class JobNotification:
     filename: str
     event_type: str
     created_at: datetime | None = None
-
-
-@dataclass(frozen=True)
-class NotificationIntent:
-    id: UUID
-    event_id: UUID
-    channel: DeliveryChannel
-    team_id: UUID
 
 
 @dataclass(frozen=True)
