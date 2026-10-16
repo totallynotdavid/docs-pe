@@ -49,8 +49,6 @@ class ResendMailer:
 
 
 class ConsoleMailer:
-    """Print messages for local development."""
-
     async def send(self, *, to: str, subject: str, body: str) -> None:
         print(f"--- mail to {to} ---\nSubject: {subject}\n\n{body}\n---")
 

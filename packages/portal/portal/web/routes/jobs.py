@@ -446,7 +446,6 @@ async def job_progress(
     team_id: FromPath[UUID],
     job_id: FromPath[UUID],
 ) -> ServerSentEvent:
-    # Authorize before opening the stream.
     await service.job(api_session.user.id, team_id, job_id)
 
     return ServerSentEvent(

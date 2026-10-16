@@ -232,7 +232,6 @@ def sign_in(
 
 
 def enrol_totp(client: httpx.Client) -> str:
-    """Enrol TOTP for the signed-in account and return its secret."""
     page = expect(client.get("/security/totp/setup"), "TOTP setup")
     uri = OTPAUTH_URI.search(page.text)
 

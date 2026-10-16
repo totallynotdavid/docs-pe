@@ -44,8 +44,6 @@ ORDER BY observation.ruc
 
 
 class ObservationStore:
-    """Persist lookup observations and export each site's latest successes."""
-
     def __init__(self, path: Path) -> None:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)

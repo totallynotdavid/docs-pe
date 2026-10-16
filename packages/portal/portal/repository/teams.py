@@ -37,8 +37,6 @@ def _invite_row(row: Record) -> TeamInvite:
 
 
 class PostgresTeamRepository:
-    """Teams, memberships, and site-wide installation state."""
-
     def __init__(self, pool: Pool) -> None:
         self._pool = pool
 

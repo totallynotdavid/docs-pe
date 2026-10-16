@@ -56,8 +56,6 @@ RESPONSE_HEADERS = (
 
 
 class SecurityHeaders:
-    """Add security headers to HTTP responses."""
-
     def __init__(self, app: ASGIApp) -> None:
         self._app = app
 
@@ -79,8 +77,6 @@ class SecurityHeaders:
 
 
 class HTTPSRedirect:
-    """Redirect plain HTTP requests to HTTPS."""
-
     def __init__(self, app: ASGIApp) -> None:
         self._app = app
 
