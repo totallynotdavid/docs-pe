@@ -52,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: jdx/mise-action@v5.1.2
+      - uses: jdx/mise-action@v5.2.0
         with:
           install: false
           minimum_release_age: 0s
