@@ -1,26 +1,53 @@
 version: 2
 updates:
-  - package-ecosystem: "uv"
+  - package-ecosystem: npm
     directories:
-      - "/"
-      - "/packages/cli"
-      - "/packages/portal"
+      - /
     schedule:
-      interval: "weekly"
-      day: "monday"
-    commit-message:
-      prefix: "deps"
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
 
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: uv
+    directories:
+      - /
+      - /packages/cli
+      - /packages/portal
     schedule:
-      interval: "weekly"
-      day: "monday"
-    commit-message:
-      prefix: "deps"
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
 
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: docker
+    directories:
+      - /packages/portal
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      all:
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directories:
+      - /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      all:
+        patterns:
+          - "*"
