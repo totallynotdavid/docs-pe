@@ -1,9 +1,9 @@
 [tools]
-uv = "0.13.0"
+uv = "0.13.1"
 python = "3.15.0"
 postgres = "18.6"
 minio = "2025.10.15.17.29.55"
-node = "26.11.1"
+node = "26.12.0"
 terraform = "1.16"
 aws-cli = "2"
 shellcheck = "0.11.0"
