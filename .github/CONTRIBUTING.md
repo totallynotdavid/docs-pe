@@ -19,10 +19,10 @@ mise run install
 
 | Command                 | Does                                                                                     |
 | ----------------------- | ---------------------------------------------------------------------------------------- |
-| `mise run install`      | `uv sync --all-groups`                                                                   |
+| `mise run install`      | `uv sync --locked --all-groups`                                                          |
 | `mise run install:core` | Reinstalls `core`, which installs non-editable, after you edit it                        |
 | `mise run format`       | `ruff format`, `ruff check --fix`, and `djlint` on the portal templates                  |
-| `mise run check`        | Documentation links and contracts, `mypy`, and `djlint --check`                          |
+| `mise run check`        | Documentation, Ruff, mypy, djlint, lockfiles, tests, and the `fetch` build               |
 | `mise run test`         | `pytest` across every package, with a disposable PostgreSQL cluster and MinIO            |
 | `mise run build`        | PyInstaller single binary for `fetch`                                                    |
 | `mise run update`       | Updates the three lockfiles                                                              |
@@ -54,9 +54,8 @@ decorator.
 
 ## Lint
 
-Ruff runs with a wide `extend-select` and `fix = true`. The portal has a
-per-file ignore list in the root `pyproject.toml`. Extend that list instead of
-adding `noqa` comments.
+Ruff uses the baseline rules in the root `pyproject.toml`. The portal has a
+per-file ignore list there. Extend that list instead of adding `noqa` comments.
 
 ## Comments
 
