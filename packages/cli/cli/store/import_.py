@@ -18,8 +18,6 @@ if TYPE_CHECKING:
 
 
 def import_site(*, store: OutcomeStore, output_csv: Path, site: Site) -> int:
-    """Restore successful outcomes from a prior site export."""
-
     path = site_csv_path(output_csv, site.name)
 
     if not path.exists() or path.stat().st_size == 0:

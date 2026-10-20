@@ -74,7 +74,6 @@ class PostgresProxySlots:
         await self._pool.execute(_RELEASE, provider, slot_id, worker_id)
 
     async def renew(self, *, worker_id: str, held: Sequence[tuple[str, int]]) -> None:
-        """Extend leases for the exact provider and slot pairs held locally."""
         if not held:
             return
 

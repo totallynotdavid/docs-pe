@@ -82,8 +82,6 @@ DATAIMPULSE = ProviderSpec(
 
 
 class DataImpulseProvider:
-    """DataImpulse sessions keyed by a username `sessid`."""
-
     name = "dataimpulse"
     tuning = ProviderTuning(workers=18, ban_cooldown_s=30.0)
 

@@ -128,8 +128,6 @@ class Worker:
 
 @dataclass(frozen=True)
 class Registry:
-    """Credentials for the registry that serves the image."""
-
     url: str
     username: str
     password: str
@@ -449,7 +447,6 @@ class Deployer:
         return lines
 
     def _environment(self, deployment: str) -> Row | None:
-        """The project's default environment, which holds the whole deployment."""
         project = by_name(self._api.query("project.all"), deployment)
 
         if project is None:

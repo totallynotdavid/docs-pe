@@ -128,8 +128,6 @@ class AgentOptions:
 
 
 class WorkerAgent:
-    """Claim, execute, and publish work through the worker API and Postgres."""
-
     def __init__(self, options: AgentOptions) -> None:
         self.options = options
         self._breakers: dict[tuple[str, str], CircuitBreaker] = {}
@@ -240,7 +238,6 @@ class WorkerAgent:
                 logger.warning("worker_heartbeat_failed", exc_info=True)
 
     async def _listen_loop(self) -> None:
-        """Wake the dispatcher when PostgreSQL reports claimable work."""
         delay = LISTEN_RECONNECT_BASE_SECONDS
 
         while True:
@@ -624,7 +621,6 @@ async def self_enroll(
     worker_id: str,
     tailscale_hostname: str,
 ) -> tuple[str, str]:
-    """Mint a worker credential and direct-DB role from the enrollment endpoint."""
     # A node can boot before worker-api or its tailnet route is reachable, so
     # retry transient enrollment failures with a real backoff.
     transport = httpx.AsyncHTTPTransport(retries=2)

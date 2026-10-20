@@ -16,7 +16,6 @@ def encode_rows(rows: tuple[Row, ...]) -> str:
 
 
 def decode_rows(text: str) -> tuple[Row, ...]:
-    # Validate persisted data before narrowing its type.
     raw = json.loads(text)
     if not isinstance(raw, list):
         msg = "stored payload is not a list"

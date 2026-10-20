@@ -35,7 +35,6 @@ class PostgresWorkerRegistry:
         self._pool = pool
 
     async def issue(self, worker_id: str, credential: str, hostname: str) -> UUID:
-        """Register a worker, or re-key one that already exists."""
         identity_id = await self._pool.fetchval(
             """
             INSERT INTO portal_workers (
@@ -120,7 +119,6 @@ class PostgresWorkerRegistry:
         )
 
     async def provision_login_role(self, worker_id: str, password: str) -> None:
-        """Create or re-key the worker's scoped Postgres login role."""
         role = worker_role_name(worker_id)
         escaped_password = password.replace("'", "''")
 
@@ -141,7 +139,6 @@ class PostgresWorkerRegistry:
             await connection.execute(f'GRANT portal_worker_base TO "{role}"')
 
     async def revoke_login_role(self, worker_id: str) -> None:
-        """Disable a worker's direct Postgres login role when it exists."""
         role = worker_role_name(worker_id)
 
         async with self._pool.acquire() as connection:

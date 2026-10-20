@@ -158,9 +158,6 @@ web_driver() {
 		"$remote_dir/src/ops/e2e_portal.py" "$web" "$@"
 }
 
-# The first run creates the pending administrator and defers the rest until
-# that administrator has a second factor. The next run creates the team and
-# checks the proxy credential against GeoNode.
 provision() {
 	on "$CORE_HOST" E2E_ADMIN_PASSWORD PORTAL_PROVISION_GEONODE_USERNAME PORTAL_PROVISION_GEONODE_PASSWORD -- \
 		docker exec -e E2E_ADMIN_PASSWORD -e PORTAL_PROVISION_GEONODE_USERNAME -e PORTAL_PROVISION_GEONODE_PASSWORD \

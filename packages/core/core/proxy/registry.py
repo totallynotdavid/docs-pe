@@ -37,7 +37,6 @@ def provider_from_values(name: str, raw: Mapping[str, str]) -> ProxyProvider:
 
 
 async def preflight(name: str, raw: Mapping[str, str]) -> str:
-    """Open a real provider session and return its exit IP."""
     provider = provider_from_values(name, raw)
     session = provider.new_session(slot_id=1)
 

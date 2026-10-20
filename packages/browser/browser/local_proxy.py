@@ -22,8 +22,6 @@ _UPSTREAM_TIMEOUT_S = 30.0
 
 
 class LocalProxy:
-    """Relay an unauthenticated local proxy to an authenticated upstream."""
-
     def __init__(self, endpoint: ProxyEndpoint) -> None:
         self._endpoint = endpoint
         self._server: _RelayServer | None = None

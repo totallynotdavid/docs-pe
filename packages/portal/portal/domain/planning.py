@@ -26,7 +26,6 @@ def plan_submission(
     lines: tuple[InputLine, ...],
     sources: tuple[str, ...],
 ) -> SubmissionPlan:
-    """Route valid documents and retain excluded input."""
     _validate_sources(sources)
 
     items: list[PlannedItem] = []

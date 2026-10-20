@@ -12,7 +12,6 @@ MIGRATIONS_DIR = Path(__file__).with_name("migrations")
 
 
 async def apply_migrations(pool: Pool) -> None:
-    """Apply each SQL migration once, tracked by portal_schema_migrations."""
     async with pool.acquire() as connection, connection.transaction():
         await connection.execute(
             """
