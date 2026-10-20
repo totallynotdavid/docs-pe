@@ -16,25 +16,25 @@ concurrency:
 jobs:
   assets:
     runs-on: ubuntu-latest
+    env:
+      MISE_DISABLE_TOOLS: postgres
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: "26.11.1"
-          cache: npm
+      - uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
 
-      - name: Install pinned browser dependencies
-        run: npm ci --no-audit --no-fund
+      - name: Install browser dependencies and refresh vendored assets
+        run: mise run portal:assets
 
       - name: Check vendored assets
-        run: |
-          npm run vendor
-          git diff --exit-code -- packages/portal/portal/web/static
+        run: git diff --exit-code -- packages/portal/portal/web/static
 
   validate:
     runs-on: ubuntu-latest
+    env:
+      MISE_DISABLE_TOOLS: postgres
+      PORTAL_TEST_DSN: postgresql://postgres:postgres@127.0.0.1:5432/postgres
 
     services:
       postgres:
@@ -54,50 +54,13 @@ jobs:
 
       - uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
         with:
-          install: false
           minimum_release_age: 0s
           persist_github_token: true
 
-      - name: Install pinned MinIO
-        run: mise install minio
+      - run: mise run install
 
       - name: Start MinIO
         run: mise run --skip-tools objects:start
-
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-        with:
-          enable-cache: true
-          cache-dependency-glob: |
-            uv.lock
-            packages/cli/uv.lock
-            packages/portal/uv.lock
-
-      - run: uv python install 3.15.0
-
-      - run: |
-          uv lock --check
-          uv lock --check --project packages/cli
-          uv lock --check --project packages/portal
-
-      - run: uv sync --locked --all-groups
-
-      - name: Check documentation links
-        run: uv run ops/check_docs.py
-
-      - run: uv run ruff format --check
-
-      - run: uv run ruff check
-
-      - run: >
-          uv run djlint packages/portal/portal/web/components
-          packages/portal/portal/web/pages --check
-
-      - run: uv run mypy .
-
-      - name: Check the AWS test infrastructure
-        run: |
-          mise install terraform shellcheck
-          mise run --skip-tools infra:check
 
       # The database is disposable, and service containers cannot receive
       # these PostgreSQL server flags directly.
@@ -111,13 +74,10 @@ jobs:
             -c "ALTER SYSTEM SET full_page_writes = 'off'" \
             -c "SELECT pg_reload_conf()"
 
-      - name: Test
-        env:
-          PORTAL_TEST_DSN: postgresql://postgres:postgres@127.0.0.1:5432/postgres
-        # The tests find MinIO at the port mise derives for this checkout.
-        run: |
-          eval "$(mise env --shell bash)"
-          uv run pytest
+      - run: mise run check
+
+      - name: Check the AWS test infrastructure
+        run: mise run infra:check
 
   # Deployments pull ghcr.io/<owner>/<repository>/portal:<commit SHA>.
   image:
