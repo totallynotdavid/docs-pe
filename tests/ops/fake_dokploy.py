@@ -216,14 +216,14 @@ class FakeDokploy:
         ]
         return compose
 
-    def deployment_allByCompose(self, data: Row) -> list[Row]:  # ruff: ignore[invalid-function-name]
+    def deployment_allByCompose(self, data: Row) -> list[Row]:
         self._run_queue()
         rows = [
             row for row in self.deployments if row.get("composeId") == data["composeId"]
         ]
         return rows[::-1]
 
-    def deployment_allByType(self, data: Row) -> list[Row]:  # ruff: ignore[invalid-function-name]
+    def deployment_allByType(self, data: Row) -> list[Row]:
         if data["type"] != "schedule":
             reject(data["type"])
         rows = [row for row in self.deployments if row.get("scheduleId") == data["id"]]
@@ -251,7 +251,7 @@ class FakeDokploy:
                         row["composeStatus"] = status
         self.queued.clear()
 
-    def domain_byComposeId(self, data: Row) -> list[Row]:  # ruff: ignore[invalid-function-name]
+    def domain_byComposeId(self, data: Row) -> list[Row]:
         return [row for row in self.domains if row["composeId"] == data["composeId"]]
 
     def domain_create(self, data: Row) -> Row:
@@ -268,16 +268,16 @@ class FakeDokploy:
         domain.update(data)
         return domain
 
-    def sshKey_all(self, _: Row) -> list[Row]:  # ruff: ignore[invalid-function-name]
+    def sshKey_all(self, _: Row) -> list[Row]:
         return self.ssh_keys
 
-    def sshKey_generate(self, data: Row) -> Row:  # ruff: ignore[invalid-function-name]
+    def sshKey_generate(self, data: Row) -> Row:
         return {
             "privateKey": f"private-{data['type']}",
             "publicKey": f"ssh-{data['type']} public dokploy",
         }
 
-    def sshKey_create(self, data: Row) -> None:  # ruff: ignore[invalid-function-name]
+    def sshKey_create(self, data: Row) -> None:
         if data["organizationId"] != self.organization_id:
             reject("organizationId")
         self.ssh_keys.append(
@@ -347,7 +347,7 @@ class FakeDokploy:
         self.schedules.append(schedule)
         return schedule
 
-    def schedule_runManually(self, data: Row) -> Row:  # ruff: ignore[invalid-function-name]
+    def schedule_runManually(self, data: Row) -> Row:
         schedule = next(
             row for row in self.schedules if row["scheduleId"] == data["scheduleId"]
         )

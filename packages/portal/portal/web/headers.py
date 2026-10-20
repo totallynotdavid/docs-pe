@@ -6,6 +6,7 @@ from http.cookies import SimpleCookie
 from typing import TYPE_CHECKING
 
 from litestar.datastructures.headers import MutableScopeHeaders
+from litestar.enums import ScopeType
 
 from portal.turnstile import WIDGET_SCRIPT_ORIGIN
 
@@ -56,13 +57,11 @@ RESPONSE_HEADERS = (
 
 
 class SecurityHeaders:
-    """Add security headers to HTTP responses."""
-
     def __init__(self, app: ASGIApp) -> None:
         self._app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
+        if scope["type"] != ScopeType.HTTP:
             await self._app(scope, receive, send)
             return
 
@@ -79,13 +78,11 @@ class SecurityHeaders:
 
 
 class HTTPSRedirect:
-    """Redirect plain HTTP requests to HTTPS."""
-
     def __init__(self, app: ASGIApp) -> None:
         self._app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or scope["scheme"] == "https":
+        if scope["type"] != ScopeType.HTTP or scope["scheme"] == "https":
             await self._app(scope, receive, send)
             return
 
@@ -129,7 +126,7 @@ class RememberLastTeam:
         self._app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
+        if scope["type"] != ScopeType.HTTP:
             await self._app(scope, receive, send)
             return
 

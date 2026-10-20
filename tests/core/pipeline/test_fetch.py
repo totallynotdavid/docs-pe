@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from typing import TYPE_CHECKING
 
 import pytest
@@ -175,7 +177,7 @@ async def test_a_ban_error_rotates_the_session_with_a_cooldown(
     def advance(seconds: float) -> None:
         clock.value += seconds
 
-    monkeypatch.setattr(session_mod.asyncio, "sleep", as_async(advance))
+    monkeypatch.setattr(asyncio, "sleep", as_async(advance))
 
     provider = FakeProvider()
     state = WorkerState()

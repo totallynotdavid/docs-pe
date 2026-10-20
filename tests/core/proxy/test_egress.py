@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from typing import TYPE_CHECKING
 
 import httpx
@@ -54,7 +56,7 @@ def _patch_transport(
 
 @pytest.fixture(autouse=True)
 def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(egress_mod.asyncio, "sleep", as_async(lambda seconds: None))
+    monkeypatch.setattr(asyncio, "sleep", as_async(lambda seconds: None))
 
 
 async def test_returns_the_first_successful_probe(

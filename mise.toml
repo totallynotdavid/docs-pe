@@ -4,8 +4,8 @@ python = "3.15.0"
 postgres = "18.6"
 minio = "2025.10.15.17.29.55"
 node = "26.12.0"
-terraform = "1.16"
-aws-cli = "2"
+terraform = "1.16.6"
+aws-cli = "2.38.1"
 shellcheck = "0.11.0"
 
 # Every local server port comes from the checkout path, so worktrees do not
@@ -25,10 +25,10 @@ PORTAL_OBJECT_STORAGE_ENDPOINT = "http://127.0.0.1:{{ env.PORTAL_DEV_MINIO_PORT 
 PORTAL_PUBLIC_ORIGIN = "http://localhost:{{ env.PORTAL_DEV_WEB_PORT }}"
 
 [tasks.install]
-run = "uv sync --all-groups"
+run = "uv sync --locked --all-groups"
 
 [tasks."install:core"]
-run = "uv sync --all-groups --reinstall-package core"
+run = "uv sync --locked --all-groups --reinstall-package core"
 
 [tasks.update]
 run = [
@@ -207,8 +207,15 @@ mise x postgres -- pg_dump -h 127.0.0.1 -p "$PORTAL_DEV_POSTGRES_PORT" -U postgr
 [tasks.check]
 run = [
   "uv run ops/check_docs.py",
+  "uv run ruff format --check",
+  "uv run ruff check",
   "uv run mypy .",
   "uv run djlint packages/portal/portal/web/components packages/portal/portal/web/pages --check",
+  "uv lock --check",
+  "uv lock --check --project packages/cli",
+  "uv lock --check --project packages/portal",
+  "mise run test",
+  "mise run build",
 ]
 
 [tasks."infra:check"]
@@ -241,8 +248,15 @@ description = "Terminate AWS test leftovers older than two hours"
 run = "scripts/e2e-aws.sh sweep"
 
 [tasks.test]
-depends = ["db:start", "objects:start"]
-run = "uv run pytest"
+shell = "bash -c"
+run = """
+set -euo pipefail
+if [ -z "${PORTAL_TEST_DSN:-}" ]; then
+  mise run db:start
+  mise run objects:start
+fi
+uv run pytest
+"""
 
 [tasks.build]
 run = [

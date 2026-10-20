@@ -6,7 +6,7 @@ import sqlite3
 
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Self, cast
 
 
 if TYPE_CHECKING:
@@ -44,8 +44,6 @@ ORDER BY observation.ruc
 
 
 class ObservationStore:
-    """Persist lookup observations and export each site's latest successes."""
-
     def __init__(self, path: Path) -> None:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -140,7 +138,7 @@ class ObservationStore:
         if row is None:
             return None
 
-        return json.loads(row["payload"])
+        return cast(dict[str, str], json.loads(row["payload"]))
 
     def export_current(
         self,

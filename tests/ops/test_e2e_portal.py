@@ -30,7 +30,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, format: str, *args: object) -> None:  # ruff: ignore[builtin-argument-shadowing]
+    def log_message(self, format: str, *args: object) -> None:
         pass
 
 
@@ -71,7 +71,7 @@ class DokployHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"[]")
 
-    def log_message(self, format: str, *args: object) -> None:  # ruff: ignore[builtin-argument-shadowing]
+    def log_message(self, format: str, *args: object) -> None:
         pass
 
 

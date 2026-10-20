@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import stat
 
+from typing import TYPE_CHECKING
+
 import pytest
 
 from portal.admin.cli import main
 from portal.credentials.masterkey import MasterKeyring, new_master_key_line
 
 
-def test_key_install_creates_a_private_keyring(tmp_path) -> None:
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+def test_key_install_creates_a_private_keyring(tmp_path: Path) -> None:
     path = tmp_path / "master.key"
 
     main(["key", "install", "--path", str(path), "--version", "v1"])
@@ -17,7 +23,7 @@ def test_key_install_creates_a_private_keyring(tmp_path) -> None:
     assert MasterKeyring.from_file(path).active_version == "v1"
 
 
-def test_key_install_does_not_overwrite_an_existing_file(tmp_path) -> None:
+def test_key_install_does_not_overwrite_an_existing_file(tmp_path: Path) -> None:
     path = tmp_path / "master.key"
     path.write_text(new_master_key_line("v1"), encoding="utf-8")
 
@@ -25,7 +31,9 @@ def test_key_install_does_not_overwrite_an_existing_file(tmp_path) -> None:
         main(["key", "install", "--path", str(path), "--version", "v2"])
 
 
-def test_key_rotate_prepends_a_new_key_and_restricts_permissions(tmp_path) -> None:
+def test_key_rotate_prepends_a_new_key_and_restricts_permissions(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "master.key"
     path.write_text(new_master_key_line("v1") + "\n", encoding="utf-8")
     path.chmod(0o644)
@@ -37,7 +45,7 @@ def test_key_rotate_prepends_a_new_key_and_restricts_permissions(tmp_path) -> No
     assert len(path.read_text(encoding="utf-8").splitlines()) == 2
 
 
-def test_key_rotate_to_the_active_version_changes_nothing(tmp_path) -> None:
+def test_key_rotate_to_the_active_version_changes_nothing(tmp_path: Path) -> None:
     path = tmp_path / "master.key"
     main(["key", "install", "--path", str(path), "--version", "v1"])
     main(["key", "rotate", "--path", str(path), "--version", "v2"])
@@ -48,7 +56,7 @@ def test_key_rotate_to_the_active_version_changes_nothing(tmp_path) -> None:
     assert path.read_text(encoding="utf-8") == before
 
 
-def test_key_rotate_rejects_a_retired_version(tmp_path) -> None:
+def test_key_rotate_rejects_a_retired_version(tmp_path: Path) -> None:
     path = tmp_path / "master.key"
     main(["key", "install", "--path", str(path), "--version", "v1"])
     main(["key", "rotate", "--path", str(path), "--version", "v2"])

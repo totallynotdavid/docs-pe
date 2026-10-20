@@ -153,7 +153,7 @@ async def fetch_one(
 
             return result
 
-        except Exception as exc:  # ruff: ignore[blind-except]
+        except Exception as exc:
             # Worker failures must not escape into the TaskGroup.
             elapsed_ms = int((time.perf_counter() - started) * 1000)
             decision = classify_exception(

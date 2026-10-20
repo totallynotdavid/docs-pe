@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 
@@ -65,7 +67,7 @@ async def test_ensure_session_waits_out_a_pending_cooldown_before_opening(
         waited.append(seconds)
         clock.value += seconds
 
-    monkeypatch.setattr(session_mod.asyncio, "sleep", as_async(advance))
+    monkeypatch.setattr(asyncio, "sleep", as_async(advance))
 
     state = WorkerState(cooldown_until=1005.0)
     provider = FakeProvider()

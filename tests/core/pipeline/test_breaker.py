@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from typing import TYPE_CHECKING
 
 from core.pipeline import breaker as breaker_mod
@@ -112,7 +114,7 @@ async def test_acquire_waits_out_the_cooldown_before_returning(
     def advance(seconds: float) -> None:
         clock.value += seconds
 
-    monkeypatch.setattr(breaker_mod.asyncio, "sleep", as_async(advance))
+    monkeypatch.setattr(asyncio, "sleep", as_async(advance))
     cb = _make(clock, monkeypatch, threshold=1, base_cooldown_s=5.0)
     cb.record_failure()
     assert cb.is_open()
