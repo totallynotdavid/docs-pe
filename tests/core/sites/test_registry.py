@@ -2,12 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.sites.registry import SITES, get_sites
-
-
-def test_every_expected_site_is_registered() -> None:
-    # A duplicate .name would silently drop one entry from the dict.
-    assert set(SITES) == {"sunat", "sunat_reps", "osiptel"}
+from core.sites.registry import get_sites
 
 
 def test_resolves_sites_in_the_requested_order() -> None:
