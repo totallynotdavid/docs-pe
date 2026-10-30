@@ -20,11 +20,17 @@ require_free_port() {
   fi
 }
 
+# -ww because ps cuts args to $COLUMNS or to the width of any terminal on
+# stdout, stderr or stdin, and a cut line hides the flags the callers match.
+command_line() {
+  ps -ww -p "$1" -o args= 2>/dev/null
+}
+
 # The command line is checked, not only the pid, because a stale
 # postmaster.pid can name a recycled pid that pg_ctl status accepts.
 postgres_running() {
   [ -f "$postgres_dir/postmaster.pid" ] &&
-    ps -p "$(sed -n 1p "$postgres_dir/postmaster.pid")" -o args= 2>/dev/null |
+    command_line "$(sed -n 1p "$postgres_dir/postmaster.pid")" |
     grep -qF -- " -D $postgres_dir "
 }
 
@@ -33,7 +39,7 @@ postgres_running() {
 postgres_owned() {
   [ -f "$postgres_dir/postmaster.pid" ] &&
     [ "$(sed -n 4p "$postgres_dir/postmaster.pid")" = "$PORTAL_DEV_POSTGRES_PORT" ] &&
-    ps -p "$(sed -n 1p "$postgres_dir/postmaster.pid")" -o args= 2>/dev/null |
+    command_line "$(sed -n 1p "$postgres_dir/postmaster.pid")" |
     grep -qF -- " -D $postgres_dir -h 127.0.0.1 -p $PORTAL_DEV_POSTGRES_PORT "
 }
 
@@ -41,7 +47,7 @@ postgres_owned() {
 # not pass as this checkout's server.
 minio_running() {
   [ -f "$minio_pid_file" ] &&
-    ps -p "$(<"$minio_pid_file")" -o args= 2>/dev/null |
+    command_line "$(<"$minio_pid_file")" |
     grep -qF -- "server $minio_dir "
 }
 
@@ -49,7 +55,7 @@ minio_running() {
 # changed) is running but not usable.
 minio_owned() {
   minio_running &&
-    ps -p "$(<"$minio_pid_file")" -o args= 2>/dev/null |
+    command_line "$(<"$minio_pid_file")" |
     grep -qF -- " --address 127.0.0.1:$PORTAL_DEV_MINIO_PORT "
 }
 
