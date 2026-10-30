@@ -24,11 +24,6 @@ class DocKind(Enum):
     RUC = "ruc"
 
 
-class RucKind(Enum):
-    NATURAL = "natural"
-    JURIDICA = "juridica"
-
-
 class Doc(UserString):
     def __init__(self, value: str) -> None:
         normalized = value.strip()
@@ -49,13 +44,6 @@ class Doc(UserString):
     @property
     def kind(self) -> DocKind:
         return self._kind
-
-    @property
-    def ruc_kind(self) -> RucKind | None:
-        if self._kind is not DocKind.RUC:
-            return None
-
-        return RucKind.JURIDICA if self.data.startswith("20") else RucKind.NATURAL
 
 
 class Status(str, Enum):

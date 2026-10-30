@@ -4,7 +4,6 @@ from collections import Counter
 from typing import TYPE_CHECKING
 
 from core.sites.osiptel.site import OSIPTEL
-from core.sites.sunat.site import SUNAT, SUNAT_REPS
 
 
 if TYPE_CHECKING:
@@ -12,8 +11,6 @@ if TYPE_CHECKING:
 
 
 SITES: dict[str, Site] = {
-    SUNAT.name: SUNAT,
-    SUNAT_REPS.name: SUNAT_REPS,
     OSIPTEL.name: OSIPTEL,
 }
 
