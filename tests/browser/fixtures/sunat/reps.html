@@ -1,0 +1,103 @@
+<html><body>
+<div class="panel panel-primary">
+	<div class="panel-heading">Resultado de la Búsqueda</div>
+<div class="list-group-item">
+	    <div class="row">
+	      <div class="col-sm-12">
+	      	<h4>La informaci&oacute;n exhibida en esta consulta corresponde a lo declarado por el contribuyente ante la Administraci&oacute;n Tributaria.</h4>
+	      </div>
+	    </div>
+		 <div class="row">
+	    	<div class="col-sm-12">
+	    		<div class="table-responsive">
+          <table class="table">
+          <thead>
+          	<tr>
+	            <th scope="col"><!--Tipo de -->Documento </th>
+	            <th scope="col">Nro. Documento </th>
+	            <th scope="col">Nombre</th>
+	            <th scope="col">Cargo</th>
+		    	<th scope="col">Fecha Desde</th>
+	    	</tr>
+	    </thead>
+          <tbody>
+<tr>
+            <td align="left">
+               DNI</td>
+            <td align="center">
+               12345678    </td>
+            <td align="left">
+               PEREZ GOMEZ MARIA                                                                            </td>
+            <td align="left">
+               APODERADO</td>
+	    <td align="left">
+               08/04/2013</td>
+          </tr>
+<tr>
+            <td align="left">
+               CE</td>
+            <td align="center">
+               001234567   </td>
+            <td align="left">
+               DOE JANE                                                               </td>
+            <td align="left">
+               APODERADO</td>
+	    <td align="left">
+               27/08/2022</td>
+          </tr>
+<tr>
+            <td align="left">
+               RUC</td>
+            <td align="center">
+               20123456786 </td>
+            <td align="left">
+               EMPRESA EJEMPLO S.A.C.                                                                 </td>
+            <td align="left">
+               GERENTE GENERAL</td>
+	    <td align="left">
+               27/08/2022</td>
+          </tr>
+</tbody>
+		  </table>
+   			</div>
+		</div>
+	</div>
+</div>
+</div>
+<div class="col-md-6 hidden-print text-right">
+ 	<button type="button" class="btn btn-danger btnNuevaConsulta" onClick="history.go(-1)">Volver</button>
+ 	<button class="btn btn-primary" onclick="imprimir()">
+ 		<span class="glyphicon glyphicon-print"></span>
+ 		Imprimir
+ 	</button>
+ </div>
+ <div class="col-md-6 hidden-print">
+ 	<form class="form-inline" action="/cl-ti-itmrconsruc/jcrS00Alias" method="post" name="formEnviar">
+      <!--inicio modificacion rmanriq1-->
+      <input type="hidden" name="nroRuc" value="20100070970">
+            <input type="hidden" name="desRuc" value="">
+	        <!--fin modificacion rmanriq1-->
+		<input type="hidden" name="accion" value="enviar">
+		<input type="hidden" name="pagina" value="repLegales" >
+		<input type="hidden" name="correo" value="">
+		<input type="email" name="email" required="required" placeholder="Ingresar Email">
+		<button type="submit" class="btn btn-primary" value="enviar">
+			<span class="glyphicon glyphicon-envelope"></span>
+			e-mail
+		</button>
+  		</form>
+ </div>
+<footer class="footer text-center">
+	<div class="col-md-10 col-md-offset-1">
+		<p><small>&copy; 1997 - 2026 SUNAT Derechos Reservados</small></p>
+	</div>
+</footer>
+</div>
+<script src="/a/js/libs/jquery/1.11.1/jquery.min.js"></script>
+<script src="/a/js/libs/bootstrap/3.3.1/js/bootstrap.min.js"></script>
+<script type="text/javascript">
+   	function imprimir(){
+   		window.print();
+   	}
+</script>
+</body></html>

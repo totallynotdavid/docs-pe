@@ -1,0 +1,56 @@
+<html><body>
+<div class="panel panel-primary">
+				  <div class="panel-heading">Resultado de la Búsqueda</div>
+				  <div class="panel-body text-center">
+				  	<strong> El número de RUC 10094910148 consultado no es válido. Debe verificar el número y volver a ingresar. </strong>
+				  </div>
+				  <div class="panel-footer text-center">
+				  	<small>Fecha consulta: 29/10/2026 23:16</small>
+				  </div><!-- fin footer del panel -->
+				</div><!--fin panel-->
+				<div class="text-center divBotonera">
+					 <a href='FrameCriterioBusquedaWeb.jsp' class="hidden" id="aNuevaConsulta">Volver</a>
+					<button type="button" class="btn btn-danger" id="btnNuevaConsulta">Volver</button>
+	        	</div>
+	         </div><!--fin col-->
+	    </div><!--fin row-->
+		<footer class="footer text-center">
+			<div class="col-md-10 col-md-offset-1">
+				<p><small>&copy; 1997 - 2026 SUNAT Derechos Reservados</small></p>
+			</div>
+		</footer>
+	</div><!--fin container-->
+    <script src="/a/js/libs/jquery/1.11.1/jquery.min.js"></script>
+    <script src="/a/js/libs/bootstrap/3.3.1/js/bootstrap.min.js"></script>
+    <script>
+    	$( document ).ready(function() {
+    		$.ajaxSetup({ scriptCharset: "utf-8" , contentType: "application/json; charset=utf-8"});
+    	    jQuery.support.cors = true;
+    	    iniciaVariables();
+    	    iniciaBotones();
+    	});
+    	/*Funciones usadas por la aplicación*/
+    	function iniciaBotones(){
+    	    //resetea estado inicial del formulario
+    		$("#btnNuevaConsulta").bind('click',function(event){
+    			regresa();
+        		event.preventDefault();
+        		event.stopImmediatePropagation();
+        		return false;
+        	});
+    	}
+    	function regresa(){
+    		var href = $("#aNuevaConsulta").attr('href');
+    		window.location.href = href;
+    	}
+    	function irHome(){
+    		regresa();
+    	}
+    	/*Variables del app*/
+    	/*Declarar variables*/
+    	/*Iniciar variables*/
+    	function iniciaVariables(){
+    	}
+	</script>
+    <script src="/a/js/apps/workspace/ws.js"></script>
+</body></html>
