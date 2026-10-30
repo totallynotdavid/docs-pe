@@ -688,7 +688,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fixed direct-DB DSN, paired with --credential. Ignored when "
         "self-enrolling, which mints both on every start.",
     )
-    parser.add_argument("--sources", default="sunat,osiptel,sunat_reps")
+    parser.add_argument("--sources", default="osiptel")
     parser.add_argument(
         "--concurrency",
         type=int,

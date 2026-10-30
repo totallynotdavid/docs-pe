@@ -17,8 +17,6 @@ from portal.domain.models import (
 
 SOURCE_FRESHNESS: dict[str, timedelta] = {
     "osiptel": timedelta(days=7),
-    "sunat": timedelta(days=90),
-    "sunat_reps": timedelta(days=30),
 }
 
 

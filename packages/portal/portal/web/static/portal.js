@@ -159,18 +159,8 @@ function setupCsvDropzone() {
         ?.split(",")[0]
         ?.trim();
 
-      if (/^10\d{9}$/.test(firstDocument)) {
-        announce("Detectamos RUC de personas naturales. “DNI y nombre” ya está seleccionado.");
-        return;
-      }
-
-      if (/^20\d{9}$/.test(firstDocument)) {
-        announce("Detectamos RUC de empresa. Puedes elegir “Representantes legales”.");
-        return;
-      }
-
-      if (/^\d{8}$/.test(firstDocument)) {
-        announce("Detectamos DNI. Puedes elegir “Líneas móviles”.");
+      if (/^(\d{8}|(10|20)\d{9})$/.test(firstDocument)) {
+        announce("Detectamos DNI o RUC. “Líneas móviles” ya está seleccionado.");
         return;
       }
 
