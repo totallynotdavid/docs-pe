@@ -63,7 +63,7 @@ Supported sites and the tool that runs each:
 | Site                                 | Looks up                                                   | Tool                 |
 | ------------------------------------ | ---------------------------------------------------------- | -------------------- |
 | [OSIPTEL](docs/osiptel.md)           | Phone lines per DNI or RUC                                 | `fetch`              |
-| [SUNAT](docs/sunat.md)               | Natural-person identity and legal-entity representatives   | `fetch`              |
+| [SUNAT](docs/sunat.md)               | Natural-person identity and legal-entity representatives   | `browser`            |
 | [Entel](docs/entel.md)               | Debt per DNI or RUC                                        | `browser`, `capture` |
 | [Portabilidad](docs/portabilidad.md) | Current carrier and portability history of a mobile number | `browser`            |
 

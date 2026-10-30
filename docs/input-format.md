@@ -20,6 +20,7 @@ A seven-digit DNI omits the leading zero used by the canonical eight-digit form.
 `fetch` and `browser` normalize `2953322` to `02953322` before deduplication and
 lookup. This matters when the same person appears once in each form.
 
-`fetch` sends each identifier only to the sites that accept it: `sunat` takes
-RUCs that do not start with 20 (natural persons), `sunat_reps` takes RUCs that
-start with 20 (legal entities), and `osiptel` takes any DNI or RUC.
+`fetch` runs only `osiptel`, which takes any DNI or RUC. `browser` sends each
+identifier only to the site it runs: `sunat` takes RUCs that do not start with
+20 (natural persons) and `sunat_reps` takes RUCs that start with 20 (legal
+entities).

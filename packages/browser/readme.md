@@ -30,8 +30,10 @@ A hard browser error is not converted into a document result. It stops the run
 so the browser failure can be fixed.
 
 Entel has a browser-bound request sequence, so it runs only in this package. See
-[the Entel note](../../docs/entel.md). Portabilidad does not use `--control`;
-the flag is for sites that need a warm-up identifier.
+[the Entel note](../../docs/entel.md). SUNAT sits behind a Cloudflare challenge
+that only a browser clears, so `sunat` and `sunat_reps` run here too. See
+[the SUNAT note](../../docs/sunat.md). Portabilidad and SUNAT do not use
+`--control`; the flag is for sites that need a warm-up identifier.
 
 ## Proxy mode
 

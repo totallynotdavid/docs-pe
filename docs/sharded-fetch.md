@@ -10,7 +10,7 @@ Create the manifest before starting the shards:
 uv run fetch-fleet create \
   --manifest results/job.json \
   --revision "$(git rev-parse HEAD)" \
-  --sites sunat \
+  --sites osiptel \
   --providers dataimpulse \
   --shard north worker-north inputs/north.csv results/north.csv \
   --shard south worker-south inputs/south.csv results/south.csv
@@ -25,7 +25,7 @@ the host that holds the manifest if that host cannot read it directly.
 uv run --env-file .env fetch \
   --input inputs/north.csv \
   --output results/north.csv \
-  --sites sunat
+  --sites osiptel
 ```
 
 Reconcile before merging:

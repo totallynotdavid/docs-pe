@@ -56,7 +56,7 @@ startup.
 | A core site                    | `packages/core/core/sites/<name>/`, registered in `SITES` in [`sites/registry.py`](../packages/core/core/sites/registry.py)                 |
 | A core proxy provider          | `packages/core/core/proxy/<name>.py`, registered in `PROVIDERS` in [`proxy/registry.py`](../packages/core/core/proxy/registry.py)           |
 | Fault-to-retry mapping         | [`domain/policy.py`](../packages/core/core/domain/policy.py), the only owner. A retry rule inside a site escapes circuit-breaker accounting |
-| Document parsing and routing   | [`domain/types.py`](../packages/core/core/domain/types.py): `Doc` and `RucKind`                                                             |
+| Document parsing and routing   | [`domain/types.py`](../packages/core/core/domain/types.py): `Doc`                                                                           |
 | Standalone resume state        | [`store/outcomes.py`](../packages/cli/cli/store/outcomes.py)                                                                                |
 | Portal HTTP handling           | `packages/portal/portal/web/routes/`                                                                                                        |
 | Portal authentication and CSRF | [`web/deps.py`](../packages/portal/portal/web/deps.py), never a route                                                                       |
