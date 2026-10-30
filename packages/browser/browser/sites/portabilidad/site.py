@@ -30,16 +30,18 @@ def _open_page(
     return page
 
 
-def _row(subject: str, columns: dict[str, str], observed_at: str) -> list[str]:
+def _rows(subject: str, columns: dict[str, str], observed_at: str) -> list[list[str]]:
     return [
-        subject,
-        columns["receptor"],
-        columns.get("cedente", ""),
-        columns["asignatario_original"],
-        columns.get("fecha_ventana", ""),
-        columns["estado"],
-        columns["current_carrier"],
-        observed_at,
+        [
+            subject,
+            columns["receptor"],
+            columns.get("cedente", ""),
+            columns["asignatario_original"],
+            columns.get("fecha_ventana", ""),
+            columns["estado"],
+            columns["current_carrier"],
+            observed_at,
+        ]
     ]
 
 
@@ -58,5 +60,5 @@ PORTABILIDAD = BrowserSite(
     ),
     accepts=lambda subject: subject.kind is SubjectKind.PHONE,
     open_page=_open_page,
-    row=_row,
+    rows=_rows,
 )

@@ -24,4 +24,5 @@ class BrowserSite:
     accepts: Callable[[Subject], bool]
 
     open_page: Callable[..., SitePage]
-    row: Callable[[str, dict[str, str], str], list[Any]]
+    # A subject can project to zero or more CSV rows.
+    rows: Callable[[str, dict[str, str], str], list[list[Any]]]

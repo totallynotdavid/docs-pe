@@ -158,7 +158,7 @@ class ObservationStore:
         *,
         site: str,
         header: tuple[str, ...],
-        project: Callable[[str, dict[str, str], str], list[Any]],
+        project: Callable[[str, dict[str, str], str], list[list[Any]]],
     ) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = path.with_name(f".{path.name}.tmp")
@@ -169,7 +169,7 @@ class ObservationStore:
 
             for row in self._connection.execute(LATEST_SUCCESS, {"site": site}):
                 columns: dict[str, str] = json.loads(row["payload"])
-                writer.writerow(
+                writer.writerows(
                     project(
                         row["subject"],
                         columns,

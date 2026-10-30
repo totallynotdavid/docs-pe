@@ -89,7 +89,7 @@ def run(config: RunConfig, site: BrowserSite) -> int:
                 config.output_csv,
                 site=site.name,
                 header=site.export_header,
-                project=site.row,
+                project=site.rows,
             )
             observations = store.observation_count()
 

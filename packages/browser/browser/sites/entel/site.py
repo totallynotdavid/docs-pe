@@ -32,8 +32,8 @@ def _open_page(
     return page
 
 
-def _row(subject: str, columns: dict[str, str], observed_at: str) -> list[str]:
-    return [subject, columns["debt_total"], columns["has_punishment"], observed_at]
+def _rows(subject: str, columns: dict[str, str], observed_at: str) -> list[list[str]]:
+    return [[subject, columns["debt_total"], columns["has_punishment"], observed_at]]
 
 
 ENTEL = BrowserSite(
@@ -42,5 +42,5 @@ ENTEL = BrowserSite(
     export_header=("subject", "debt_total", "has_punishment", "observed_at"),
     accepts=lambda subject: subject.kind in _ACCEPTS,
     open_page=_open_page,
-    row=_row,
+    rows=_rows,
 )
