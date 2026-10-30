@@ -10,9 +10,9 @@ from cli.main import RunConfig
 from cli.pipeline import run as run_mod
 from cli.pipeline.run import run
 from core.domain.errors import BanSignalError
-from core.domain.types import RucKind, Site
+from core.domain.types import Site
 
-from tests.conftest import FakeProvider, accepts_ruc_kinds, as_async, fake_site
+from tests.conftest import FakeProvider, RucKind, accepts_ruc_kinds, as_async, fake_site
 
 
 if TYPE_CHECKING:

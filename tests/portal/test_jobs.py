@@ -44,13 +44,12 @@ async def test_new_job_makes_source_outcomes_visible_without_exposing_setup_deta
         page = client.get(f"/teams/{team_id}/jobs/new")
 
     assert page.status_code == 200
-    assert "DNI y nombre" in page.text
-    assert "Para RUC que empiezan en 10" in page.text
-    assert "Recibirás: DNI y nombre de la persona." in page.text
+    assert "Líneas móviles" in page.text
+    assert "Para DNI y RUC" in page.text
+    assert "Recibirás: Modalidad, número oculto y operador de cada línea." in page.text
     assert "Así se verá el resultado" in page.text
-    assert "DNI" in page.text
-    assert "Nombre" in page.text
-    assert re.search(r'value="sunat"\s+checked', page.text)
+    assert "Operador" in page.text
+    assert re.search(r'value="osiptel"\s+checked', page.text)
     assert "Nombre de la consulta" not in page.text
     assert "versión 1" not in page.text
 

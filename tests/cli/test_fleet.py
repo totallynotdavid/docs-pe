@@ -14,10 +14,10 @@ from core.domain.types import Status
 
 def _outcome(doc: str) -> OutcomeRecord:
     return OutcomeRecord(
-        site="sunat",
+        site="osiptel",
         doc=doc,
         status=Status.OK,
-        rows=(("DNI", "12345678", "Ada", "PERSONA NATURAL"),),
+        rows=(("POSTPAGO", "987654321", "Claro"),),
         error_code="",
         error_detail="",
         attempt_count=0,
@@ -47,7 +47,7 @@ def _manifest(tmp_path: Path, *docs: str) -> JobManifest:
     return JobManifest(
         version=1,
         revision="abc123",
-        sites=("sunat",),
+        sites=("osiptel",),
         providers=("dataimpulse",),
         shards=tuple(shards),
     )
@@ -91,7 +91,7 @@ def test_merge_requires_complete_non_overlapping_shards_and_exports(
 
     with OutcomeStore(state_path_for_output(output)) as store:
         assert len(list(store.outcomes())) == 2
-    assert output.with_name("merged.sunat.csv").exists()
+    assert output.with_name("merged.osiptel.csv").exists()
 
 
 def test_merge_rejects_retryable_failures(tmp_path: Path) -> None:
@@ -122,7 +122,7 @@ def test_fleet_create_rejects_geonode_across_shards_and_writes_nothing(
                 "--revision",
                 "abc123",
                 "--sites",
-                "sunat",
+                "osiptel",
                 "--providers",
                 "geonode",
                 "--shard",

@@ -17,7 +17,7 @@ def _args(tmp_path: Path, **overrides: str) -> list[str]:
     args = {
         "--input": str(input_csv),
         "--output": str(tmp_path / "out.csv"),
-        "--sites": "sunat",
+        "--sites": "osiptel",
     }
     args.update(overrides)
     flat: list[str] = []
@@ -28,14 +28,14 @@ def _args(tmp_path: Path, **overrides: str) -> list[str]:
 
 def test_parses_a_minimal_valid_invocation(tmp_path: Path) -> None:
     cfg = parse_args(_args(tmp_path))
-    assert [site.name for site in cfg.sites] == ["sunat"]
+    assert [site.name for site in cfg.sites] == ["osiptel"]
     assert cfg.dedupe is True
     assert cfg.session_budget is None
 
 
-def test_sites_are_lowercased_split_and_ordered(tmp_path: Path) -> None:
-    cfg = parse_args(_args(tmp_path, **{"--sites": "SUNAT, osiptel"}))
-    assert [site.name for site in cfg.sites] == ["sunat", "osiptel"]
+def test_sites_are_lowercased_and_trimmed(tmp_path: Path) -> None:
+    cfg = parse_args(_args(tmp_path, **{"--sites": " OSIPTEL "}))
+    assert [site.name for site in cfg.sites] == ["osiptel"]
 
 
 def test_a_missing_input_file_is_rejected(

@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from cli.store.plan import count_unrouted, plan_pending, read_docs
-from core.domain.types import Doc, DocKind, RucKind, Site
+from core.domain.types import Doc, DocKind, Site
 
+from tests.conftest import RucKind, fake_site
 from tests.conftest import accepts_ruc_kinds as _accepts_ruc_kinds
-from tests.conftest import fake_site
 
 
 if TYPE_CHECKING:

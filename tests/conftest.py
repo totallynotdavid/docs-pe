@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import Enum
 from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 import pytest
@@ -14,7 +15,7 @@ if TYPE_CHECKING:
 
     import httpx
 
-    from core.domain.types import Projection, Row, RucKind
+    from core.domain.types import Projection, Row
 
 
 P = ParamSpec("P")
@@ -42,9 +43,15 @@ def accepts_ruc(doc: Doc) -> bool:
     return doc.kind is DocKind.RUC
 
 
+class RucKind(Enum):
+    NATURAL = "natural"
+    JURIDICA = "juridica"
+
+
 def accepts_ruc_kinds(*kinds: RucKind) -> Callable[[Doc], bool]:
     def accepts(doc: Doc) -> bool:
-        return doc.kind is DocKind.RUC and doc.ruc_kind in kinds
+        kind = RucKind.JURIDICA if doc.startswith("20") else RucKind.NATURAL
+        return doc.kind is DocKind.RUC and kind in kinds
 
     return accepts
 

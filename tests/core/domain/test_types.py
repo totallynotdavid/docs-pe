@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.domain.types import Doc, DocKind, RucKind
+from core.domain.types import Doc, DocKind
 
 
 def test_accepts_eleven_digit_ruc() -> None:
@@ -51,21 +51,3 @@ def test_rejects_anything_that_is_not_a_dni_or_ruc(value: str) -> None:
 )
 def test_kind_is_derived_from_the_shape(value: str, kind: DocKind) -> None:
     assert Doc(value).kind is kind
-
-
-@pytest.mark.parametrize(
-    ("value", "ruc_kind"),
-    [
-        ("20100000001", RucKind.JURIDICA),
-        ("10100000001", RucKind.NATURAL),
-    ],
-)
-def test_ruc_kind_is_derived_from_the_leading_digits(
-    value: str,
-    ruc_kind: RucKind,
-) -> None:
-    assert Doc(value).ruc_kind is ruc_kind
-
-
-def test_a_dni_has_no_ruc_kind() -> None:
-    assert Doc("42953322").ruc_kind is None
