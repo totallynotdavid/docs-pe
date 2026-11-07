@@ -5,6 +5,8 @@ import re
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from cli.store.export import ERROR_HEADERS, export_all, export_site, site_csv_path
 from core.domain.types import Doc, Projection, Result, Status
 
@@ -174,3 +176,28 @@ def test_export_all_writes_every_site(store: OutcomeStore, tmp_path: Path) -> No
 
     sunat_rows = _read_rows(site_csv_path(output_csv, "sunat"))
     assert sunat_rows == [["doc", "tipo_doc", "num_doc", "nombre"]]
+
+
+@pytest.mark.parametrize("output_name", ["out.csv", "out", "run.v2"])
+def test_export_all_keeps_each_sites_files_apart_for_any_output_name(
+    store: OutcomeStore, tmp_path: Path, output_name: str
+) -> None:
+    store.record_failure(_failure("osiptel", "20100000001"))
+    store.record_failure(_failure("sunat", "20100000002"))
+    store.record_not_found(_not_found("osiptel", "20100000003"))
+    store.record_not_found(_not_found("sunat", "20100000004"))
+    output_csv = tmp_path / output_name
+    sites = [_site("osiptel", "modalidad"), _site("sunat", "nombre")]
+
+    export_all(store=store, output_csv=output_csv, sites=sites)
+
+    exports = {path.name for path in tmp_path.glob("*") if "sqlite" not in path.name}
+    assert len(exports) == 6
+    for site, error_doc, missing_doc in [
+        ("osiptel", "20100000001", "20100000003"),
+        ("sunat", "20100000002", "20100000004"),
+    ]:
+        errors = _read_rows(site_csv_path(output_csv, site, part="errors"))
+        not_found = _read_rows(site_csv_path(output_csv, site, part="not_found"))
+        assert [row[0] for row in errors[1:]] == [error_doc]
+        assert [row[0] for row in not_found[1:]] == [missing_doc]

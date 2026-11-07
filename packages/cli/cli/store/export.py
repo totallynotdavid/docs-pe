@@ -49,32 +49,28 @@ def export_site(*, store: OutcomeStore, output_csv: Path, site: Site) -> None:
 
     for projection in site.projections:
         _write_atomic(
-            _projection_path(success_path, projection.name),
+            site_csv_path(output_csv, site.name, part=projection.name),
             ["doc", *projection.columns],
             _projection_lines(store, site.name, projection),
         )
 
     _write_atomic(
-        success_path.with_suffix(".errors.csv"),
+        site_csv_path(output_csv, site.name, part="errors"),
         ERROR_HEADERS,
         store.error_rows(site.name),
     )
 
     _write_atomic(
-        success_path.with_suffix(".not_found.csv"),
+        site_csv_path(output_csv, site.name, part="not_found"),
         NOT_FOUND_HEADERS,
         store.not_found_rows(site.name),
     )
 
 
-def site_csv_path(output_csv: Path, site_name: str) -> Path:
-    return output_csv.with_name(f"{output_csv.stem}.{site_name}{output_csv.suffix}")
+def site_csv_path(output_csv: Path, site_name: str, *, part: str = "") -> Path:
+    middle = f"{site_name}.{part}" if part else site_name
 
-
-def _projection_path(success_path: Path, projection_name: str) -> Path:
-    return success_path.with_name(
-        f"{success_path.stem}.{projection_name}{success_path.suffix}"
-    )
+    return output_csv.with_name(f"{output_csv.stem}.{middle}{output_csv.suffix}")
 
 
 def _success_lines(
