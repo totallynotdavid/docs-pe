@@ -141,6 +141,8 @@ def test_overriding_one_provider_does_not_leak_into_the_other(
         "geonode:-1",
         "geonode:abc",
         "geonode:",
+        "geonode:²",
+        "geonode:٣",
     ],
 )
 def test_an_invalid_lane_count_raises(

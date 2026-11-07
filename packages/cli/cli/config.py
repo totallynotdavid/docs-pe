@@ -56,7 +56,7 @@ def _parse(chunk: str) -> tuple[str, int | None]:
 
     raw_workers = raw_workers.strip()
 
-    if not raw_workers.isdigit() or int(raw_workers) < 1:
+    if not (raw_workers.isascii() and raw_workers.isdigit()) or int(raw_workers) < 1:
         msg = (
             f"PROXY_PROVIDER lane count for {name!r} must be a positive integer, "
             f"got {raw_workers!r} (syntax: {_EXAMPLE})"
