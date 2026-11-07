@@ -37,7 +37,7 @@ def _total_records(payload: dict[Any, Any]) -> int:
     if isinstance(value, int) and value >= 0:
         return value
 
-    if isinstance(value, str) and value.isdigit():
+    if isinstance(value, str) and value.isascii() and value.isdigit():
         return int(value)
 
     msg = "osiptel response missing iTotalRecords"

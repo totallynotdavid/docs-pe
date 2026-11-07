@@ -15,8 +15,8 @@ if TYPE_CHECKING:
     import httpx
 
 
-_DNI_RE = re.compile(r"^\d{7,8}$")
-_RUC_RE = re.compile(r"^\d{11}$")
+_DNI_RE = re.compile(r"^[0-9]{7,8}$")
+_RUC_RE = re.compile(r"^[0-9]{11}$")
 
 
 class DocKind(Enum):

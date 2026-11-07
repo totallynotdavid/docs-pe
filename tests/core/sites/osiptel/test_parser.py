@@ -66,6 +66,8 @@ def test_the_rejection_flag_raises() -> None:
         {"iTotalRecords": 1, "data": [{"modalidad": "POSTPAGO", "operador": "CLARO"}]},
         {"iTotalRecords": 1, "data": [_row(operador="  ")]},
         {"iTotalRecords": 1, "data": [{}]},
+        {"iTotalRecords": "²", "data": []},
+        {"iTotalRecords": "-1", "data": []},
     ],
 )
 def test_a_malformed_payload_raises(payload: object) -> None:

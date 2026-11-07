@@ -34,6 +34,9 @@ def test_pads_a_seven_digit_dni_to_the_canonical_width() -> None:
         "2010000000a",
         "",
         "abcdefgh",
+        "١٢٣٤٥٦٧٨",
+        "٢٠١٠٠٠٠٠٠٠١",
+        "²²²²²²²²",
     ],
 )
 def test_rejects_anything_that_is_not_a_dni_or_ruc(value: str) -> None:
