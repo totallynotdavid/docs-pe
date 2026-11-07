@@ -23,7 +23,15 @@ def test_strips_surrounding_whitespace() -> None:
 
 @pytest.mark.parametrize(
     "value",
-    ["123", "abc", "812345678", "1234567890123"],
+    [
+        "123",
+        "abc",
+        "812345678",
+        "1234567890123",
+        "١٢٣٤٥٦٧٨",
+        "٩١٢٣٤٥٦٧٨",
+        "٢٠١٠٠٠٠٠٠٠١",
+    ],
 )
 def test_rejects_unclassifiable(value: str) -> None:
     with pytest.raises(ValueError, match="invalid subject"):

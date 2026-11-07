@@ -6,9 +6,9 @@ from collections import UserString
 from enum import Enum
 
 
-_RUC_RE = re.compile(r"^\d{11}$")
-_PHONE_RE = re.compile(r"^9\d{8}$")
-_DNI_RE = re.compile(r"^\d{7,8}$")
+_RUC_RE = re.compile(r"^[0-9]{11}$")
+_PHONE_RE = re.compile(r"^9[0-9]{8}$")
+_DNI_RE = re.compile(r"^[0-9]{7,8}$")
 
 
 class SubjectKind(Enum):
