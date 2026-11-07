@@ -388,6 +388,20 @@ def test_cli_authenticates_with_a_session_cookie(
         main(["list"], transport=fake.transport())
 
 
+def test_cli_reports_an_unreadable_env_file_without_a_traceback(
+    fake: FakeDokploy, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DOKPLOY_URL", "http://dokploy.test")
+    monkeypatch.setenv("DOKPLOY_API_KEY", fake.api_key)
+    missing = tmp_path / "missing.env"
+
+    with pytest.raises(SystemExit, match=r"error: .*missing\.env"):
+        main(
+            ["deploy", "acme", "--image", "portal:1", "--env-file", str(missing)],
+            transport=fake.transport(),
+        )
+
+
 REGISTRY = Registry("registry.example", "reader", "token-1")
 
 

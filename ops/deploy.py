@@ -898,7 +898,7 @@ def main(
             sys.exit(admin_exec(deployer.core_app_name(args.name), admin))
         else:
             print("\n".join(deployer.describe(args.name)))
-    except (DeployError, httpx.HTTPError) as error:
+    except (DeployError, httpx.HTTPError, OSError) as error:
         sys.exit(f"error: {error}")
 
 
