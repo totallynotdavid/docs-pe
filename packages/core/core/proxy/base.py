@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from os import getenv
 from typing import TYPE_CHECKING, Protocol
+from urllib.parse import quote
 
 from core.domain.errors import ProxyConfigurationError
 
@@ -21,7 +22,10 @@ class ProxySession:
     session_id: str
 
     def as_http_proxy_url(self) -> str:
-        return f"http://{self.username}:{self.password}@{self.host}:{self.port}"
+        username = quote(self.username, safe="")
+        password = quote(self.password, safe="")
+
+        return f"http://{username}:{password}@{self.host}:{self.port}"
 
 
 @dataclass(frozen=True)
