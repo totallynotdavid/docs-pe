@@ -184,7 +184,9 @@ class CaptureRelayHandler(BaseHTTPRequestHandler):
 
         supplied = self.headers.get("X-Capture-Token", "")
 
-        if not secrets.compare_digest(supplied, self.server.state.token):
+        if not secrets.compare_digest(
+            supplied.encode(), self.server.state.token.encode()
+        ):
             self.send_error(HTTPStatus.UNAUTHORIZED)
             return False
 
