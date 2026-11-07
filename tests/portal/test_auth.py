@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pyotp
+import pytest
 
 from portal.application.throttle import LOGIN_ATTEMPT_LIMIT
 
@@ -320,10 +321,16 @@ async def test_logout_ends_the_session(
         assert client.get("/", follow_redirects=False).status_code == 303
 
 
+@pytest.mark.parametrize(
+    "token",
+    ["no-es-el-token-de-la-sesion", "señal-ñandú-€", "١٢٣"],
+    ids=["ascii", "latin-and-symbols", "arabic-indic-digits"],
+)
 async def test_forged_csrf_token_is_rejected(
     pool: asyncpg.Pool,
     team_repository: PostgresTeamRepository,
     app: Litestar,
+    token: str,
 ) -> None:
     await build_experience(pool, team_repository)
 
@@ -332,7 +339,7 @@ async def test_forged_csrf_token_is_rejected(
 
         forged = client.post(
             "/logout",
-            data={"csrf_token": "no-es-el-token-de-la-sesion"},
+            data={"csrf_token": token},
             headers={"Origin": ORIGIN},
         )
 

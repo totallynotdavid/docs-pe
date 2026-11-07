@@ -84,8 +84,12 @@ def new_csrf_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def tokens_match(presented: str, expected: str) -> bool:
+    return hmac.compare_digest(presented.encode(), expected.encode())
+
+
 def valid_csrf(submitted: str | None, expected: str) -> bool:
-    return bool(submitted and hmac.compare_digest(submitted, expected))
+    return bool(submitted and tokens_match(submitted, expected))
 
 
 def new_totp_secret() -> str:

@@ -81,13 +81,19 @@ async def test_self_enroll_issues_a_credential_the_registry_accepts(
     assert identity.tailscale_hostname == "aws.tailnet.test"
 
 
+@pytest.mark.parametrize(
+    "authorization",
+    [b"Bearer not-the-token", "Bearer señal".encode("latin-1"), b"Bearer \xff\xfe"],
+    ids=["ascii", "latin-1", "high-bytes"],
+)
 async def test_self_enroll_rejects_the_wrong_bootstrap_token(
     bootstrapped_client: AsyncTestClient,
+    authorization: bytes,
 ) -> None:
     response = await bootstrapped_client.post(
         "/enroll",
         json={"worker_id": "aws-1", "tailscale_hostname": "aws.tailnet.test"},
-        headers={"Authorization": "Bearer not-the-token"},
+        headers={b"Authorization": authorization},
     )
 
     assert response.status_code == 403

@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
-import hmac
 
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -26,7 +25,7 @@ from portal.repository.breakers import PostgresCircuitBreakers
 from portal.repository.jobs import PostgresJobRepository
 from portal.repository.slots import PostgresProxySlots
 from portal.repository.workers import PostgresWorkerRegistry, worker_database_dsn
-from portal.security import new_worker_credential
+from portal.security import new_worker_credential, tokens_match
 from portal.storage.port import ObjectReference, ObjectStorage
 from portal.worker.protocol import (
     ClaimRequest,
@@ -104,7 +103,7 @@ async def worker_enroll(
         else ""
     )
 
-    if not state.settings.worker_bootstrap_token or not hmac.compare_digest(
+    if not state.settings.worker_bootstrap_token or not tokens_match(
         presented,
         state.settings.worker_bootstrap_token,
     ):
