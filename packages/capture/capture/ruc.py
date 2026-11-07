@@ -5,7 +5,7 @@ import re
 from collections import UserString
 
 
-_RUC_RE = re.compile(r"\d{11}")
+_RUC_RE = re.compile(r"[0-9]{11}")
 
 
 class RUC(UserString):
