@@ -57,7 +57,7 @@ def load_manifest(path: Path) -> JobManifest:
         msg = f"manifest {path} is not valid JSON: {exc}"
         raise ValueError(msg) from exc
 
-    if raw.get("version") != MANIFEST_VERSION:
+    if not isinstance(raw, dict) or raw.get("version") != MANIFEST_VERSION:
         msg = f"manifest {path} must use version {MANIFEST_VERSION}"
         raise ValueError(msg)
 

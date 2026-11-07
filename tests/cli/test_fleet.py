@@ -164,3 +164,21 @@ def test_a_hand_written_geonode_manifest_with_two_shards_does_not_load(
 
     with pytest.raises(ValueError, match="sticky ports"):
         load_manifest(path)
+
+
+@pytest.mark.parametrize(
+    "content",
+    ["[]", "null", "42", '"job"', '[{"version": 1}]'],
+    ids=["array", "null", "number", "string", "array-of-objects"],
+)
+def test_status_reports_a_manifest_that_is_not_a_json_object(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], content: str
+) -> None:
+    path = tmp_path / "job.json"
+    path.write_text(content, encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exit_info:
+        fleet_main(["status", "--manifest", str(path)])
+
+    assert exit_info.value.code == 2
+    assert "must use version" in capsys.readouterr().err
