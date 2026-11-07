@@ -4,6 +4,7 @@ import re
 
 from http.cookies import SimpleCookie
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 from litestar.datastructures.headers import MutableScopeHeaders
 from litestar.enums import ScopeType
@@ -88,16 +89,17 @@ class HTTPSRedirect:
 
         headers = MutableScopeHeaders(scope)
         host = headers.get("host", "")
-        query_string = scope["query_string"].decode("latin-1")
+        raw_path = scope.get("raw_path") or quote(scope["path"]).encode("ascii")
+        path = raw_path.split(b"?", 1)[0]
+        target = b"https://" + host.encode("latin-1") + path
 
-        target = f"https://{host}{scope['path']}"
-        if query_string:
-            target = f"{target}?{query_string}"
+        if scope["query_string"]:
+            target = target + b"?" + scope["query_string"]
 
         start: HTTPResponseStartEvent = {
             "type": "http.response.start",
             "status": 307,
-            "headers": [(b"location", target.encode("latin-1"))],
+            "headers": [(b"location", target)],
         }
         body: HTTPResponseBodyEvent = {
             "type": "http.response.body",

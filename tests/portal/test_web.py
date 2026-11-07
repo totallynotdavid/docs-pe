@@ -2,24 +2,59 @@ from __future__ import annotations
 
 import re
 
-from typing import TYPE_CHECKING
-
 import pytest
 
+from litestar import Litestar, get
 from litestar.datastructures import UploadFile
+from litestar.params import FromPath
 from litestar.testing import TestClient
 from portal.domain.errors import InputValidationError, Reason
 from portal.messages import message_for
 from portal.web.assets import COMPONENTS_DIR, STATIC_DIR, build_component_stylesheet
+from portal.web.headers import HTTPSRedirect
 from portal.web.uploads import MAX_CSV_UPLOAD_BYTES, read_csv_upload
-
-
-if TYPE_CHECKING:
-    from litestar import Litestar
 
 
 def _upload(name: str, content: bytes) -> UploadFile:
     return UploadFile(content_type="text/csv", filename=name, file_data=content)
+
+
+@get("/{rest:path}", sync_to_thread=False)
+def _anything(rest: FromPath[str]) -> str:
+    return rest
+
+
+@pytest.mark.parametrize(
+    ("request_target", "location"),
+    [
+        ("/login", "https://portal.example/login"),
+        ("/login?next=%2Fjobs&x=1", "https://portal.example/login?next=%2Fjobs&x=1"),
+        ("/%E2%98%83", "https://portal.example/%E2%98%83"),
+        ("/a%23b", "https://portal.example/a%23b"),
+        ("/a%3Fb?c=d", "https://portal.example/a%3Fb?c=d"),
+        ("/a%20b", "https://portal.example/a%20b"),
+        ("/a%0D%0ASet-Cookie:x", "https://portal.example/a%0D%0ASet-Cookie:x"),
+    ],
+    ids=[
+        "plain",
+        "query-string",
+        "non-ascii-path",
+        "encoded-fragment-mark",
+        "encoded-question-mark",
+        "encoded-space",
+        "encoded-line-break",
+    ],
+)
+def test_plain_http_requests_redirect_to_the_same_target_over_https(
+    request_target: str, location: str
+) -> None:
+    app = Litestar([_anything], middleware=[HTTPSRedirect])
+
+    with TestClient(app, base_url="http://portal.example") as client:
+        response = client.get(request_target, follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == location
 
 
 def test_responses_use_same_origin_content_security_policy(app: Litestar) -> None:
