@@ -93,7 +93,7 @@ ORIGIN = "https://testserver.local"
 PASSWORD = "una-clave-larga-y-segura"
 
 # Fixed so a test can predict the code the authenticator would show.
-TOTP_SECRET = "JBSWY3DPEHPK3PXP"
+TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
 RECOVERY_CODE = "codigo-de-recuperacion"
 WORKER_ID = "worker-1"
 WORKER_HOSTNAME = "worker-1.tailnet.test"
