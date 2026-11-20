@@ -103,7 +103,15 @@ def totp_matches(secret: str, code: str) -> bool:
     if len(digits) != TOTP_DIGITS or not digits.isdigit():
         return False
 
-    return _totp(secret).verify(digits, valid_window=TOTP_WINDOW_STEPS)
+    # pyotp rejects a stored secret under 112 bits, one a deployment could have
+    # issued while it ran pyotp < 2.12. Treat it as a wrong code so the caller
+    # falls back to a recovery code instead of crashing.
+    try:
+        totp = _totp(secret)
+    except ValueError:
+        return False
+
+    return totp.verify(digits, valid_window=TOTP_WINDOW_STEPS)
 
 
 def totp_enrollment_uri(secret: str, *, email: str, issuer: str) -> str:
