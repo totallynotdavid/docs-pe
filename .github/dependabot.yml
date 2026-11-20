@@ -12,6 +12,16 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      - dependency-name: aiobotocore
+      - dependency-name: behave
+      - dependency-name: boto3
+      - dependency-name: botocore
+      - dependency-name: htmx.org
+      - dependency-name: multidict
+      - dependency-name: pytest-html
+      - dependency-name: s3transfer
+      - dependency-name: wrapt
 
   - package-ecosystem: uv
     directories:
@@ -27,6 +37,16 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      - dependency-name: aiobotocore
+      - dependency-name: behave
+      - dependency-name: boto3
+      - dependency-name: botocore
+      - dependency-name: htmx.org
+      - dependency-name: multidict
+      - dependency-name: pytest-html
+      - dependency-name: s3transfer
+      - dependency-name: wrapt
 
   - package-ecosystem: docker
     directories:
@@ -41,6 +61,16 @@ updates:
           - major
           - minor
           - patch
+    ignore:
+      - dependency-name: aiobotocore
+      - dependency-name: behave
+      - dependency-name: boto3
+      - dependency-name: botocore
+      - dependency-name: htmx.org
+      - dependency-name: multidict
+      - dependency-name: pytest-html
+      - dependency-name: s3transfer
+      - dependency-name: wrapt
 
   - package-ecosystem: github-actions
     directories:
@@ -55,3 +85,13 @@ updates:
           - major
           - minor
           - patch
+    ignore:
+      - dependency-name: aiobotocore
+      - dependency-name: behave
+      - dependency-name: boto3
+      - dependency-name: botocore
+      - dependency-name: htmx.org
+      - dependency-name: multidict
+      - dependency-name: pytest-html
+      - dependency-name: s3transfer
+      - dependency-name: wrapt
