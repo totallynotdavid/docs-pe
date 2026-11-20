@@ -6,6 +6,4 @@
 {% if grow %}
   {% set classes = classes + ["table__cell--grow"] %}
 {% endif %}
-<td {{ attrs.render(class=classes|join(" "), **{"data-align": align}) }}>
-  {{ content }}
-</td>
+<td {{ attrs.render(class=classes|join(" "), **{"data-align": align}) }}>{{ content }}</td>
