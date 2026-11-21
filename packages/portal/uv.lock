@@ -1367,7 +1367,7 @@ requires-dist = [
     { name = "litestar-htmx", specifier = ">=0.5.0" },
     { name = "msgspec", specifier = ">=0.22.0" },
     { name = "psutil", specifier = ">=7.0.0" },
-    { name = "pwdlib", extras = ["argon2"], specifier = ">=0.3.1" },
+    { name = "pwdlib", extras = ["argon2"], specifier = ">=0.4.0" },
     { name = "pyotp", specifier = ">=2.10.0" },
     { name = "segno", specifier = ">=1.6.6" },
     { name = "uvicorn", specifier = ">=0.54.0" },
@@ -1532,11 +1532,11 @@ wheels = [
 
 [[package]]
 name = "pwdlib"
-version = "0.4.2"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/4c/35/dcd08c5125c88d7783b6d2b5bb38d96970f79586e7f75fba79feecfc05b5/pwdlib-0.4.2.tar.gz", hash = "sha256:8f74cfd9c602982a9a05240c5b6484e384d732a891fd3c44befba2be9c4a4748", size = 228154, upload-time = "2026-11-15T13:07:23.013Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f3/9f/63dc5850fe793c0c13637792dd2494ff5ae6f7b95e334fd2b89a2d5803c9/pwdlib-0.4.0.tar.gz", hash = "sha256:123fd269d0980416f3a2a7b0c3a183f3b2f8580bb44bdadadde93e4bf7582f9d", size = 226803, upload-time = "2026-11-14T10:06:30.026Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/47/1f/26e4bd61ac0b264fb9f1d181fa35d6e2969b2b6fd874d4cca7531b5babd0/pwdlib-0.4.2-py3-none-any.whl", hash = "sha256:5e03f706382a040a04139f2bbb3378fa964661f8a74e1cec8da34a221c801bcf", size = 9881, upload-time = "2026-11-15T13:07:21.779Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/6c/63119c0eba65efbe799e291a2cc9532ecaf7abc03d3f20e888df3fddff79/pwdlib-0.4.0-py3-none-any.whl", hash = "sha256:ef34f40b43efd610fce615391027f08bdb1403fcccda9897978f69275b61b2ee", size = 9470, upload-time = "2026-11-14T10:06:28.478Z" },
 ]
 
 [package.optional-dependencies]
